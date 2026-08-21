@@ -1536,9 +1536,28 @@
     });
   }
 
+  /* --- 画像を選ぶ前の確認（V1.36） ---
+     【なぜ毎回出すか】
+       常時表示の注意書きは3日で背景と同化して読まれなくなる。
+       出すべきは「決める瞬間」＝ファイルを選ぶ直前で、しかも毎回。
+       ここで止めれば、まだ何も取り込んでいないので引き返せる。
+     【なぜ赤字にしないか】
+       このアプリで赤は誤り、緑は正解と決まっている（決まり4-1）。
+       注意書きに赤を使うと、正誤の赤の意味が薄まる。
+     ※「次から表示しない」は付けない。付けた瞬間に意味を失う確認なので。 */
   function pickUserImage() {
+    var ok = global.confirm(
+      'この問題に図を1枚貼ります。\n\n' +
+      '次のものは取り込まないでください。\n' +
+      '・参考書や問題集の紙面を撮った画像（著作権）\n' +
+      '・患者さんの情報や実習記録（個人情報）\n\n' +
+      '自分で描いた図や、自分で作った表は問題ありません。\n' +
+      '取り込んだ画像はこの端末の中に保存され、作り手は中身を見られません。\n\n' +
+      '続けますか？');
+    if (!ok) { return false; }
     var f = $('#userimg-file');
     if (f) { f.value = ''; f.click(); }
+    return true;
   }
 
   function saveUserImage(file) {
@@ -1606,6 +1625,57 @@
     var slot = $('#' + USERIMG_SLOTS[userImagePos()]);
     if (!slot || sec.parentNode === slot) { return; }
     slot.appendChild(sec);
+  }
+
+  /* --- 誤りの報告（V1.36） ---
+     【本文を自動で載せるのは同梱の問題だけ】
+       利用者が取り込んだ問題には、他人の著作物が入っている可能性がある。
+       それを本文ごと作者のメールボックスへ集めると、避けたいはずのものを
+       自分から引き受けることになる。取り込み問題は q_id だけ送る。
+     置き場所はサムゾーンではなく解説エリア。サムゾーンは評価専用に保つ。 */
+  function isBundledQuestion(q) {
+    return !!(q && String(q.q_id || '').indexOf('ORIG_') === 0);
+  }
+
+  function reportBody(q) {
+    var L = [];
+    L.push('■ どこが誤っていましたか（ご記入ください）');
+    L.push('');
+    L.push('');
+    L.push('----------------------------------------');
+    L.push('問題ID: ' + (q.q_id || '不明'));
+    L.push('分類: ' + [q.unit, q.major, q.medium].filter(Boolean).join(' > '));
+    L.push('アプリ版: ' + (S.APP_BUILD || '不明'));
+    if (isBundledQuestion(q)) {
+      L.push('');
+      L.push('--- 問題文 ---');
+      L.push(String(q.stem || ''));
+      L.push('');
+      L.push('--- 選択肢 ---');
+      (state.current && state.current.atoms ? state.current.atoms : []).forEach(function (a) {
+        L.push(a.original_num + '. ' + String(a.text || '') +
+               (a.is_correct ? '  ← 正解' : ''));
+      });
+      L.push('');
+      L.push('--- 解説 ---');
+      L.push(String(q.overall_explanation || '').replace(/<[^>]+>/g, ''));
+    } else {
+      L.push('');
+      L.push('（この問題はご自身で取り込まれたものです。');
+      L.push('　権利関係の都合上、本文は自動では添付していません。');
+      L.push('　必要に応じて、ご自身で貼り付けてください。）');
+    }
+    return L.join('\n');
+  }
+
+  function reportQuestion() {
+    var q = state.current && state.current.question;
+    if (!q) { return; }
+    var url = 'mailto:' + (global.Half2Impl ? global.Half2Impl.SUPPORT_EMAIL : '') +
+              '?subject=' + encodeURIComponent('[オモイダス] 内容の誤り: ' + (q.q_id || '')) +
+              '&body=' + encodeURIComponent(reportBody(q));
+    try { global.location.href = url; } catch (e) { /* 下で案内する */ }
+    toast('宛先：' + (global.Half2Impl ? global.Half2Impl.SUPPORT_EMAIL : ''), 6000);
   }
 
   function renderDetailBlock(q) {
@@ -2357,6 +2427,7 @@
 
     /* --- 自作の図解画像 --- */
     on($('#btn-userimg-pick'), 'click', function () { pickUserImage(); });
+    on($('#btn-report'), 'click', function () { reportQuestion(); });
     on($('#userimg-file'), 'change', function (ev) {
       var file = ev.target.files && ev.target.files[0];
       if (file) { saveUserImage(file); }
@@ -2767,7 +2838,9 @@
     unionTags     : unionTags,
     fitStemHeight : fitStemHeight,
     renderMermaid : renderMermaid,
-    renderUserImage: renderUserImage,
+    renderUserImage: renderUserImage,  pickUserImage: pickUserImage,
+    reportQuestion: reportQuestion,  reportBody: reportBody,
+    isBundledQuestion: isBundledQuestion,
     userImagePos: userImagePos,
     placeUserImageSection: placeUserImageSection,
     USERIMG_SLOTS: USERIMG_SLOTS,

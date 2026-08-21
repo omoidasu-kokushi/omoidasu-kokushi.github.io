@@ -3383,3 +3383,31 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .drive-privacy a{ color:var(--accent); font-weight:700; }
 .drive-advanced{ margin-top:12px; }
 .drive-advanced > summary{ color:var(--text-sub); font-weight:700; }
+
+
+/* ==========================================================================
+ * 53. 問い合わせ・誤りの報告（V1.36）
+ * ========================================================================== */
+
+.modal-contact-card{ max-width:min(440px, calc(100vw - 28px)); text-align:left; }
+.contact-label{
+  display:block; margin:12px 0 4px;
+  font-size:var(--fs-xs); font-weight:800; color:var(--text-sub);
+}
+.contact-select{ width:100%; }
+.contact-text{
+  width:100%; box-sizing:border-box;
+  padding:10px 12px; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:var(--surface);
+  color:var(--text); font-size:var(--fs-sm); line-height:1.65;
+  font-family:inherit; resize:vertical;
+}
+.contact-text:focus-visible{ outline:2px solid var(--accent); outline-offset:1px; }
+.contact-note{
+  margin-top:10px; font-size:var(--fs-xs); line-height:1.65; color:var(--text-sub);
+}
+.contact-note b{ word-break:break-all; }
+
+/* 誤りの報告。「書き換える」と並ぶが、押す頻度が低いので少し控えめにする。
+   赤にはしない（このアプリの赤は誤答の色で、意味が衝突する）。 */
+.sec-report{ margin-left:6px; }

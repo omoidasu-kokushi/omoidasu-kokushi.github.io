@@ -2023,13 +2023,60 @@
     return lines.join('\n');
   }
 
+  /* 分類。件名に入れて、こちら側の仕分けをフォーム相当にする。 */
+  var CONTACT_KINDS = {
+    bug     : '不具合',
+    content : '内容の誤り',
+    sync    : '同期',
+    request : '要望',
+    other   : 'その他'
+  };
+
   function openContact() {
+    var addr = $('#contact-addr');
+    if (addr) { addr.textContent = SUPPORT_EMAIL; }
+    var t = $('#contact-text'); if (t) { t.value = ''; }
+    var k = $('#contact-kind'); if (k) { k.value = 'bug'; }
+    show('#modal-contact');
+    global.setTimeout(function () { if (t) { t.focus(); } }, 60);
+  }
+
+  function contactText() {
+    var k = $('#contact-kind'), t = $('#contact-text');
+    var body = (t && t.value ? t.value : '').trim();
+    return (body || '（ここに内容をご記入ください）') + contactBody();
+  }
+
+  function contactSubject() {
+    var k = $('#contact-kind');
+    var label = CONTACT_KINDS[k ? k.value : 'other'] || 'その他';
+    return '[オモイダス] ' + label;
+  }
+
+  function sendContact() {
     var url = 'mailto:' + SUPPORT_EMAIL +
-              '?subject=' + encodeURIComponent('[オモイダス] お問い合わせ') +
-              '&body=' + encodeURIComponent(contactBody());
-    try { global.location.href = url; } catch (e) { /* 開けなくても下で案内する */ }
-    /* メーラーが無い端末では何も起きないので、宛先を必ず画面にも出す。 */
-    toast('宛先：' + SUPPORT_EMAIL, 6000);
+              '?subject=' + encodeURIComponent(contactSubject()) +
+              '&body=' + encodeURIComponent(contactText());
+    try { global.location.href = url; } catch (e) { /* 下で案内する */ }
+    /* メーラーが無い端末では何も起きない。宛先を必ず画面にも出す。 */
+    toast('開かないときは［本文をコピー］から手で送ってください', 6000);
+  }
+
+  /* クリップボードが使えない環境（古いSafari・非HTTPS）でも詰まないよう、
+     失敗したら選択状態にして「手でコピー」できる形に落とす。 */
+  function copyContact() {
+    var txt = SUPPORT_EMAIL + '\n' + contactSubject() + '\n\n' + contactText();
+    var done = function () { toast('コピーしました。メールに貼り付けて送ってください', 4000); };
+    if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
+      global.navigator.clipboard.writeText(txt).then(done).catch(function () { fallback(txt); });
+      return;
+    }
+    fallback(txt);
+    function fallback(s) {
+      var t = $('#contact-text');
+      if (t) { t.value = s; t.focus(); t.select(); }
+      toast('選択しました。長押し（Ctrl+C）でコピーしてください', 5000);
+    }
   }
 
   function supportsNotification() {
@@ -3066,6 +3113,9 @@
     startBreak: startBreak,              openLongBreakDialog: openLongBreakDialog,
     requestNotifyPermission: requestNotifyPermission,
     openContact: openContact,        SUPPORT_EMAIL: SUPPORT_EMAIL,
+    sendContact: sendContact,        copyContact: copyContact,
+    contactText: contactText,        contactSubject: contactSubject,
+    CONTACT_KINDS: CONTACT_KINDS,
     setUserImagePos: setUserImagePos,
     refreshDrive: refreshDrive,      saveDriveClientId: saveDriveClientId,
     driveLogin: driveLogin,          driveLogout: driveLogout,
@@ -3311,6 +3361,9 @@
         return S.loadMeta();
       }).then(function (m) { M.state.meta = m; playAlarm(ev.target.value); });
     });
+    on($('#btn-contact-send'),  'click', function () { sendContact(); });
+    on($('#btn-contact-copy'),  'click', function () { copyContact(); });
+    on($('#btn-contact-close'), 'click', function () { hide('#modal-contact'); });
     on($('#btn-drive-save-id'), 'click', function () { saveDriveClientId(); });
     on($('#btn-drive-login'),   'click', function () { driveLogin(); });
     on($('#btn-drive-logout'),  'click', function () { driveLogout(); });

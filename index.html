@@ -165,6 +165,20 @@
   });
 })();
 </script>
+
+<!-- LINE・X・Slack などに貼ったときのカード表示（V1.36）。
+     og:image が無いと、各サービスは適当なアイコンを拾ってしまう。
+     画像は絶対URLでなければ読まれないので、ここだけドメインを直書きする。 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="オモイダス">
+<meta property="og:title" content="オモイダス — 想起を、早期に。">
+<meta property="og:description" content="選択肢ひとつずつの記憶定着度を測り、忘れかけたタイミングだけを狙って出題する学習アプリ。">
+<meta property="og:image" content="https://omoidasu-kokushi.github.io/icons/ogp.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta property="og:url" content="https://omoidasu-kokushi.github.io/">
 </head>
 <body>
 
@@ -319,7 +333,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260815_NurseExamApp_V1.35</p>
+        <p class="build-stamp">20260815_NurseExamApp_V1.36</p>
       </div>
     </section>
 
@@ -427,6 +441,8 @@
                   <h4 class="detail-h">全体解説
                     <button type="button" class="sec-edit" id="btn-edit-overall"
                             aria-label="全体解説を自分の言葉に書き換える">✏ 書き換える</button>
+                    <button type="button" class="sec-edit sec-report" id="btn-report"
+                            aria-label="この問題の誤りを報告する">⚑ 誤りを報告</button>
                   </h4>
                   <div class="explanation-body" id="rv-overall"></div>
                 </section>
@@ -987,7 +1003,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp">20260815_NurseExamApp_V1.35 / cache v1.23.0</p>
+          <p class="build-stamp">20260815_NurseExamApp_V1.36 / cache v1.24.0</p>
         </section>
       </div>
     </section>
@@ -998,6 +1014,36 @@
 <!-- ============================================================
      ONBOARDING OVERLAY
      ============================================================ -->
+<!-- V1.36：問い合わせ。サーバーが無いので「送信」はできない。
+     分類と本文をここで組み立て、メーラーへ渡す。
+     メーラーが無い端末のために［コピー］を必ず併設する。 -->
+<div class="modal-layer" id="modal-contact" hidden>
+  <div class="modal-card modal-contact-card" role="dialog" aria-modal="true"
+       aria-labelledby="contact-title">
+    <h3 class="modal-title" id="contact-title">お問い合わせ</h3>
+    <label class="contact-label" for="contact-kind">種類</label>
+    <select id="contact-kind" class="set-select contact-select">
+      <option value="bug">不具合（動かない・おかしい）</option>
+      <option value="content">内容の誤り（問題・解説）</option>
+      <option value="sync">ドライブ同期がうまくいかない</option>
+      <option value="request">要望・こうしてほしい</option>
+      <option value="other">その他</option>
+    </select>
+    <label class="contact-label" for="contact-text">内容</label>
+    <textarea id="contact-text" class="contact-text" rows="6"
+      placeholder="いつ・どの画面で・何をしたら・どうなったか、を書いていただけると助かります。"></textarea>
+    <p class="contact-note">
+      末尾にアプリの版とブラウザの情報が付きます。個人を特定する情報は含まれません。<br>
+      宛先：<b id="contact-addr"></b>
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="btn-contact-copy">本文をコピー</button>
+      <button type="button" class="btn-primary" id="btn-contact-send">メールを開く</button>
+    </div>
+    <button type="button" class="btn-ghost btn-sm modal-close" id="btn-contact-close">閉じる</button>
+  </div>
+</div>
+
 <div class="onb-layer" id="onb-layer" hidden>
   <div class="onb-spot" id="onb-spot"></div>
   <div class="onb-bubble" id="onb-bubble">
