@@ -42,7 +42,7 @@
      空のままだと、設定画面の入力欄から各自で入れる形に戻る（開発中はこれ）。 */
   var DEFAULT_CLIENT_ID = '';
 
-  var FOLDER_NAME = 'NurseExamApp';
+  var FOLDER_NAME = 'Omoidasu';
   var INDEX_NAME  = 'notes_index.json';
   var INDEX_SCHEMA = 1;
 
