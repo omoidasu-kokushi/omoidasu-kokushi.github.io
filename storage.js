@@ -1586,10 +1586,14 @@
         throw new Error('縮小しても ' + Math.round(r.blob.size / 1024) +
                         'KB あり、上限の2MBを超えています。もっと小さい画像を選んでください。');
       }
+      /* opts.updatedAt：ドライブから取り込むときに向こうの時刻をそのまま使う。
+         ここで nowMs() を入れると、取り込んだ側が常に「新しい」ことになり、
+         次の同期で上げ返す。それを両端末でやるので往復が止まらない。 */
+      var stamp = (opts && opts.updatedAt) ? Number(opts.updatedAt) : nowMs();
       var rec = {
         file_id: imageIdFor(qId), kind: 'image', q_id: qId,
         blob: r.blob, mime: r.blob.type || 'image/jpeg',
-        bytes: r.blob.size, w: r.w, h: r.h, updated_at: nowMs()
+        bytes: r.blob.size, w: r.w, h: r.h, updated_at: stamp
       };
       return write([STORE.FILES, STORE.QUESTIONS], function (s) {
         s[STORE.FILES].put(rec);
@@ -1597,9 +1601,10 @@
           if (!q) { return; }
           q.user_image_id = rec.file_id;
           q.user_image_updated_at = rec.updated_at;
+          q.user_image_deleted_at = null;   /* 入れ直した＝消していない */
           s[STORE.QUESTIONS].put(q);
         });
-      }).then(function () { return rec; });
+      }).then(function () { return bumpDirty(1).then(function () { return rec; }); });
     });
   }
 
@@ -1608,17 +1613,27 @@
     return getOne(STORE.FILES, imageIdFor(qId));
   }
 
-  function deleteUserImage(qId) {
+  /* opts.deletedAt：別の端末で消された時刻をそのまま入れるときに使う。
+     ここで nowMs() を入れてしまうと、同期のたびに「こっちの方が新しい」と
+     互いに主張し合って往復が終わらない（時計の押し合いになる）。
+
+     drive_image_id は【消さない】。ドライブ側の実物を消すのに要る。
+     消したという事実は user_image_deleted_at で運ぶ。これが無いと、
+     目次に image_file_id が残ったままになり、次の同期で
+     【消したはずの図が別端末から戻ってくる】。 */
+  function deleteUserImage(qId, opts) {
     if (!qId) { return Promise.resolve(false); }
+    var at = (opts && opts.deletedAt) ? Number(opts.deletedAt) : nowMs();
     return write([STORE.FILES, STORE.QUESTIONS], function (s) {
       s[STORE.FILES]['delete'](imageIdFor(qId));
       return req2promise(s[STORE.QUESTIONS].get(qId)).then(function (q) {
         if (!q) { return; }
         q.user_image_id = null;
         q.user_image_updated_at = null;
+        q.user_image_deleted_at = at;
         s[STORE.QUESTIONS].put(q);
       });
-    }).then(function () { return true; });
+    }).then(function () { return bumpDirty(1).then(function () { return true; }); });
   }
 
   /* --- 自作のアラーム音（V1.28） ---
@@ -1759,8 +1774,27 @@
         }
         return a;
       });
+    }).then(function (a) {
+      /* 待たずに返すと、直後に件数を読んだときにまだ増えていない。
+         「解いたのにバッジが変わらない」に見えるうえ、
+         読んで書く方式なので同時に走ると数が落ちる。 */
+      return bumpDirty(1).then(function () { return a; });
     });
   }
+
+  /* --- 未同期の件数（V1.39） ---
+     「同期を押すまで何が溜まっているか分からない」のが、複数端末で
+     一番効く不安になる。数えるのは storage の仕事にしておく
+     （drive.js は通信だけを担当し、通信が落ちても数えは壊れない）。
+     ここで数えるのは【利用者の操作】だけ。同期そのものによる
+     書き戻し（updateAtomsBulk / replaceAllLogs）は数えない。 */
+  function bumpDirty(n) {
+    return getMeta('sync_dirty', 0).then(function (v) {
+      return setMeta('sync_dirty', Number(v || 0) + (n || 1));
+    }).catch(function () { return null; });
+  }
+  function getDirty() { return getMeta('sync_dirty', 0); }
+  function clearDirty() { return setMeta('sync_dirty', 0); }
 
   /* --- 端末をまたぐ同期のための一括操作（V1.38） ---
      合体した台帳を丸ごと置き換える。1行ずつ足すと、同じ解答が
@@ -1801,6 +1835,29 @@
     });
   }
 
+  /* updateAtomsBulk の問題版。★の同期で使う。 */
+  function updateQuestionsBulk(patches) {
+    var ids = Object.keys(patches || {});
+    if (!ids.length) { return Promise.resolve(0); }
+    return write([STORE.QUESTIONS], function (s) {
+      var seq = Promise.resolve(), n = 0;
+      ids.forEach(function (id) {
+        seq = seq.then(function () {
+          return req2promise(s[STORE.QUESTIONS].get(id)).then(function (q) {
+            if (!q) { return; }
+            var patch = patches[id];
+            Object.keys(patch).forEach(function (k) { q[k] = patch[k]; });
+            if (patch.is_starred !== undefined) { q._star = patch.is_starred ? 1 : 0; }
+            q.updated_at = nowMs();
+            s[STORE.QUESTIONS].put(q);
+            n++;
+          });
+        });
+      });
+      return seq.then(function () { return n; });
+    });
+  }
+
   /* 進捗を書き換えずにフィールドだけ更新する（★の付け外しなど） */
   function updateAtom(atomId, patch) {
     return write([STORE.ATOMS], function (s) {
@@ -1829,17 +1886,22 @@
     });
   }
 
+  /* ★は「付いている集合」ではなく「いつそうしたか」で持つ。
+     集合の足し算にすると、片方の端末で外した★が
+     もう片方から毎回よみがえって、二度と外せなくなる。 */
   function toggleQuestionStar(qId) {
     return getQuestion(qId).then(function (q) {
       if (!q) { throw new Error('問題が見つかりません: ' + qId); }
-      return updateQuestion(qId, { is_starred: !q.is_starred });
+      return updateQuestion(qId, { is_starred: !q.is_starred, star_updated_at: nowMs() })
+        .then(function (r) { return bumpDirty(1).then(function () { return r; }); });
     });
   }
 
   function toggleAtomStar(atomId) {
     return getAtom(atomId).then(function (a) {
       if (!a) { throw new Error('選択肢が見つかりません: ' + atomId); }
-      return updateAtom(atomId, { is_starred: !a.is_starred });
+      return updateAtom(atomId, { is_starred: !a.is_starred, star_updated_at: nowMs() })
+        .then(function (r) { return bumpDirty(1).then(function () { return r; }); });
     });
   }
 
@@ -2649,6 +2711,10 @@
     commitAnswer       : commitAnswer,
     updateAtom         : updateAtom,
     updateQuestion     : updateQuestion,
+    bumpDirty          : bumpDirty,
+    getDirty           : getDirty,
+    clearDirty         : clearDirty,
+    updateQuestionsBulk: updateQuestionsBulk,
     toggleQuestionStar : toggleQuestionStar,
     toggleAtomStar     : toggleAtomStar,
     getStarredNote     : getStarredNote,

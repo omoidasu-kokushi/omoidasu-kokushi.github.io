@@ -35,9 +35,9 @@
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
     { file: "./scheduler.js",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.25.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.26.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.23.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.24.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
     { file: "./drive.js",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
@@ -833,12 +833,28 @@
           <div class="set-row set-static set-stack">
             <span class="set-row-body"><b>状態</b>
               <small id="drive-state">まだ設定していません</small></span>
+            <!-- V1.39：ログインと同期を1つのボタンにまとめた。
+                 Googleのブラウザ向けの仕組みでは、トークンの寿命が1時間で、
+                 取り直しに必ず利用者の操作が要る（黙って更新できない）。
+                 ボタンを分けると「ログインしたのに同期されない」が必ず起きる。 -->
             <div class="drive-actions">
-              <button type="button" class="btn-primary btn-sm" id="btn-drive-sync" disabled>今すぐ同期</button>
-              <button type="button" class="btn-ghost btn-sm" id="btn-drive-login">ログイン</button>
+              <button type="button" class="btn-primary btn-sm" id="btn-drive-sync" disabled>
+                <span id="drive-sync-label">今すぐ同期</span>
+                <span class="drive-badge" id="drive-pending" hidden>0</span>
+              </button>
               <button type="button" class="btn-ghost btn-sm is-danger" id="btn-drive-logout" hidden>ログアウト</button>
             </div>
             <p class="set-note" id="drive-note"></p>
+            <p class="set-note drive-warn" id="drive-browser-note" hidden></p>
+          </div>
+
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>ホーム画面に追加すると楽になります</b>
+              <small id="pwa-note">アプリとして開くと、ブラウザの制限を受けにくくなります。</small></span>
+            <div class="drive-actions">
+              <button type="button" class="btn-ghost btn-sm" id="btn-pwa-install" hidden>ホーム画面に追加</button>
+              <button type="button" class="btn-ghost btn-sm" id="btn-pwa-how">やり方を見る</button>
+            </div>
           </div>
 
           <p class="set-note drive-privacy">
@@ -1369,8 +1385,8 @@
 <script src="./questions.js"></script>
 <script src="./storage.js"></script>
 <script src="./scheduler.js"></script>
-<script src="./20260815_main_part1_V1.25.js"></script>
+<script src="./20260815_main_part1_V1.26.js"></script>
 <script src="./drive.js"></script>
-<script src="./20260815_main_part2_V1.23.js"></script>
+<script src="./20260815_main_part2_V1.24.js"></script>
 </body>
 </html>

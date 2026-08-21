@@ -119,6 +119,58 @@
               state.token.expires_at - TOKEN_SKEW_MS > nowMs());
   }
 
+  /* --- トークンを1時間だけ手元に残す（V1.39） ---
+     【なぜ】
+       Googleのブラウザ向けの仕組みでは、更新用トークンが発行されない。
+       黙って取り直すこともできない（公式に「implicit では利用者の
+       操作なしにトークンは取れない」と明記されている）。
+       つまり【半永久ログインは原理的に作れない】。
+       できるのは「1時間は押さずに済む」ことだけ。
+       画面を閉じて開き直すたびに押させるのは、その1時間すら
+       捨てていることになるので、期限まで手元に残す。
+     【残す範囲】
+       権限は drive.file だけ。このアプリが作ったファイルしか触れない。
+       つまり漏れても届く先は、この端末に元から入っているものと同じ。
+       期限が切れたものは読まずに捨てる。 */
+  function saveToken() {
+    if (!state.token) { return S.setMeta('drive_token', null); }
+    return S.setMeta('drive_token', {
+      access_token: state.token.access_token,
+      expires_at: state.token.expires_at
+    });
+  }
+
+  function restoreToken() {
+    if (tokenValid()) { return Promise.resolve(state.token); }
+    return S.loadMeta().then(function (m) {
+      var t = m.drive_token;
+      if (!t || !t.access_token) { return null; }
+      if (Number(t.expires_at || 0) - TOKEN_SKEW_MS <= nowMs()) {
+        return S.setMeta('drive_token', null).then(function () { return null; });
+      }
+      state.token = { access_token: t.access_token, expires_at: Number(t.expires_at) };
+      return state.token;
+    }).catch(function () { return null; });
+  }
+
+  /* 次に押すときアカウントの選択画面を出さないためのヒント。
+     権限に email は含めていないので、ドライブ側の about から
+     【取れたら取る】。取れなくても動く（選択画面が1枚増えるだけ）。 */
+  function rememberHint() {
+    if (!tokenValid()) { return Promise.resolve(null); }
+    return authHeader().then(function (h) {
+      return http('https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)',
+                  { headers: h });
+    }).then(function (r) {
+      if (!r.ok) { return null; }
+      return r.json();
+    }).then(function (j) {
+      var mail = j && j.user && j.user.emailAddress;
+      if (!mail) { return null; }
+      return S.setMeta('drive_login_hint', mail).then(function () { return mail; });
+    }).catch(function () { return null; });
+  }
+
   function loadGis() {
     if (transport) { state.gisLoaded = true; return Promise.resolve(true); }
     if (state.gisLoaded && global.google && global.google.accounts) { return Promise.resolve(true); }
@@ -148,13 +200,16 @@
        （設定画面を開く＝すでにその気がある、という区切り）。 */
   function prepare() {
     if (state.tokenClient) { return Promise.resolve(true); }
-    return getClientId().then(function (clientId) {
+    return Promise.all([getClientId(), S.loadMeta()]).then(function (rr) {
+      var clientId = rr[0], hint = (rr[1] || {}).drive_login_hint || undefined;
       if (!clientId) { return false; }
       if (transport) { state.tokenClient = { __mock: true, clientId: clientId }; return true; }
       return loadGis().then(function () {
         state.tokenClient = global.google.accounts.oauth2.initTokenClient({
           client_id: clientId,
           scope: SCOPE,
+          /* 前に入ったアカウントを覚えていれば、選択画面を飛ばせる。 */
+          hint: hint,
           callback: function (resp) {
             var cb = state.pending; state.pending = null;
             if (!cb) { return; }
@@ -163,6 +218,8 @@
                 access_token: resp.access_token,
                 expires_at: nowMs() + (Number(resp.expires_in) || 3600) * 1000
               };
+              saveToken().catch(function () {});
+              rememberHint().catch(function () {});
               cb.resolve(state.token);
             } else {
               cb.reject(new Error('ログインできませんでした。'));
@@ -207,7 +264,7 @@
         return transport.signIn(clientId).then(function (t) {
           state.token = { access_token: t.access_token,
                           expires_at: nowMs() + (t.expires_in || 3600) * 1000 };
-          return state.token;
+          return saveToken().then(function () { return state.token; });
         });
       }
       return loadGis().then(function () {
@@ -221,6 +278,8 @@
                   access_token: resp.access_token,
                   expires_at: nowMs() + (Number(resp.expires_in) || 3600) * 1000
                 };
+                saveToken().catch(function () {});
+                rememberHint().catch(function () {});
                 resolve(state.token);
               } else {
                 reject(new Error('ログインできませんでした。'));
@@ -241,6 +300,7 @@
   function signOut() {
     var t = state.token;
     state.token = null; state.folderId = null;
+    S.setMeta('drive_token', null).catch(function () {});
     /* 別アカウントで入り直すと、覚えたIDは前のアカウントのもの。 */
     S.setMeta('drive_folder_id', null).catch(function () {});
     S.setMeta('drive_index_id', null).catch(function () {});
@@ -263,6 +323,10 @@
   function checkResponse(r) {
     if (r.ok) { return r; }
     if (r.status === 401 || r.status === 403) {
+      /* 期限切れの控えを残すと、次の起動で「ログイン中」に見えたまま
+         毎回失敗する。掴んだ時点で捨てる。 */
+      state.token = null;
+      S.setMeta('drive_token', null).catch(function () {});
       var e = new Error('EXPIRED'); e.status = r.status; throw e;
     }
     var err = new Error('ドライブとの通信に失敗しました（' + r.status + '）');
@@ -472,7 +536,9 @@
 
   function differs(a, b) {
     return String(a.memo || '') !== String(b.memo || '') ||
-           String(a.image_file_id || '') !== String(b.image_file_id || '');
+           String(a.image_file_id || '') !== String(b.image_file_id || '') ||
+           Number(a.image_updated_at || 0) !== Number(b.image_updated_at || 0) ||
+           Number(a.image_deleted_at || 0) !== Number(b.image_deleted_at || 0);
   }
 
   /* ------------------------------------------------------------ 同期 */
@@ -484,19 +550,27 @@
       var byQ = {};
       r[1].forEach(function (f) { if (f.kind === 'image' && f.q_id) { byQ[f.q_id] = f; } });
 
+      /* 図を消した問題も目次に載せる。載せないと「手元に無い」だけの状態になり、
+         向こうの目次に残った image_file_id を根拠に取りに行ってしまう
+         ＝【消した図が次の同期でよみがえる】。 */
       return qs.filter(function (q) {
-        return byQ[q.q_id] || (q.user_memo && String(q.user_memo).trim());
+        return byQ[q.q_id] || q.user_image_deleted_at ||
+               (q.user_memo && String(q.user_memo).trim());
       }).map(function (q) {
         var f = byQ[q.q_id];
+        var del = f ? 0 : Number(q.user_image_deleted_at || 0);
         return {
           q_id: q.q_id,
           atom_id: null,
           image_name: f ? (q.q_id + '.jpg') : null,
-          image_file_id: q.drive_image_id || null,
+          /* 実物が無いのに ID を載せない。載せると墓標が「図あり」に見える。 */
+          image_file_id: f ? (q.drive_image_id || null) : null,
           image_updated_at: f ? (f.updated_at || 0) : 0,
+          image_deleted_at: del,
           memo: q.user_memo || null,
           updated_at: Math.max(Number(q.memo_updated_at || 0),
                                Number(q.user_image_updated_at || 0),
+                               del,
                                f ? Number(f.updated_at || 0) : 0)
         };
       });
@@ -507,6 +581,7 @@
   function syncNow(onProgress) {
     var report = {
       ok: true, uploaded: 0, downloaded: 0, memo_updated: 0,
+      deleted: 0, removed_local: 0,
       conflicts: [], skipped: 0, started_at: nowMs(), messages: []
     };
     var say = function (m) {
@@ -534,65 +609,141 @@
          手元の drive_image_id は当てにしない：利用者がドライブで
          フォルダごと消すと、手元にIDだけ残る。そのIDを「上がっている証拠」
          として扱うと、二度と上げ直さないまま同期が成功したことになる
-         （黙って何もしない、が一番まずい壊れ方）。 */
-      var remoteHasImage = {};
-      (remote.items || []).forEach(function (it) {
-        if (it.image_file_id) { remoteHasImage[keyOf(it)] = true; }
-      });
+         （黙って何もしない、が一番まずい壊れ方）。
 
-      /* 1) この端末にあってドライブに無い画像を上げる */
-      var ups = merged.items.filter(function (it) {
-        var mine = localByKey[keyOf(it)];
-        return mine && mine.image_name && !remoteHasImage[keyOf(it)];
+         V1.39：真偽値ではなく【IDと時刻】で持つ。真偽値だと
+         「もう有る」で終わってしまい、同じ枠に入れ直した新しい図が
+         永久に上がらなかった。 */
+      var remoteImg = {};
+      (remote.items || []).forEach(function (it) {
+        if (it.image_file_id) {
+          remoteImg[keyOf(it)] = { id: it.image_file_id,
+                                   at: Number(it.image_updated_at || 0) };
+        }
       });
 
       var seq = Promise.resolve();
-      ups.forEach(function (it) {
+
+      /* 0) この端末で消した図を、ドライブからも消す。
+            ここを飛ばすと、消したのに別端末が拾って戻してくる。 */
+      merged.items.forEach(function (it) {
+        var k = keyOf(it), rm = remoteImg[k];
+        var mine = localByKey[k];
+        if (!rm) { return; }
+        if (it.image_name) { return; }                       /* 実物がある＝消していない */
+        if (!(Number(it.image_deleted_at || 0) > rm.at)) { return; }
+        if (!mine || Number(mine.image_deleted_at || 0) <= 0) { return; }
         seq = seq.then(function () {
-          return S.getUserImage(it.q_id).then(function (rec) {
-            if (!rec || !rec.blob) { report.skipped++; return; }
-            say('図を上げています（' + it.q_id + '）…');
-            /* 目次に無いのだから、既知IDは信用しない。新規として上げる。 */
-            return uploadBlob(it.q_id + '.jpg', rec.blob, rec.mime || 'image/jpeg', null)
-              .then(function (f) {
-                it.image_file_id = f.id;
-                report.uploaded++;
-                return S.getQuestion(it.q_id).then(function (q) {
-                  if (!q) { return null; }
-                  q.drive_image_id = f.id;
-                  return S.putQuestionShallow(q);
-                });
+          say('消した図をドライブからも消しています（' + it.q_id + '）…');
+          return deleteFile(rm.id).catch(function () { /* 既に無くても続行 */ })
+            .then(function () {
+              it.image_file_id = null;
+              it.image_name = null;
+              report.deleted++;
+              delete remoteImg[k];
+              return S.getQuestion(it.q_id).then(function (q) {
+                if (!q) { return null; }
+                q.drive_image_id = null;
+                return S.putQuestionShallow(q);
               });
-          });
+            });
         });
       });
 
-      /* 2) ドライブにあってこの端末に無いものを取り込む */
+      /* 1) 上げる：手元に実物があり、ドライブに無い or 手元の方が新しい。
+            差し替えのときは【同じファイルを更新】する（新規に上げると
+            ドライブに古い図が残り続ける）。 */
+      seq = seq.then(function () {
+        var ups = merged.items.filter(function (it) {
+          var k = keyOf(it), mine = localByKey[k], rm = remoteImg[k];
+          if (!mine || !mine.image_name) { return false; }
+          /* 向こうが「もっと新しく消した」のなら上げ返さない。
+             ここが無いと、別端末で消した図をこちらが上げ直してしまい、
+             消しても消しても戻ってくる（削除が永久に確定しない）。 */
+          if (Number(it.image_deleted_at || 0) > Number(mine.image_updated_at || 0)) {
+            return false;
+          }
+          return !rm || Number(mine.image_updated_at || 0) > rm.at;
+        });
+        var s1 = Promise.resolve();
+        ups.forEach(function (it) {
+          s1 = s1.then(function () {
+            var k = keyOf(it), rm = remoteImg[k], mine = localByKey[k];
+            return S.getUserImage(it.q_id).then(function (rec) {
+              if (!rec || !rec.blob) { report.skipped++; return; }
+              say('図を上げています（' + it.q_id + '）…');
+              return uploadBlob(it.q_id + '.jpg', rec.blob,
+                                rec.mime || 'image/jpeg', rm ? rm.id : null)
+                .then(function (f) {
+                  it.image_file_id = f.id;
+                  it.image_name = it.q_id + '.jpg';
+                  it.image_updated_at = Number(mine.image_updated_at || 0);
+                  it.image_deleted_at = 0;
+                  report.uploaded++;
+                  return S.getQuestion(it.q_id).then(function (q) {
+                    if (!q) { return null; }
+                    q.drive_image_id = f.id;
+                    return S.putQuestionShallow(q);
+                  });
+                });
+            });
+          });
+        });
+        return s1;
+      });
+
+      /* 2) 取り込む：ドライブに実物があり、手元に無い or 向こうの方が新しい。
+            ただし手元で消したのが向こうより新しいなら取り込まない。 */
       seq = seq.then(function () {
         var downs = merged.items.filter(function (it) {
-          var mine = localByKey[keyOf(it)];
-          /* ドライブ側に実物があるものだけを取りに行く。 */
-          return remoteHasImage[keyOf(it)] && it.image_file_id
-                 && (!mine || !mine.image_name);
+          var k = keyOf(it), rm = remoteImg[k], mine = localByKey[k];
+          if (!rm) { return false; }
+          if (Number(it.image_deleted_at || 0) > rm.at) { return false; }
+          if (!mine || !mine.image_name) { return true; }
+          return rm.at > Number(mine.image_updated_at || 0);
         });
         var s2 = Promise.resolve();
         downs.forEach(function (it) {
           s2 = s2.then(function () {
+            var rm = remoteImg[keyOf(it)];
             say('図を取り込んでいます（' + it.q_id + '）…');
-            return downloadBlob(it.image_file_id).then(function (b) {
-              /* 上げるときに縮小済み。ここで再圧縮すると往復のたびに劣化する。 */
-              return S.putUserImage(it.q_id, b, { skipShrink: true });
+            return downloadBlob(rm.id).then(function (b) {
+              /* 上げるときに縮小済み。ここで再圧縮すると往復のたびに劣化する。
+                 時刻も向こうのものを使う。ここで今の時刻を入れると、
+                 取り込んだ側が常に新しくなって上げ返し、往復が止まらない。 */
+              return S.putUserImage(it.q_id, b,
+                                    { skipShrink: true, updatedAt: rm.at });
             }).then(function () {
               report.downloaded++;
               return S.getQuestion(it.q_id).then(function (q) {
                 if (!q) { return null; }
-                q.drive_image_id = it.image_file_id;
+                q.drive_image_id = rm.id;
                 return S.putQuestionShallow(q);
               });
             }).catch(function () { report.skipped++; });
           });
         });
         return s2;
+      });
+
+      /* 2b) 向こうで消された図を、この端末からも消す。 */
+      seq = seq.then(function () {
+        var gone = merged.items.filter(function (it) {
+          var mine = localByKey[keyOf(it)];
+          return mine && mine.image_name && !it.image_name &&
+                 Number(it.image_deleted_at || 0) > Number(mine.image_updated_at || 0);
+        });
+        var s2b = Promise.resolve();
+        gone.forEach(function (it) {
+          s2b = s2b.then(function () {
+            say('向こうで消された図を外しています（' + it.q_id + '）…');
+            return S.deleteUserImage(it.q_id,
+                     { deletedAt: Number(it.image_deleted_at || 0) })
+              .then(function () { report.removed_local++; })
+              .catch(function () { report.skipped++; });
+          });
+        });
+        return s2b;
       });
 
       /* 3) メモの本文を、新しい方に合わせる */
@@ -630,7 +781,9 @@
       });
     }).then(function () {
       report.finished_at = nowMs();
-      return S.setMeta('drive_last_sync', report.finished_at).then(function () { return report; });
+      return S.clearDirty()
+        .then(function () { return S.setMeta('drive_last_sync', report.finished_at); })
+        .then(function () { return report; });
     }).catch(function (e) {
       report.ok = false;
       report.error = (e && e.message) || String(e);
@@ -657,38 +810,110 @@
    *   設定（試験日・テーマなど）は新しい方を採る。
    * ====================================================================== */
 
+  /* 大きい方を採る（減らさない）。到達率・回数・ハイウォーターマーク。 */
   var META_MAX_KEYS = [
     'total_questions_answered',
-    'max_pct_lv1', 'max_pct_lv2', 'max_pct_lv3', 'max_pct_lv4', 'max_pct_lv5'
-  ];
-  var META_NEWER_KEYS = [
-    'exam_date', 'day_boundary_hour', 'theme', 'prefer_frequent',
-    'user_image_pos', 'pomodoro_enabled', 'pomodoro_alarm',
-    'pomodoro_longbreak_min', 'oneq_threshold', 'oneq_always_multi'
+    'max_pct', 'level_current',
+    'max_pct_lv1', 'max_pct_lv2', 'max_pct_lv3', 'max_pct_lv4', 'max_pct_lv5',
+    'unlock_pct_mock_30', 'unlock_pct_mock_60',
+    'unlock_pct_mock_120', 'unlock_pct_mock_weak',
+    'full_mock_pass_streak',
+    'tutorial_answered', 'pomodoro_session_count'
   ];
 
+  /* 片方でtrueになったら永久にtrue。模試の解禁とオンボーディングの通過。
+     V1.39：ここが丸ごと抜けていた。PCで解禁した模試がスマホで出ない、
+     チュートリアルをやり直させられる、という形で出る。 */
+  var META_OR_KEYS = [
+    'unlock_mock_30', 'unlock_mock_60', 'unlock_mock_120', 'unlock_mock_weak',
+    'onboarding_done', 'tutorial_finished', 'random_qty_unlocked', 'ui_tour_done'
+  ];
+
+  /* 集合の足し算。分析スキャン精度の分子。 */
+  var META_UNION_KEYS = ['scan_answered_qids'];
+
+  /* 新しい方を採る。設定・見た目。
+     V1.39：oneq_threshold / oneq_always_multi は実在しないキーだった
+     （正しくは split_threshold / always_multi）。ずっと空振りしていた。 */
+  var META_NEWER_KEYS = [
+    'exam_date', 'day_boundary_hour', 'theme', 'visual_theme', 'prefer_frequent',
+    'user_image_pos', 'pomodoro_enabled', 'pomodoro_alarm',
+    'pomodoro_longbreak_min', 'split_threshold', 'always_multi',
+    'notify_enabled', 'badge_enabled', 'verdict_popup_enabled',
+    'text_overrides'
+  ];
+
+  /* 【意図的に同期しない】
+       drive_*                  端末ごとのID。混ぜると別アカウントを指す。
+       seed_imported / last_import_* / total_imported_rows / unit_index_map
+                                問題データ由来。取り込み直せば再生成される。
+       daily_key / daily_count  その端末のその日の数え。台帳から出せる。
+       schema_version / app_build / created_at   端末の素性。
+       home_tip_index / tips_seen / pomodoro_hint_shown / review_nag_day
+                                その端末での案内の出し分け。混ぜる意味がない。 */
+
+  /* ★を「集合」ではなく「id・状態・時刻」の並びで運ぶ。
+     集合の足し算にすると、外した★が相手側から毎回戻ってきて
+     二度と外せない（図の削除とまったく同じ壊れ方）。 */
+  function starRows(list, idKey) {
+    var out = [];
+    list.forEach(function (x) {
+      var at = Number(x.star_updated_at || 0);
+      if (!x.is_starred && !at) { return; }   /* 触られていないものは運ばない */
+      out.push({ id: x[idKey], on: !!x.is_starred, at: at });
+    });
+    return out;
+  }
+
+  function mergeStars(a, b) {
+    var out = {};
+    (a || []).concat(b || []).forEach(function (r) {
+      if (!r || r.id === undefined || r.id === null) { return; }
+      var prev = out[r.id];
+      if (!prev) { out[r.id] = r; return; }
+      var pa = Number(prev.at || 0), ra = Number(r.at || 0);
+      if (ra > pa) { out[r.id] = r; }
+      /* 同時刻で食い違ったら「付いている」を採る。
+         消えるより余分に付く方が、利用者にとって取り返しがつく。 */
+      else if (ra === pa && r.on && !prev.on) { out[r.id] = r; }
+    });
+    return Object.keys(out).map(function (k) { return out[k]; });
+  }
+
   function collectProgress() {
-    return Promise.all([S.getAllLogs(), S.loadMeta(), S.getAllAtoms()])
+    return Promise.all([S.getAllLogs(), S.loadMeta(), S.getAllAtoms(),
+                        S.getAllQuestions()])
       .then(function (r) {
         var meta = {}, m = r[1] || {};
-        META_MAX_KEYS.concat(META_NEWER_KEYS).forEach(function (k) {
-          if (m[k] !== undefined) { meta[k] = m[k]; }
-        });
-        /* ★は台帳に残らないので別に運ぶ */
-        var stars = r[2].filter(function (a) { return a.is_starred; })
-                        .map(function (a) { return a.atom_id; });
+        META_MAX_KEYS.concat(META_OR_KEYS, META_UNION_KEYS, META_NEWER_KEYS)
+          .forEach(function (k) { if (m[k] !== undefined) { meta[k] = m[k]; } });
         return {
           schema: PROGRESS_SCHEMA,
           updated_at: nowMs(),
           logs: r[0] || [],
           meta: meta,
-          starred_atoms: stars
+          stars_atom: starRows(r[2], 'atom_id'),
+          stars_question: starRows(r[3], 'q_id'),
+          /* 旧版（V1.38）が読めるように、集合の形も残しておく。 */
+          starred_atoms: r[2].filter(function (a) { return a.is_starred; })
+                             .map(function (a) { return a.atom_id; })
         };
       });
   }
 
+  /* V1.38 が書いた progress.json には時刻が無い。集合しか無いので
+     「時刻0で付いている」として読む。以後どちらかの端末で触れば
+     そちらが必ず勝つ。 */
+  function normalizeStars(p) {
+    if (Array.isArray(p.stars_atom)) { return p.stars_atom; }
+    return (p.starred_atoms || []).map(function (id) {
+      return { id: id, on: true, at: 0 };
+    });
+  }
+
   function emptyProgress() {
-    return { schema: PROGRESS_SCHEMA, updated_at: 0, logs: [], meta: {}, starred_atoms: [] };
+    return { schema: PROGRESS_SCHEMA, updated_at: 0, logs: [], meta: {},
+             stars_atom: [], stars_question: [], starred_atoms: [] };
   }
 
   function readProgress() {
@@ -731,6 +956,25 @@
         out[k] = Math.max(a, b);
       }
     }
+    for (i = 0; i < META_OR_KEYS.length; i++) {
+      k = META_OR_KEYS[i];
+      if (localMeta[k] !== undefined || remoteMeta[k] !== undefined) {
+        out[k] = !!(localMeta[k] || remoteMeta[k]);
+      }
+    }
+    for (i = 0; i < META_UNION_KEYS.length; i++) {
+      k = META_UNION_KEYS[i];
+      var la = Array.isArray(localMeta[k]) ? localMeta[k] : null;
+      var ra = Array.isArray(remoteMeta[k]) ? remoteMeta[k] : null;
+      if (la || ra) {
+        var seen = {}, list = [];
+        (la || []).concat(ra || []).forEach(function (v) {
+          var s = String(v);
+          if (!seen[s]) { seen[s] = 1; list.push(v); }
+        });
+        out[k] = list;
+      }
+    }
     var newer = (remoteAt > localAt) ? remoteMeta : localMeta;
     var older = (remoteAt > localAt) ? localMeta : remoteMeta;
     for (i = 0; i < META_NEWER_KEYS.length; i++) {
@@ -741,8 +985,9 @@
     return out;
   }
 
-  /* 合体した台帳を手元へ書き戻し、各肢の状態を作り直す。 */
-  function applyProgress(merged, meta) {
+  /* 合体した台帳を手元へ書き戻し、各肢の状態を作り直す。
+     opts.starsAtom / opts.starsQuestion があれば★も書き戻す。 */
+  function applyProgress(merged, meta, opts) {
     var K = global.Scheduler;
     var boundary = isNum(meta.day_boundary_hour) ? meta.day_boundary_hour : 4;
     var capMs = K.examCapMs ? K.examCapMs(meta, nowMs(), boundary) : null;
@@ -753,17 +998,56 @@
       byAtom[l.atom_id].push(l);
     });
 
+    opts = opts || {};
+    var starA = {};
+    (opts.starsAtom || []).forEach(function (r) { starA[r.id] = r; });
+
     return S.replaceAllLogs(merged).then(function () {
       return S.getAllAtoms();
     }).then(function (atoms) {
       var patches = {}, touched = 0;
       atoms.forEach(function (a) {
+        var patch = null;
         var logs = byAtom[a.atom_id];
-        if (!logs || !logs.length) { return; }
-        var patch = K.rebuildAtomState(a, logs, { boundaryHour: boundary, capMs: capMs });
-        if (patch) { patches[a.atom_id] = patch; touched++; }
+        if (logs && logs.length) {
+          patch = K.rebuildAtomState(a, logs, { boundaryHour: boundary, capMs: capMs });
+          if (patch) { touched++; }
+        }
+        /* ★は台帳と無関係。解いていない肢にも付く。 */
+        var st = starA[a.atom_id];
+        if (st && (!!a.is_starred !== !!st.on ||
+                   Number(a.star_updated_at || 0) !== Number(st.at || 0))) {
+          patch = patch || {};
+          patch.is_starred = !!st.on;
+          patch.star_updated_at = Number(st.at || 0);
+        }
+        if (patch) { patches[a.atom_id] = patch; }
       });
       return S.updateAtomsBulk(patches).then(function () { return touched; });
+    }).then(function (touched) {
+      /* 問題★ */
+      var starQ = opts.starsQuestion || [];
+      if (!starQ.length) { return touched; }
+      return S.getAllQuestions().then(function (qs) {
+        var want = {};
+        starQ.forEach(function (r) { want[r.id] = r; });
+        var qp = {};
+        qs.forEach(function (q) {
+          var st = want[q.q_id];
+          if (!st) { return; }
+          if (!!q.is_starred === !!st.on &&
+              Number(q.star_updated_at || 0) === Number(st.at || 0)) { return; }
+          qp[q.q_id] = { is_starred: !!st.on, star_updated_at: Number(st.at || 0) };
+        });
+        return S.updateQuestionsBulk(qp).then(function () { return touched; });
+      });
+    }).then(function (touched) {
+      /* 台帳を差し替えたら74概念の理解率はもう合っていない。
+         ここで作り直さないと、分析画面と弱点ノックが同期前の値のまま残る。 */
+      if (!K.recomputeConceptScores) { return touched; }
+      return Promise.resolve(K.recomputeConceptScores())
+        .catch(function () { return null; })
+        .then(function () { return touched; });
     });
   }
 
@@ -779,12 +1063,15 @@
 
       var meta = mergeMeta(mine.meta || {}, theirs.meta || {},
                            mine.updated_at || 0, theirs.updated_at || 0);
-      var stars = {};
-      (mine.starred_atoms || []).concat(theirs.starred_atoms || [])
-        .forEach(function (id) { stars[id] = 1; });
+      var starsA = mergeStars(normalizeStars(mine), normalizeStars(theirs));
+      var starsQ = mergeStars(mine.stars_question || [], theirs.stars_question || []);
+      report.stars_atom = starsA.filter(function (r) { return r.on; }).length;
+      report.stars_question = starsQ.filter(function (r) { return r.on; }).length;
 
       if (say) { say('学習の記録を合わせています…'); }
-      return applyProgress(merged, meta).then(function (n) {
+      return applyProgress(merged, meta,
+                           { starsAtom: starsA, starsQuestion: starsQ })
+      .then(function (n) {
         report.atoms_rebuilt = n;
         /* meta を書き戻す（数えものは大きい方、設定は新しい方） */
         var seq = Promise.resolve();
@@ -793,8 +1080,12 @@
         });
         return seq;
       }).then(function () {
-        return writeProgress({ logs: merged, meta: meta,
-                               starred_atoms: Object.keys(stars) });
+        return writeProgress({
+          logs: merged, meta: meta,
+          stars_atom: starsA, stars_question: starsQ,
+          starred_atoms: starsA.filter(function (r) { return r.on; })
+                               .map(function (r) { return r.id; })
+        });
       }).then(function () { return report; });
     });
   }
@@ -809,8 +1100,14 @@
       if (!okd) { return { skipped: true, reason: 'CONSENT_REQUIRED' }; }
       return S.getUserImage(qId).then(function (rec) {
         if (!rec || !rec.blob) { return { skipped: true, reason: 'NO_IMAGE' }; }
-        return withFolderRetry(function () {
-          return uploadBlob(qId + '.jpg', rec.blob, rec.mime || 'image/jpeg', null);
+        /* 目次に載っているなら【同じファイルを更新】する。新規に上げると、
+           入れ替えるたびにドライブへ古い図が積み上がる。 */
+        return withFolderRetry(function () { return readIndex(); }).then(function (idx0) {
+          var key0 = String(qId) + '|', prev = null;
+          (idx0.items || []).forEach(function (it) {
+            if (keyOf(it) === key0 && it.image_file_id) { prev = it.image_file_id; }
+          });
+          return uploadBlob(qId + '.jpg', rec.blob, rec.mime || 'image/jpeg', prev);
         }).then(function (f) {
           return S.getQuestion(qId).then(function (q) {
             if (q) { q.drive_image_id = f.id; return S.putQuestionShallow(q); }
@@ -828,6 +1125,8 @@
             }
             hit.image_name = qId + '.jpg';
             hit.image_file_id = f.id;
+            hit.image_updated_at = Number(rec.updated_at || nowMs());
+            hit.image_deleted_at = 0;
             hit.updated_at = nowMs();
             return writeIndex({ items: idx.items });
           });
@@ -836,6 +1135,71 @@
     }).catch(function (e) {
       return { skipped: true, reason: (e && e.message) || 'ERROR' };
     });
+  }
+
+  /* 図を1枚消したら、その場でドライブからも消す（V1.39）。
+     pushOneImage の対。これが無いと、消したことが次の全体同期まで
+     伝わらず、その間に別端末を開くと消したはずの図が戻ってくる。 */
+  function pushImageDelete(qId) {
+    if (!tokenValid()) { return Promise.resolve({ skipped: true, reason: 'NOT_SIGNED_IN' }); }
+    return hasConsent().then(function (okd) {
+      if (!okd) { return { skipped: true, reason: 'CONSENT_REQUIRED' }; }
+      return withFolderRetry(function () { return readIndex(); }).then(function (idx) {
+        var key = String(qId) + '|', hit = null;
+        (idx.items || []).forEach(function (it) { if (keyOf(it) === key) { hit = it; } });
+        if (!hit || !hit.image_file_id) { return { skipped: true, reason: 'NOT_ON_DRIVE' }; }
+        var fileId = hit.image_file_id;
+        hit.image_file_id = null;
+        hit.image_name = null;
+        hit.image_deleted_at = nowMs();
+        hit.updated_at = hit.image_deleted_at;
+        return deleteFile(fileId).catch(function () { /* 既に無くても目次は直す */ })
+          .then(function () { return writeIndex({ items: idx.items }); })
+          .then(function () {
+            return S.getQuestion(qId).then(function (q) {
+              if (!q) { return null; }
+              q.drive_image_id = null;
+              return S.putQuestionShallow(q);
+            });
+          })
+          .then(function () { return { ok: true, q_id: qId, deleted: true }; });
+      });
+    }).catch(function (e) {
+      return { skipped: true, reason: (e && e.message) || 'ERROR' };
+    });
+  }
+
+  /* --- ログイン＝同期（V1.39） ---
+     ボタンを2つに分けても、利用者にとっては「押す回数が増える」だけで
+     区別に意味がない。押した1回で、必要ならログインし、そのまま同期する。
+     ※ 呼び出しは【必ず利用者の操作から直接】。間に await を挟むと
+       iOS と一部のブラウザがポップアップを塞ぐ。 */
+  function signInAndSync(onProgress) {
+    var need = !tokenValid();
+    var step = need ? signIn() : Promise.resolve(state.token);
+    return step.then(function () {
+      return syncNow(onProgress);
+    });
+  }
+
+  /* 押さずに走る同期。ポップアップは絶対に出さない。
+     期限内のトークンがあるときだけ動き、無ければ黙って何もしない。 */
+  function autoSync(onProgress) {
+    return restoreToken().then(function (t) {
+      if (!t) { return { skipped: true, reason: 'NOT_SIGNED_IN' }; }
+      return hasConsent().then(function (okd) {
+        if (!okd) { return { skipped: true, reason: 'CONSENT_REQUIRED' }; }
+        return syncNow(onProgress);
+      });
+    }).catch(function (e) {
+      return { skipped: true, reason: (e && e.message) || 'ERROR' };
+    });
+  }
+
+  /* 未同期の件数。ログインしていなくても数えられる（通信しない）。 */
+  function pendingCount() {
+    return S.getDirty().then(function (v) { return Number(v || 0); })
+      .catch(function () { return 0; });
   }
 
   function lastSync() {
@@ -882,6 +1246,19 @@
     mergeMeta        : mergeMeta,
     applyProgress    : applyProgress,
     pushOneImage     : pushOneImage,
+    pushImageDelete  : pushImageDelete,
+    saveToken        : saveToken,
+    restoreToken     : restoreToken,
+    rememberHint     : rememberHint,
+    signInAndSync    : signInAndSync,
+    autoSync         : autoSync,
+    pendingCount     : pendingCount,
+    mergeStars       : mergeStars,
+    normalizeStars   : normalizeStars,
+    META_MAX_KEYS    : META_MAX_KEYS,
+    META_OR_KEYS     : META_OR_KEYS,
+    META_UNION_KEYS  : META_UNION_KEYS,
+    META_NEWER_KEYS  : META_NEWER_KEYS,
     PROGRESS_NAME    : PROGRESS_NAME,
     lastSync         : lastSync,
 

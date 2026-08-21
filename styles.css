@@ -3411,3 +3411,48 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 /* 誤りの報告。「書き換える」と並ぶが、押す頻度が低いので少し控えめにする。
    赤にはしない（このアプリの赤は誤答の色で、意味が衝突する）。 */
 .sec-report{ margin-left:6px; }
+
+
+/* ==========================================================================
+   V1.39：同期ボタンのバッジ ／ ブラウザの注意書き
+   バッジはボタンの中に置く。別行に出すと、押す対象と数の対応が切れて
+   「何件の何を同期するのか」が読み取れなくなる。
+   ========================================================================== */
+.drive-badge {
+  display: inline-block;
+  min-width: 20px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--accent, #1668c1);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.drive-warn {
+  margin-top: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--warn-border, #d9a441);
+  border-left-width: 4px;
+  border-radius: 6px;
+  background: var(--warn-bg, #fff8e8);
+  color: var(--warn-fg, #6b4a05);
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .drive-warn {
+    --warn-border: #8a6a1f;
+    --warn-bg: #2e2611;
+    --warn-fg: #f0dca6;
+  }
+}
+[data-theme="dark"] .drive-warn {
+  --warn-border: #8a6a1f;
+  --warn-bg: #2e2611;
+  --warn-fg: #f0dca6;
+}
