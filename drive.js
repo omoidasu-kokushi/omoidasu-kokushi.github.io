@@ -127,11 +127,71 @@
     });
   }
 
-  /* 利用者の操作から呼ぶこと。ポップアップを開くため、
-     クリック以外のきっかけで呼ぶとブラウザに塞がれる。 */
+  /* --- 押した瞬間にポップアップを開けるようにしておく（V1.37） ---
+     【なぜ要るか】
+       iOS Safari は「利用者が押した、その場で」開かれた窓しか許さない。
+       押したあとに1回でも await（DBの読み書き・スクリプトの読み込み）が
+       入ると、そのあとの window.open は無言で塞がれる。
+       PCのChromeは緩いので気づきにくく、【スマホだけログインできない】
+       という形で出る。
+     【対策】
+       設定画面を開いた時点で、GISの読み込みとトークンクライアントの
+       用意まで済ませておく。押したときに残る仕事を
+       requestAccessToken() の1回だけにする。
+     ※ 起動時には読み込まない。オフライン起動を壊さないため
+       （設定画面を開く＝すでにその気がある、という区切り）。 */
+  function prepare() {
+    if (state.tokenClient) { return Promise.resolve(true); }
+    return getClientId().then(function (clientId) {
+      if (!clientId) { return false; }
+      if (transport) { state.tokenClient = { __mock: true, clientId: clientId }; return true; }
+      return loadGis().then(function () {
+        state.tokenClient = global.google.accounts.oauth2.initTokenClient({
+          client_id: clientId,
+          scope: SCOPE,
+          callback: function (resp) {
+            var cb = state.pending; state.pending = null;
+            if (!cb) { return; }
+            if (resp && resp.access_token) {
+              state.token = {
+                access_token: resp.access_token,
+                expires_at: nowMs() + (Number(resp.expires_in) || 3600) * 1000
+              };
+              cb.resolve(state.token);
+            } else {
+              cb.reject(new Error('ログインできませんでした。'));
+            }
+          },
+          error_callback: function (err) {
+            var cb = state.pending; state.pending = null;
+            if (!cb) { return; }
+            cb.reject(new Error('ログインを中止しました' +
+              ((err && err.type) ? '（' + err.type + '）' : '') + '。'));
+          }
+        });
+        return true;
+      }).catch(function () { return false; });
+    });
+  }
+
+  /* 利用者の操作から呼ぶこと。用意が済んでいれば、ここでの await はゼロ。 */
   function signIn(opts) {
     opts = opts || {};
     if (tokenValid() && !opts.force) { return Promise.resolve(state.token); }
+
+    /* 用意済みなら、押した勢いのまま窓を開く（await を挟まない）。 */
+    if (state.tokenClient && !state.tokenClient.__mock) {
+      return new Promise(function (resolve, reject) {
+        state.pending = { resolve: resolve, reject: reject };
+        try {
+          state.tokenClient.requestAccessToken({ prompt: opts.force ? 'consent' : '' });
+        } catch (e) {
+          state.pending = null;
+          reject(new Error('ログイン画面を開けませんでした。' +
+                           'ポップアップがブロックされていないか確認してください。'));
+        }
+      });
+    }
 
     return getClientId().then(function (clientId) {
       if (!clientId) {
@@ -582,6 +642,7 @@
     hasConsent       : hasConsent,
     giveConsent      : giveConsent,
 
+    prepare          : prepare,
     signIn           : signIn,
     signOut          : signOut,
     tokenValid       : tokenValid,

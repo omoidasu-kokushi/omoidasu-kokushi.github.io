@@ -1223,6 +1223,8 @@
       /* 自分で入れた図の表示位置（V1.29）。未設定なら既定の after-figure。 */
       refreshExamNote().catch(noop);
       refreshDrive().catch(noop);
+      /* 押した瞬間に窓を開けるよう、ここで先に用意しておく。 */
+      D.prepare().catch(noop);
       var pos = M.userImagePos();
       $$('#screen-settings input[name="userimgpos"]').forEach(function (r) {
         r.checked = (r.value === pos);
@@ -1938,27 +1940,36 @@
   }
 
   /* 初回だけ出す注意書き。ここを通らないと同期は始まらない。 */
-  function askDriveConsent() {
-    return D.hasConsent().then(function (already) {
-      if (already) { return true; }
-      var ok = global.confirm(
-        '自分で入れた図とメモを、あなたのGoogleドライブへ預けます。\n\n' +
-        '・参考書や問題集の紙面をそのまま撮った画像は入れないでください（著作権）\n' +
-        '・患者さんの情報や実習記録など、個人が特定できるものは入れないでください\n' +
-        '・保存先はあなた自身のドライブです。このアプリの作り手は中身を見られません\n\n' +
-        '同意して続けますか？');
-      if (!ok) { return false; }
-      return D.giveConsent().then(function () { return true; });
-    });
+  /* 同意の確認。【同期関数】であることが重要。
+     ここでDBを読みに行くと、その待ち時間で利用者の操作が切れ、
+     iOS Safari がログイン窓を塞ぐ（V1.37 で判明）。
+     判定は起動時に読み込み済みの M.state.meta から取る。 */
+  function askDriveConsentSync() {
+    var m = M.state.meta || {};
+    if (m.drive_consent_at) { return true; }
+    var ok = global.confirm(
+      'Googleドライブとの同期を開始します。\n\n' +
+      '同期の対象は、利用者が追加した図および書き換えた解説文です。\n' +
+      '保存先は利用者自身のGoogleドライブであり、\n' +
+      '開発者が内容を閲覧することはできません。\n\n' +
+      '次の内容は取り込まないでください。\n' +
+      '・著作権のある資料（市販の参考書・問題集の紙面を撮影した画像等）\n' +
+      '・個人を特定できる情報（患者情報、実習記録等）\n\n' +
+      '詳細は利用規約およびプライバシーポリシーをご確認ください。\n\n' +
+      '同意して続行しますか。');
+    if (!ok) { return false; }
+    /* 記録は待たない。待つとログイン窓が開かなくなる。 */
+    M.state.meta.drive_consent_at = Date.now();
+    D.giveConsent().catch(noop);
+    return true;
   }
 
   function driveLogin() {
-    return askDriveConsent().then(function (ok) {
-      if (!ok) { toast('同期は始めていません', 2400); return null; }
-      return D.signIn().then(function () {
-        toast('ログインしました', 2400);
-        return refreshDrive();
-      });
+    if (!askDriveConsentSync()) { toast('同期は開始していません', 2400); return Promise.resolve(null); }
+    /* ここから先に await を挟まないこと（ポップアップが塞がれる）。 */
+    return D.signIn().then(function () {
+      toast('ログインしました', 2400);
+      return refreshDrive();
     }).catch(function (e) {
       toast(e.message || 'ログインできませんでした', 5000);
       return refreshDrive();
@@ -3119,7 +3130,8 @@
     setUserImagePos: setUserImagePos,
     refreshDrive: refreshDrive,      saveDriveClientId: saveDriveClientId,
     driveLogin: driveLogin,          driveLogout: driveLogout,
-    driveSync: driveSync,            askDriveConsent: askDriveConsent,
+    askDriveConsentSync: askDriveConsentSync,
+    driveSync: driveSync,
     DRIVE_STEPS: DRIVE_STEPS,
     setExamDate: setExamDate,        refreshExamNote: refreshExamNote,
     fmtExamNote: fmtExamNote,
