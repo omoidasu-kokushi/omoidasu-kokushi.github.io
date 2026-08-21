@@ -40,7 +40,7 @@
      Googleもそう設計している。悪用の歯止めは「承認済みJavaScript生成元」で、
      登録したアドレスから来た要求しかGoogleが受け付けない。
      空のままだと、設定画面の入力欄から各自で入れる形に戻る（開発中はこれ）。 */
-  var DEFAULT_CLIENT_ID = '';
+  var DEFAULT_CLIENT_ID = '973785386546-3u8ckvbr9ehgcsac3m1rael0r8k31m6k.apps.googleusercontent.com';
 
   var FOLDER_NAME = 'Omoidasu';
   var INDEX_NAME  = 'notes_index.json';

@@ -2003,6 +2003,35 @@
     });
   }
 
+  /* --- 問い合わせ（V1.35） ---
+     宛先はサポート用のGoogleグループ。返信は開発者個人のアドレスからは出さない。
+     版とブラウザを本文に入れておく。これが無いと「動きません」だけの報告になり、
+     こちらから何往復も聞くことになる。個人を特定する情報は入れない。 */
+  var SUPPORT_EMAIL = 'omoidasu-support@googlegroups.com';
+
+  function contactBody() {
+    var m = M.state.meta || {};
+    var lines = [
+      '', '', '----------------------------------------',
+      '以下は不具合の調査に使う情報です。消さずに送ってください。',
+      '（個人を特定する情報は含まれていません）',
+      'アプリ版: ' + (S.APP_BUILD || '不明'),
+      'ドライブ同期: ' + (m.drive_last_sync ? '利用中' : '未使用'),
+      '画面幅: ' + (global.innerWidth || '?') + 'x' + (global.innerHeight || '?'),
+      'ブラウザ: ' + (global.navigator ? global.navigator.userAgent : '不明')
+    ];
+    return lines.join('\n');
+  }
+
+  function openContact() {
+    var url = 'mailto:' + SUPPORT_EMAIL +
+              '?subject=' + encodeURIComponent('[オモイダス] お問い合わせ') +
+              '&body=' + encodeURIComponent(contactBody());
+    try { global.location.href = url; } catch (e) { /* 開けなくても下で案内する */ }
+    /* メーラーが無い端末では何も起きないので、宛先を必ず画面にも出す。 */
+    toast('宛先：' + SUPPORT_EMAIL, 6000);
+  }
+
   function supportsNotification() {
     return typeof global.Notification !== 'undefined';
   }
@@ -3036,6 +3065,7 @@
     exportTextPack: exportTextPack,      textUi: textUi,
     startBreak: startBreak,              openLongBreakDialog: openLongBreakDialog,
     requestNotifyPermission: requestNotifyPermission,
+    openContact: openContact,        SUPPORT_EMAIL: SUPPORT_EMAIL,
     setUserImagePos: setUserImagePos,
     refreshDrive: refreshDrive,      saveDriveClientId: saveDriveClientId,
     driveLogin: driveLogin,          driveLogout: driveLogout,
@@ -3252,9 +3282,7 @@
     });
     on($('#btn-reset-all'), 'click', function () { openModal('#modal-reset'); });
     on($('#reset-go'), 'click', function () { closeModals(); runResetAll(); });
-    on($('#btn-contact'), 'click', function () {
-      toast('不具合の報告・要望は、設定画面の内容とあわせてお送りください', 4000);
-    });
+    on($('#btn-contact'), 'click', function () { openContact(); });
     on($('#set-onboarding'), 'click', function () {
       resetTips()
         .then(function () { return showWelcome(); })
