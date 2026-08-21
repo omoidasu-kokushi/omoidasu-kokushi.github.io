@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="ja" data-theme="light" data-visual="challenge">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0FA3B1">
+<meta name="description" content="看護師国家試験対策 適応型学習システム">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Nurse SRS">
+<title>看護師国家試験 適応型学習システム</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="stylesheet" href="./styles.css">
+
+<!-- ==========================================================================
+     起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
+     外部依存なし・インラインCSSのみで完結させる）
+     起動から2.5秒たっても __APP_READY が立たない場合に、
+     どのファイルが読めていないのかを画面へ具体名で出す。
+     ========================================================================== -->
+<script>
+(function () {
+  "use strict";
+  /* 判定は「グローバルが存在するか」ではなく「そのモジュール固有の中身があるか」で行う。
+     window.Storage（localStorage用）と window.Scheduler（優先度付きタスクAPI）は
+     ブラウザの組み込みグローバルとして最初から存在するため、
+     単なる真偽判定だと、ファイルが読めていなくても OK と誤判定してしまう。 */
+  var REQUIRED = [
+    { file: "./questions.js",                 label: "問題データ層（74テーマ辞書・初回シード）",
+      check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
+    { file: "./storage.js",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+      check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
+    { file: "./scheduler.js",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+      check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
+    { file: "./20260815_main_part1_V1.25.js", label: "アプリ本体【前半】（起動・出題・解説）",
+      check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
+    { file: "./20260815_main_part2_V1.23.js", label: "アプリ本体【後半】（分析・検索・設定）",
+      check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
+    { file: "./drive.js",                     label: "ドライブ同期（自作の図とメモの預け先）",
+      check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
+  ];
+  function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
+  window.__BOOT_REQUIRED = REQUIRED;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function render(opts) {
+    opts = opts || {};
+    /* すでに出ている、または一度閉じられた場合は蒸し返さない。
+       閉じたそばから再表示されると、操作を永久に塞いでしまう。 */
+    if (document.getElementById("boot-diagnostics")) { return; }
+    if (window.__DIAG_DISMISSED) { return; }
+
+    var rows = REQUIRED.map(function (r) {
+      var ok = isOk(r);
+      return '<li style="display:flex;gap:8px;padding:5px 0;border-bottom:1px solid #26303D">'
+        + '<span style="flex:0 0 auto;color:' + (ok ? "#2ECB95" : "#FF5568") + '">' + (ok ? "OK" : "NG") + '</span>'
+        + '<span style="flex:1 1 auto;min-width:0">'
+        + '<code style="font:12px ui-monospace,monospace;color:#E7EEF7">' + esc(r.file) + '</code><br>'
+        + '<small style="color:#9DACBE">' + esc(r.label) + '</small></span></li>';
+    }).join("");
+
+    var isFile = location.protocol === "file:";
+    var notes = [];
+    if (isFile) {
+      notes.push("<b style=\"color:#F0AE33\">file:// で開いています。</b>"
+        + "この開き方では Service Worker が登録できないため、"
+        + "<b>オフライン動作とホーム画面への追加（PWA）が使えません</b>。"
+        + "ブラウザによっては保存領域（IndexedDB）も使えません。"
+        + "アプリのフォルダで <code>python3 -m http.server 8000</code> を実行し、"
+        + "<code>http://localhost:8000/index.html</code> を開いてください。");
+    }
+    var ngCount = REQUIRED.filter(function (r) { return !isOk(r); }).length;
+    if (ngCount === REQUIRED.length) {
+      /* 全滅は「index.html だけが単独で開かれている」典型パターン。
+         ZIPを展開せず中のindex.htmlを直接開くと、Windowsは
+         そのファイルだけを一時フォルダへ取り出すため、必ずこうなる。 */
+      notes.push("<b style=\"color:#F0AE33\">すべてのファイルが読めていません。</b>"
+        + "ZIPを展開せずに、中の index.html を直接開いていませんか？"
+        + "その場合 Windows は index.html だけを一時フォルダへ取り出すため、"
+        + "同じ階層にあるはずの他のファイルが見つかりません。"
+        + "<b>ZIPを右クリック →「すべて展開」</b>してから、"
+        + "展開先フォルダの index.html を開いてください。");
+    } else if (ngCount > 0) {
+      notes.push("NG のファイルが読み込めていません。ファイル名の綴り（版番号を含む）と、"
+        + "index.html と同じ階層に置かれているかを確認してください。");
+    }
+    if (opts.remedy) { notes.push(esc(opts.remedy)); }
+    if (!notes.length) {
+      notes.push("必要なファイルは揃っています。ブラウザの再読み込み（キャッシュ無視）をお試しください。");
+    }
+
+    /* 起動できている場合の助言は、赤ではなく橙で出す（過剰な警告にしない） */
+    var warnOnly = (opts.level === "warn");
+    var accent = warnOnly ? "#F0AE33" : "#FF5568";
+
+    var box = document.createElement("div");
+    box.id = "boot-diagnostics";
+    box.setAttribute("role", warnOnly ? "status" : "alert");
+    box.style.cssText = "position:fixed;z-index:99999;left:10px;right:10px;top:10px;max-height:92vh;"
+      + "overflow:auto;padding:16px 18px 14px;border-radius:14px;background:#18202C;color:#E7EEF7;"
+      + "border:1px solid " + accent + ";box-shadow:0 12px 44px rgba(0,0,0,.55);"
+      + "font:14px/1.7 -apple-system,BlinkMacSystemFont,'Hiragino Sans','Noto Sans JP',system-ui,sans-serif";
+    box.innerHTML =
+        '<div style="display:flex;align-items:flex-start;gap:8px">'
+      +   '<b style="flex:1 1 auto;color:#FF5568;font-size:15px">'
+      +     esc(opts.title || "アプリを起動できませんでした") + '</b>'
+      +   '<button type="button" id="boot-diagnostics-close" aria-label="閉じる"'
+      +    ' style="flex:0 0 auto;background:#243040;color:#9DACBE;border:0;border-radius:8px;'
+      +    'padding:4px 10px;font:inherit;cursor:pointer">閉じる</button>'
+      + '</div>'
+      + (opts.detail ? '<p style="margin:6px 0 0;font-size:12px;color:#9DACBE">' + esc(opts.detail) + '</p>' : "")
+      + '<ul style="list-style:none;margin:12px 0 0;padding:0">' + rows + '</ul>'
+      + '<p style="margin:12px 0 0;font-size:13px;color:#C7D3E1">' + notes.join("<br><br>") + '</p>'
+      + '<p style="margin:10px 0 0;font-size:11px;color:#74849A">'
+      +   'protocol: ' + esc(location.protocol)
+      +   ' ／ events: ' + (window.__EVENTS_BOUND ? "bound" : "not bound")
+      +   ' ／ half2: ' + (window.__HALF2_BOUND ? "bound" : "not bound") + '</p>';
+
+    document.body.appendChild(box);
+    var btn = document.getElementById("boot-diagnostics-close");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        window.__DIAG_DISMISSED = true;
+        if (box.parentNode) { box.parentNode.removeChild(box); }
+      });
+    }
+  }
+
+  window.__showBootDiagnostics = render;
+
+  window.addEventListener("load", function () {
+    window.setTimeout(function () {
+      var missing = REQUIRED.filter(function (r) { return !isOk(r); });
+      /* 起動が完了していても、ファイルが1つでも欠けていれば必ず知らせる。
+         例：後半モジュールだけ欠けると、起動はするが分析・検索・設定が
+         すべて無反応になり、原因が最も分かりにくい壊れ方をする。 */
+      if (window.__APP_READY && !missing.length) {
+        /* 起動はできているが file:// のとき。
+           オフライン機能が黙って効かない状態を放置しないよう、助言だけ出す。 */
+        if (location.protocol === "file:") {
+          render({
+            level: "warn",
+            title: "オフライン機能が使えない開き方です",
+            detail: "アプリ自体は動作しています"
+          });
+        }
+        return;
+      }
+      render({
+        title: missing.length
+          ? "一部のファイルが読み込めていません"
+          : (window.__BOOT_ERROR ? "アプリを起動できませんでした" : "起動が完了していません"),
+        detail: missing.length
+          ? missing.length + " 件のファイルが見つかりません"
+          : (window.__BOOT_ERROR || "")
+      });
+    }, 2500);
+  });
+})();
+</script>
+</head>
+<body>
+
+<!-- ============================================================
+     APP SHELL
+     ============================================================ -->
+<div id="app">
+
+  <!-- ==========================================================
+       GLOBAL HEADER : パンくず / ポモドーロ / 分析スキャン精度
+       ========================================================== -->
+  <header id="app-header">
+    <div class="hdr-row">
+      <button type="button" id="btn-back" class="hdr-icon" aria-label="戻る" hidden>
+        <span class="ico-chevron-left" aria-hidden="true"></span>
+      </button>
+
+      <div class="hdr-crumb" id="hdr-crumb" hidden>
+        <span class="rank-badge S" id="hdr-rank">S</span>
+        <small class="num-code" id="hdr-code">[1-1-A-a]</small>
+        <span class="crumb-path" id="hdr-path">必修問題 ＞ 1.健康に関する指標 ＞ A.人口静態・人口動態 ＞ a.総人口</span>
+      </div>
+
+      <div class="hdr-tools">
+        <button type="button" id="pomodoro-chip" class="pomo-chip" aria-label="ポモドーロタイマー" hidden>
+          <span class="pomo-dot" aria-hidden="true"></span>
+          <span class="pomo-time" id="pomodoro-time">25:00</span>
+        </button>
+        <!-- 1タップでON/OFF。「ノッてる」と思った瞬間に止められるようにするための専用ボタン。
+             チップ（時間表示）とは別の当たり判定にして、残り時間を見るだけのタップで
+             OFFになる事故を防ぐ。 -->
+        <button type="button" id="pomodoro-toggle" class="pomo-toggle"
+                aria-pressed="true" aria-label="ポモドーロをOFFにする" hidden>ON</button>
+        <!-- V1.30：記号だけでは何のボタンか分からなかったので、
+             枠を付けて文字を添える。押せることは枠と影で示す（決まり4-13）。 -->
+        <button type="button" id="btn-theme" class="hdr-btn" aria-label="テーマ切替">
+          <span class="ico-theme" aria-hidden="true"></span><span class="hdr-btn-text">テーマ</span>
+        </button>
+        <!-- 設定はホームのツール一覧から出してここへ。毎日押すものではないが
+             どの画面からでも要るので、常設のヘッダーが置き場所として正しい。 -->
+        <button type="button" id="btn-settings" class="hdr-btn" aria-label="設定">
+          <span class="ico-gear" aria-hidden="true"></span><span class="hdr-btn-text">設定</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 分析スキャン精度メーター（ECGトレース型・4px） -->
+    <div class="scan-meter" id="scan-meter" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="分析スキャン精度">
+      <div class="scan-track">
+        <div class="scan-fill" id="scan-fill" style="width:0%"></div>
+        <div class="scan-head" id="scan-head" style="left:0%"></div>
+      </div>
+      <span class="scan-label">分析精度 <b id="scan-pct">0</b>%</span>
+    </div>
+  </header>
+
+  <!-- ==========================================================
+       SCREEN CONTAINER
+       ========================================================== -->
+  <main id="screen-container">
+
+    <!-- ======================= HOME ======================= -->
+    <section id="screen-home" class="screen is-active" data-screen="home">
+      <div class="screen-scroll">
+
+        <div class="level-strip">
+          <div class="level-strip-head">
+            <span class="level-chip" id="level-chip">Level 1</span>
+            <span class="level-pct" id="level-pct">0%</span>
+          </div>
+          <p class="level-facts" id="level-facts"></p>
+          <div class="level-bar"><div class="level-bar-fill" id="level-bar-fill" style="width:0%"></div></div>
+          <p class="level-note" id="level-note"></p>
+        </div>
+
+        <!-- 主動線：本日の復習 -->
+        <!-- 「主動線」の肩書きと説明文は置かない。
+             タイトルと右上の件数だけで用が足りる。 -->
+        <button type="button" class="hero-card" id="card-review" data-action="go-review">
+          <span class="hero-title">本日の復習</span>
+          <span class="badge-line hero-badge" id="review-badge" hidden>0</span>
+          <span class="hero-arrow" aria-hidden="true"></span>
+        </button>
+
+        <!-- サブ動線：3大サブカード -->
+        <div class="sub-grid">
+          <button type="button" class="sub-card is-pulse" id="card-knock" data-action="go-knock">
+            <span class="sub-icon ico-target" aria-hidden="true"></span>
+            <span class="sub-title">テーマ別 弱点ノック</span>
+            <span class="sub-meta">5分 / 10分</span>
+            <span class="sub-tag" id="knock-tag">テーマ別 弱点分析と連動</span>
+          </button>
+
+          <!-- このカードは進行に応じて顔が変わる（part1 の renderRandomCard）。
+               ① 初見あり            → ランダムモード
+               ② 初見0・いじわる未解禁 → 全問読破 ＋ いじわる模試の予告（非アクティブ）
+               ③ 初見0・いじわる解禁済 → いじわる模試
+               位置は動かさない。押したときに何が起きるかは、常にカード上に書いてある。 -->
+          <button type="button" class="sub-card" id="card-random" data-action="go-random" data-state="random">
+            <span class="sub-icon ico-dice" aria-hidden="true"></span>
+            <span class="sub-title">ランダムモード</span>
+            <span class="sub-meta" id="random-meta">単元 / 大項目</span>
+            <span class="badge-prog" id="random-badge">10問</span>
+            <span class="sub-tag" id="random-tag" hidden></span>
+          </button>
+
+          <button type="button" class="sub-card" id="card-exam" data-action="go-exam">
+            <span class="sub-icon ico-flag" aria-hidden="true"></span>
+            <span class="sub-title">力試しモード</span>
+            <span class="sub-meta">模擬試験</span>
+            <span class="unlock-mini"><i id="unlock-mini-fill" style="width:0%"></i></span>
+            <span class="sub-tag" id="exam-tag">解放 0%</span>
+          </button>
+        </div>
+
+        <!-- ツール・管理エリア -->
+        <ul class="tool-list">
+          <li><button type="button" class="tool-row" data-action="go-dashboard">
+            <span class="tool-ico ico-chart" aria-hidden="true"></span>
+            <span class="tool-body"><b>弱点分析</b><small>単元・大項目・中項目・小項目・テーマの5つの見方</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button></li>
+          <li><button type="button" class="tool-row" data-action="go-search">
+            <span class="tool-ico ico-search" aria-hidden="true"></span>
+            <span class="tool-body"><b>キーワード検索</b><small>講義で出た言葉から、関連する問題を探して解く</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button></li>
+          <li><button type="button" class="tool-row" data-action="go-starred">
+            <span class="tool-ico ico-star" aria-hidden="true"></span>
+            <span class="tool-body"><b>マイ★お気に入りノート</b><small>問題につけた★と選択肢につけた★をまとめて表示</small></span>
+            <span class="badge-line" id="starred-badge" hidden>0</span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button></li>
+          <li><button type="button" class="tool-row" data-action="go-tree">
+            <span class="tool-ico ico-tree" aria-hidden="true"></span>
+            <span class="tool-body"><b>単元別学習</b><small>単元 ＞ 大項目 ＞ 中項目</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button></li>
+        </ul>
+
+        <!-- 主動線（#card-review）の座標を動かさないため、必ずツール一覧より下に置く -->
+        <section class="home-tip" id="home-tip" hidden>
+          <div class="home-tip-head">
+            <span class="home-tip-label" id="home-tip-label">このアプリの使い方</span>
+            <span class="home-tip-count" id="home-tip-count">1 / 33</span>
+          </div>
+          <h3 class="home-tip-title" id="home-tip-title"></h3>
+          <p class="home-tip-body" id="home-tip-body"></p>
+          <div class="home-tip-nav">
+            <button type="button" class="home-tip-prev" id="home-tip-prev">◀ 前へ</button>
+            <button type="button" class="home-tip-next" id="home-tip-next">次の話 ▶</button>
+          </div>
+        </section>
+
+        <p class="build-stamp">20260815_NurseExamApp_V1.32</p>
+      </div>
+    </section>
+
+    <!-- ======================= QUIZ ======================= -->
+    <section id="screen-quiz" class="screen" data-screen="quiz" data-phase="answer">
+
+      <!-- 割り込み表示バー -->
+      <div class="interrupt-bar" id="interrupt-bar" hidden>
+        <span class="interrupt-badge">⚡ 早期復習タイム</span>
+        <span class="interrupt-count" id="interrupt-count">(1/3問)</span>
+      </div>
+
+      <!-- ============ PHASE 1 : 解答フェーズ ============ -->
+      <div class="quiz-answer" id="quiz-answer">
+        <div class="screen-scroll">
+
+          <div class="q-meta">
+            <span class="rank-badge S" id="q-rank">S</span>
+            <small class="num-code" id="q-code">[1-1-A-a]</small>
+            <span class="q-source" id="q-source">AI予想問題</span>
+            <span class="q-counter" id="q-counter">1 / 10</span>
+          </div>
+
+          <div class="q-stem-full">
+            <button type="button" class="star-btn" id="q-star" aria-label="この問題に★を付ける" aria-pressed="false">★</button>
+            <p id="q-stem-text">問題文がここに表示されます。</p>
+          </div>
+
+          <div class="q-image-wrap" id="q-image-wrap" hidden>
+            <button type="button" class="img-toggle" id="btn-img-toggle" aria-expanded="false" aria-controls="q-image-panel">
+              別冊画像を見る 📷
+            </button>
+            <div class="img-panel" id="q-image-panel" hidden>
+              <button type="button" class="img-close" id="btn-img-close">× 閉じる</button>
+              <img id="q-image" src="" alt="別冊画像">
+            </div>
+          </div>
+
+          <p class="q-instruction" id="q-instruction">選択肢を1つ選んでください。</p>
+
+          <!-- 選択肢カード群（0.5秒 思考インターロック対象）
+               左＝番号（表示のみ）／中央＝選択／右＝トグル1つ。
+               当たり判定を2つに抑えるため、右のトグルはモードで役割が変わる。
+                 通常モード ： ☆／★（お気に入り）
+                 力試し模試 ： ☐／☑（根拠あり＝消去完了）
+               main.js が以下のテンプレートで描画する
+            <li class="choice-card" data-atom-id="" data-num="1">
+              <span class="choice-num">1</span>
+              <button type="button" class="choice-body"><span class="choice-text">選択肢本文</span></button>
+              <button type="button" class="choice-mark" aria-pressed="false">☆</button>
+            </li>
+          -->
+          <ul class="choice-list is-interlocked" id="choice-list"></ul>
+
+          <!-- 数値入力（numeric形式） -->
+          <div class="numeric-wrap" id="numeric-wrap" hidden>
+            <label class="numeric-label" for="numeric-input">解答（数値）</label>
+            <input type="number" inputmode="decimal" id="numeric-input" class="numeric-input" placeholder="例: 120">
+            <span class="numeric-unit" id="numeric-unit"></span>
+          </div>
+
+          <div class="answer-actions">
+            <button type="button" class="btn-confirm" id="btn-confirm" disabled>解答を確定する</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ PHASE 2 : 3ブロック絶対座標固定 解説フェーズ ============ -->
+      <div class="quiz-review" id="quiz-review">
+
+        <!-- BLOCK A : 問題文カード（固定高さ 約80px） -->
+        <div class="rv-stem" id="rv-stem">
+          <span class="rv-mark" id="rv-mark" aria-label="正誤">○</span>
+          <div class="rv-stem-scroll" id="rv-stem-scroll">
+            <!-- V1.29：ランクと階層コードは解答フェーズ（.q-meta）だけに出す。
+                 正誤が出たあとに知りたいのは「なぜそうなるか」であって分類ではなく、
+                 この1行を外すと問題文がそのぶん広く読める。
+                 要素は消さずに hidden で残す（他の処理が参照しているため）。 -->
+            <span class="rv-stem-head" id="rv-stem-head" hidden>
+              <span class="rank-badge S" id="rv-rank">S</span>
+              <small class="num-code" id="rv-code">[1-1-A-a]</small>
+            </span>
+            <p id="rv-stem-text">問題文がここに表示されます。</p>
+          </div>
+          <span class="rv-stem-tools">
+            <button type="button" class="star-btn star-inline" id="rv-star" aria-label="この問題に★を付ける" aria-pressed="false">☆</button>
+            <button type="button" class="rv-stem-expand" id="rv-stem-expand" aria-label="問題文を拡大">⤢</button>
+          </span>
+        </div>
+
+        <!-- BLOCK B : スクロール可能 解説エリア（タブ廃止・1本のスクロール） -->
+        <div class="rv-main" id="rv-main">
+          <div class="rv-scroll" id="rv-scroll">
+
+            <!-- 選択肢ごとの解説 ＋ その直下に評価ボタン -->
+            <div id="rv-choices"></div>
+            <div id="userimg-slot-choices"></div>
+
+            <!-- V1.29：全体解説と比較表は最初から開いた状態で常時表示する。
+                 開くひと手間を挟むと、解説を読まずに次へ進む動線ができてしまう。
+                 開閉ボタンが受け持つのは図解（Mermaid）だけになった。 -->
+            <div class="detail-block" id="detail-block">
+              <div class="detail-panel" id="detail-panel">
+                <section class="detail-sec" id="sec-overall">
+                  <h4 class="detail-h">全体解説
+                    <button type="button" class="sec-edit" id="btn-edit-overall"
+                            aria-label="全体解説を自分の言葉に書き換える">✏ 書き換える</button>
+                  </h4>
+                  <div class="explanation-body" id="rv-overall"></div>
+                </section>
+                <section class="detail-sec" id="sec-table">
+                  <h4 class="detail-h">比較表</h4>
+                  <div class="explanation-body" id="rv-table"></div>
+                </section>
+                <div id="userimg-slot-table"></div>
+                <!-- V1.29：この節は設定（自分で登録した画像の表示位置）で
+                     3箇所へ動かす。既定は「図解の直後（＝いちばん下）」。 -->
+                <section class="detail-sec" id="sec-userimg">
+                  <h4 class="detail-h">自分で入れた図
+                    <span class="sec-note" id="userimg-note"></span>
+                  </h4>
+                  <div class="userimg-frame" id="userimg-frame" hidden>
+                    <img id="userimg" alt="自分で入れた図">
+                  </div>
+                  <p class="userimg-empty" id="userimg-empty">
+                    参考書の図や自分で描いたメモを、この問題に1枚だけ貼れます。
+                    長辺1200pxに縮めて保存するので、写真をそのまま選んで構いません。</p>
+                  <div class="userimg-actions">
+                    <button type="button" class="btn-ghost" id="btn-userimg-pick">画像を選ぶ</button>
+                    <input type="file" id="userimg-file" accept="image/*" hidden>
+                    <button type="button" class="btn-ghost is-danger" id="btn-userimg-del" hidden>この図を消す</button>
+                  </div>
+                </section>
+              </div>
+
+              <!-- 図解（Mermaid）だけを開閉する。データに図解が無い問題では
+                   ボタンごと隠す（押しても何も出ないボタンを残さない）。 -->
+              <button type="button" class="detail-toggle" id="btn-detail"
+                      aria-expanded="false" aria-controls="fig-panel" hidden>
+                <span class="detail-toggle-label">図解を見る</span>
+                <small class="detail-toggle-sub" id="detail-sub">この問題の図解</small>
+                <span class="detail-caret" aria-hidden="true"></span>
+              </button>
+              <div class="detail-panel" id="fig-panel" hidden>
+                <section class="detail-sec" id="sec-mermaid">
+                  <h4 class="detail-h">図解</h4>
+                  <div class="mermaid-frame" id="mermaid-frame"></div>
+                </section>
+              </div>
+
+              <!-- 自分で入れた図の受け皿。設定に応じて main.js がここへ差し込む。 -->
+              <div id="userimg-slot-bottom"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BLOCK C : サムゾーン固定バー（評価サマリー ＋ 次へ） -->
+        <div class="thumb-zone" id="thumb-zone" data-eval="normal">
+          <div class="tz-summary" id="tz-summary" role="group" aria-label="各選択肢の評価">
+            <!-- main.js が丸チップを描画。薄い＝推奨のまま／濃い＝自分で選んだ -->
+          </div>
+          <button type="button" class="btn-next" id="btn-next">
+            <span class="btn-next-label">この評価で次へ</span>
+            <span class="btn-next-arrow" aria-hidden="true">▶</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= RANDOM (2段階選択) ======================= -->
+    <section id="screen-random" class="screen" data-screen="random">
+      <div class="screen-scroll">
+        <h2 class="sc-title">ランダムモード</h2>
+        <p class="sc-lead">単元まるごと、または大項目を選んで出題します。</p>
+
+        <button type="button" class="unit-hero" id="unit-hero">
+          <span class="unit-hero-dice" aria-hidden="true">🎲</span>
+          <span class="unit-hero-title" id="unit-hero-title">必修問題 全体ランダム</span>
+          <span class="unit-hero-sub" id="unit-hero-sub">全 0 問から出題</span>
+        </button>
+
+        <div class="major-list" id="major-list"></div>
+
+        <div class="qty-block" id="qty-block">
+          <span class="qty-label">出題数</span>
+          <div class="qty-group" role="group" aria-label="出題数">
+            <button type="button" class="qty-btn is-active" data-qty="10">10問</button>
+            <button type="button" class="qty-btn is-locked" data-qty="20" disabled>20問</button>
+            <button type="button" class="qty-btn is-locked" data-qty="30" disabled>30問</button>
+            <button type="button" class="qty-btn is-locked" data-qty="50" disabled>50問</button>
+            <button type="button" class="qty-btn is-locked" data-qty="120" disabled>120問</button>
+          </div>
+          <p class="qty-note" id="qty-note">初回ランダム10問の完了で、全出題数が永久解放されます。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= TREE (単元別学習) ======================= -->
+    <section id="screen-tree" class="screen" data-screen="tree">
+      <div class="screen-scroll">
+        <h2 class="sc-title">単元別学習</h2>
+        <p class="sc-lead">赤いバッジは「まだ一度も解いていない選択肢」の数です。</p>
+        <div class="tree-root" id="tree-root"></div>
+      </div>
+    </section>
+
+    <!-- ======================= DASHBOARD ======================= -->
+    <section id="screen-dashboard" class="screen" data-screen="dashboard">
+      <div class="screen-scroll">
+        <h2 class="sc-title">弱点分析</h2>
+
+        <div class="dash-controls">
+          <!-- 5軸。横に収まらない端末では横スクロールさせる（折り返すと
+               2段目の位置が軸の数で変わり、指の当て所が毎回変わるため） -->
+          <div class="seg-group seg-axis" role="group" aria-label="集計の見方">
+            <button type="button" class="seg-btn" data-level="unit">単元</button>
+            <button type="button" class="seg-btn" data-level="major">大項目</button>
+            <button type="button" class="seg-btn" data-level="medium">中項目</button>
+            <button type="button" class="seg-btn is-active" data-level="sub_item">小項目</button>
+            <button type="button" class="seg-btn" data-level="tag">テーマ</button>
+          </div>
+          <label class="switch-row">
+            <input type="checkbox" id="toggle-rank-weight" checked>
+            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            <span class="switch-text">頻出問題を優先する</span>
+          </label>
+          <div class="seg-group seg-metric" id="dash-metric" role="group" aria-label="表示指標">
+            <button type="button" class="seg-btn is-active" data-metric="retention">定着率</button>
+            <button type="button" class="seg-btn" data-metric="weakness">弱点スコア</button>
+          </div>
+          <div class="seg-group seg-concept" id="dash-concept" role="group" aria-label="テーマの並び順" hidden>
+            <button type="button" class="seg-btn is-active" data-cfilter="low">苦手な順</button>
+            <button type="button" class="seg-btn" data-cfilter="high">得意な順</button>
+            <button type="button" class="seg-btn" data-cfilter="unlearned">まだ解いていない</button>
+          </div>
+        </div>
+
+        <p class="dash-hint" id="dash-hint">行をタップすると、その範囲だけを出題します。</p>
+        <div class="bar-chart" id="bar-chart"></div>
+        <div class="concept-list" id="concept-list" hidden></div>
+        <p class="dash-empty" id="dash-empty">まだデータがありません。10問解くとグラフが表示されます。</p>
+      </div>
+    </section>
+
+    <!-- ======================= SEARCH / ANALYZER ======================= -->
+    <section id="screen-search" class="screen" data-screen="search">
+      <div class="screen-scroll">
+        <h2 class="sc-title">キーワード検索</h2>
+
+        <div class="search-bar">
+          <span class="ico-search" aria-hidden="true"></span>
+          <input type="search" id="search-input" class="search-input" placeholder="例: 合計特殊出生率 / 高齢化率" autocomplete="off">
+          <button type="button" class="search-clear" id="search-clear" aria-label="検索語を消す">×</button>
+        </div>
+
+        <div class="search-summary" id="search-summary" hidden></div>
+        <div class="search-results" id="search-results"></div>
+        <button type="button" class="btn-solve-now" id="btn-solve-now" hidden>この結果を今すぐ解く</button>
+        <p class="mode-note" id="search-mode-note" hidden>この演習は忘却スケジュール・弱点ptを更新しません（評価入力はスキップされます）。</p>
+      </div>
+    </section>
+
+    <!-- ======================= STARRED NOTE ======================= -->
+    <!-- ======================= 文言の編集 ======================= -->
+    <section id="screen-text" class="screen" data-screen="text">
+      <div class="screen-scroll">
+        <h2 class="sc-title">画面の文言を直す</h2>
+        <p class="sc-lead">ガイドと一言欄の文を、自分の言葉に書き換えられます。
+          問題文・選択肢・解説はここには含みません（そちらはデータの取り込みで直します）。</p>
+
+        <div class="text-tools">
+          <input type="search" id="text-search" class="text-search" placeholder="言葉で絞り込む">
+          <div class="seg-group" role="group" aria-label="表示する種類">
+            <button type="button" class="seg-btn is-active" data-tfilter="all">すべて</button>
+            <button type="button" class="seg-btn" data-tfilter="tip">一言欄</button>
+            <button type="button" class="seg-btn" data-tfilter="guide">ガイド</button>
+            <button type="button" class="seg-btn" data-tfilter="edited">直したものだけ</button>
+          </div>
+        </div>
+
+        <p class="text-count" id="text-count"></p>
+        <div class="text-list" id="text-list"></div>
+
+        <div class="text-actions">
+          <button type="button" class="btn-ghost" id="btn-text-export">まとめて書き出す（JSON）</button>
+          <button type="button" class="btn-ghost" id="btn-text-import-file">ファイルから取り込む</button>
+          <input type="file" id="text-import-file" accept=".json" hidden>
+          <button type="button" class="btn-ghost is-danger" id="btn-text-reset-all">すべて元の文に戻す</button>
+        </div>
+        <p class="text-note">パソコンで書き出したJSONを直してから取り込めば、まとめて差し替えられます。
+          書き換えた文はバックアップにも入るので、復元すれば一緒に戻ります。</p>
+      </div>
+    </section>
+
+    <section id="screen-starred" class="screen" data-screen="starred">
+      <div class="screen-scroll">
+        <h2 class="sc-title">マイ★お気に入りノート</h2>
+        <div class="seg-group" role="group" aria-label="★の種別">
+          <button type="button" class="seg-btn is-active" data-sfilter="all">すべて</button>
+          <button type="button" class="seg-btn" data-sfilter="question">問題に★</button>
+          <button type="button" class="seg-btn" data-sfilter="atom">選択肢に★</button>
+        </div>
+        <div class="star-list" id="star-list"></div>
+        <p class="dash-empty" id="star-empty">★を付けた問題・選択肢がここに集まります。</p>
+      </div>
+    </section>
+
+    <!-- ======================= EXAM (力試し) ======================= -->
+    <section id="screen-exam" class="screen" data-screen="exam">
+      <div class="screen-scroll">
+        <h2 class="sc-title">力試しモード</h2>
+        <p class="sc-lead">解禁したモードは、その後の成績が下がっても再ロックされません。</p>
+        <div class="exam-list" id="exam-list">
+          <button type="button" class="exam-card is-locked" data-exam="mini30">
+            <span class="exam-name">30問 プチ模試</span>
+            <span class="exam-cond">ユニーク選択肢 15% 解答 ＋ 普通以上 40%</span>
+            <span class="exam-prog"><i style="width:0%"></i></span>
+            <span class="exam-state">未解禁</span>
+          </button>
+          <button type="button" class="exam-card is-locked" data-exam="half60">
+            <span class="exam-name">60問 ハーフ模試</span>
+            <span class="exam-cond">ユニーク選択肢 35% 解答 ＋ 普通以上 45%</span>
+            <span class="exam-prog"><i style="width:0%"></i></span>
+            <span class="exam-state">未解禁</span>
+          </button>
+          <button type="button" class="exam-card is-locked" data-exam="full120">
+            <span class="exam-name">120問 フル模試</span>
+            <span class="exam-cond">ユニーク選択肢 50% 解答 ＋ 普通以上 50%</span>
+            <span class="exam-prog"><i style="width:0%"></i></span>
+            <span class="exam-state">未解禁</span>
+          </button>
+          <button type="button" class="exam-card is-locked is-hard" data-exam="evil120">
+            <span class="exam-name">いじわる模試（弱点120問）</span>
+            <span class="exam-cond">フル模試 2回連続合格（必修80%以上 ＋ 一般180点以上）</span>
+            <span class="exam-prog"><i style="width:0%"></i></span>
+            <span class="exam-state">未解禁</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= KNOCK (テーマ別 弱点ノック) ================= -->
+    <section id="screen-knock" class="screen" data-screen="knock">
+      <div class="knock-timer" id="knock-timer">
+        <span class="knock-time" id="knock-time">05:00</span>
+        <div class="knock-bar"><i id="knock-bar-fill" style="width:100%"></i></div>
+        <span class="knock-tag" id="knock-concept">#人口動態統計</span>
+      </div>
+      <div class="screen-scroll" id="knock-body"></div>
+    </section>
+
+    <!-- ======================= SETTINGS ======================= -->
+    <section id="screen-settings" class="screen" data-screen="settings">
+      <div class="screen-scroll">
+        <h2 class="sc-title">設定</h2>
+
+        <section class="set-block">
+          <h3 class="set-head">1. ガイド</h3>
+          <button type="button" class="set-row" id="set-onboarding">
+            <span class="set-row-body"><b>使い方・オンボーディング再体験</b><small>体験型チュートリアルをもう一度</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">2. 生活リズム設定
+            <button type="button" class="help-btn" data-help="dayline" aria-label="日界の説明">？</button>
+          </h3>
+          <div class="set-row set-static">
+            <span class="set-row-body"><b>日界（1日の切り替わり）</b><small>この時刻を過ぎると「1日後」の復習が出現します</small></span>
+            <!-- 選択肢は part2 の fillDaylineOptions() が 0〜23時で生成する -->
+            <select id="set-dayline" class="set-select"></select>
+          </div>
+          <p class="set-note">夜型なら遅め（例 6:00）、早朝に解くなら早め（例 3:00）。昼の時刻にすると、午前中の学習が前日ぶんとして数えられます。</p>
+
+          <!-- V1.30：試験日。ここから復習間隔の上限と、直前10日の出題順が決まる。
+               日界と同じ「時間の設定」なので、章を増やさずここへ置く。 -->
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>国家試験の日</b>
+              <small>入れると、試験日までに必ず復習が一巡するよう間隔に上限がかかります</small></span>
+            <div class="exam-row">
+              <input type="date" id="set-exam-date" class="set-select exam-date">
+              <button type="button" class="btn-ghost btn-sm" id="btn-exam-clear">消す</button>
+            </div>
+            <p class="set-note" id="exam-note">まだ入っていません。</p>
+          </div>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">3. ポモドーロ勉強法
+            <button type="button" class="help-btn" data-help="pomodoro" aria-label="ポモドーロ勉強法の説明">？</button>
+          </h3>
+          <label class="switch-row set-row">
+            <input type="checkbox" id="set-pomodoro" checked>
+            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            <span class="switch-text">ポモドーロ機能(タイマー)を使う(25分)</span>
+          </label>
+          <div class="set-row set-static">
+            <span class="set-row-body"><b>アラーム音</b><small>タイマー終了時に鳴らす音</small></span>
+            <select id="set-alarm" class="set-select">
+              <option value="chime">チャイム</option>
+              <option value="bell">ベル</option>
+              <option value="soft">やわらかい音</option>
+              <option value="custom">自分の音</option>
+            </select>
+          </div>
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>自分の音を入れる</b>
+              <small id="alarm-file-note">まだ入っていません。mp3 / m4a / wav などを1つ（1MBまで）</small></span>
+            <div class="alarm-actions">
+              <button type="button" class="btn-ghost btn-sm" id="btn-alarm-pick">音を選ぶ</button>
+              <input type="file" id="alarm-file" accept="audio/*" hidden>
+              <button type="button" class="btn-ghost btn-sm" id="btn-alarm-test">試聴</button>
+              <button type="button" class="btn-ghost btn-sm is-danger" id="btn-alarm-del" hidden>消す</button>
+            </div>
+          </div>
+          <div class="set-row set-static">
+            <!-- 「短い休憩も選べるのでは？」と疑わせないために明記する。実装は5分固定。 -->
+            <span class="set-row-body"><b>短い休憩</b><small>25分ごとの休憩。変更できません</small></span>
+            <span class="set-fixed">5分（固定）</span>
+          </div>
+          <div class="set-row set-static">
+            <span class="set-row-body"><b>長めの休憩</b><small>25分×4回を終えたときの休憩時間</small></span>
+            <select id="set-longbreak" class="set-select">
+              <option value="15" selected>15分</option>
+              <option value="20">20分</option>
+              <option value="25">25分</option>
+              <option value="30">30分</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">4. テーマ切替</h3>
+          <div class="seg-group" role="group" aria-label="テーマ">
+            <button type="button" class="seg-btn is-active" data-theme-set="light">ライト</button>
+            <button type="button" class="seg-btn" data-theme-set="dark">ダーク</button>
+            <button type="button" class="seg-btn" data-theme-set="sepia">セピア</button>
+          </div>
+
+          <!-- V1.29：自分で入れた図をどこに出すか。
+               保存先は IndexedDB の meta（他の設定と同じ棚）。
+               localStorage にしないのは、バックアップ・復元・全消去の
+               3経路から外れて「戻したのに設定だけ違う」が起きるため。 -->
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>自分で登録した画像の表示位置</b>
+              <small>解説の中で、貼った図をどこに出すか</small></span>
+            <div class="radio-list" role="radiogroup" aria-label="自分で登録した画像の表示位置">
+              <label class="radio-row">
+                <input type="radio" name="userimgpos" value="after-explanation">
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span class="radio-text">解説文の直後<small>各肢の解説のすぐ下</small></span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="userimgpos" value="after-figure" checked>
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span class="radio-text">図解の直後<small>いちばん下（既定）</small></span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="userimgpos" value="after-table">
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span class="radio-text">一緒に覚える（表）の直後<small>比較表のすぐ下</small></span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">5. 通知</h3>
+          <label class="switch-row set-row">
+            <input type="checkbox" id="set-verdict-popup" checked>
+            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            <span class="switch-text">正誤を画面中央にポップアップ表示する</span>
+          </label>
+          <label class="switch-row set-row">
+            <input type="checkbox" id="set-badge" checked>
+            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            <span class="switch-text">アプリアイコンに復習数を表示する</span>
+          </label>
+          <label class="switch-row set-row">
+            <input type="checkbox" id="set-notify">
+            <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+            <span class="switch-text">タイマー終了を通知する</span>
+          </label>
+          <p class="set-note" id="notify-note">通知が使えない端末では、アラーム音だけが鳴ります。</p>
+        </section>
+
+        <!-- V1.31：ドライブ同期。自作の図とメモを、利用者自身のGoogleドライブへ預ける。
+             運営者のサーバーは存在しないので、こちらから中身は見られない。 -->
+        <section class="set-block">
+          <h3 class="set-head">6. ドライブ同期
+            <button type="button" class="help-btn" data-help="drive" aria-label="ドライブ同期の説明">？</button>
+          </h3>
+
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>状態</b>
+              <small id="drive-state">まだ設定していません</small></span>
+            <div class="drive-actions">
+              <button type="button" class="btn-primary btn-sm" id="btn-drive-sync" disabled>今すぐ同期</button>
+              <button type="button" class="btn-ghost btn-sm" id="btn-drive-login">ログイン</button>
+              <button type="button" class="btn-ghost btn-sm is-danger" id="btn-drive-logout" hidden>ログアウト</button>
+            </div>
+            <p class="set-note" id="drive-note"></p>
+          </div>
+
+          <p class="set-note drive-privacy">
+            保存先はあなた自身のGoogleドライブです。このアプリの作り手は中身を見られません。
+            <a href="./privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>
+          </p>
+
+          <!-- V1.32：配布物にはクライアントIDが埋め込んであるので、
+               ふつうの利用者はここを開く必要がない。自分のGoogle Cloudで
+               動かしたい人だけのための逃げ道として、畳んで置いておく。 -->
+          <details class="setup-guide drive-advanced" id="drive-advanced">
+            <summary>自分のGoogle Cloudで動かす（上級者向け）</summary>
+            <div class="set-row set-static set-stack">
+              <span class="set-row-body"><b>クライアントID</b>
+                <small>空のままなら、このアプリに組み込まれたIDを使います</small></span>
+              <div class="drive-actions">
+                <input type="text" id="drive-client-id" class="set-select drive-id"
+                       placeholder="000000000000-xxxx.apps.googleusercontent.com"
+                       autocomplete="off" spellcheck="false">
+                <button type="button" class="btn-ghost btn-sm" id="btn-drive-save-id">保存</button>
+              </div>
+            </div>
+            <ol class="setup-steps" id="drive-steps"></ol>
+          </details>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">7. データ
+            <button type="button" class="help-btn" data-help="import" aria-label="取り込みの説明">？</button>
+          </h3>
+          <div class="import-box">
+            <label class="import-label" for="import-area">自作問題データ（12列TSV）の取り込み</label>
+            <details class="import-guide">
+              <summary>はじめての方へ：取り込みの手順（3分）</summary>
+              <ol class="import-steps">
+                <li><b>スプレッドシートを1枚つくる</b><br>
+                  Googleスプレッドシートでも Excel でも構いません。<b>1行＝1問</b>、<b>列は左から12列</b>ちょうどに揃えます。</li>
+                <li><b>12列を、この順で埋める</b>
+                  <p class="col-legend">
+                    <b class="col-req">必須</b>＝空だとその行は取り込まれません／
+                    <b class="col-rec">推奨</b>＝空でも通りますが機能が死にます／
+                    任意＝空でも実害なし。<br>
+                    <b>[？]</b> を押すと、その列が何なのか・どう書くのかが出ます。
+                    <b>8・10・11（問題文／正解／解説）は説明を省いています</b>（読んで分かるため）。
+                    <b>13列目は無くても取り込めます</b>（12列のままで動きます）。
+                  </p>
+                  <div class="tbl-scroll"><table class="col-table">
+                    <tr><th>列</th><th>内容</th><th>例</th><th>?</th></tr>
+                    <tr><td>1</td><td>単元 <b class="col-req">必須</b></td><td>必修問題</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col1" aria-label="1列目の説明">？</button></td></tr>
+                    <tr><td>2</td><td>目標</td><td>目標Ⅰ. 看護の社会的側面…</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col2" aria-label="2列目の説明">？</button></td></tr>
+                    <tr><td>3</td><td>ランク</td><td>S / A / B / C</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col3" aria-label="3列目の説明">？</button></td></tr>
+                    <tr><td>4</td><td>大項目 <b class="col-rec">推奨</b></td><td>1. 健康に関する指標</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col4" aria-label="4列目の説明">？</button></td></tr>
+                    <tr><td>5</td><td>中項目 <b class="col-rec">推奨</b></td><td>A. 人口静態・人口動態</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col5" aria-label="5列目の説明">？</button></td></tr>
+                    <tr><td>6</td><td>小項目 <b class="col-rec">推奨</b></td><td>a. 総人口</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col6" aria-label="6列目の説明">？</button></td></tr>
+                    <tr><td>7</td><td>形式</td><td>single / multiple / numeric</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col7" aria-label="7列目の説明">？</button></td></tr>
+                    <tr><td>8</td><td><b>問題文</b> <b class="col-req">必須</b></td><td>日本の総人口について正しいのはどれか。</td>
+                      <td class="col-none">—</td></tr>
+                    <tr><td>9</td><td>選択肢（JSON配列） <b class="col-req">必須</b></td><td>["1億人を下回った","2008年がピーク", …]</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col9" aria-label="9列目の説明">？</button></td></tr>
+                    <tr><td>10</td><td><b>正解（0から数える）</b> <b class="col-req">必須</b></td><td>[1] ＝ 2番目の選択肢が正解</td>
+                      <td class="col-none">—</td></tr>
+                    <tr><td>11</td><td><b>解説（すべてここ）</b> <b class="col-rec">推奨</b></td><td>①誤り：… ②正解：… ＋ 比較表・図解</td>
+                      <td class="col-none">—</td></tr>
+                    <tr><td>12</td><td>テーマタグ（JSON配列） <b class="col-rec">推奨</b></td><td>[["#人口動態統計"],["#人口動態統計"], …]</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col12" aria-label="12列目の説明">？</button></td></tr>
+                    <tr><td>13</td><td>一問一答にしてよいか <b class="col-opt">任意</b></td><td><code>split</code> または空欄</td>
+                      <td><button type="button" class="help-btn help-col" data-help="col13" aria-label="13列目の説明">？</button></td></tr>
+                  </table></div>
+                </li>
+                <li><b>ここがいちばん間違えやすい</b>
+                  <ul>
+                    <li><b>10列目は 0 から数えます。</b>1番目の選択肢が正解なら <code>[0]</code> です。<code>[1]</code> と書くと全問ずれます。</li>
+                    <li><b>8列目は問題文です。</b>解説ではありません。解説は比較表も図解も、すべて11列目に入れます。</li>
+                    <li>11列目の解説は <b>①②③④</b> で書き始めてください。この記号を目印に、選択肢ごとの解説へ自動で振り分けます。</li>
+                    <li>解説に「②正解：」のように書いておくと、10列目と食い違う行を自動で見つけて教えます。</li>
+                    <li>図解は <code>```mermaid</code> 〜 <code>```</code> で囲みます。セル内の改行は <code>\n</code>（バックスラッシュ＋n）と書きます。</li>
+                  </ul>
+                </li>
+                <li><b>コピーして貼る</b><br>
+                  取り込みたい行を<b>まるごと選択してコピー</b>し、下の欄にそのまま貼り付けて「データを取り込む」。
+                  見出し行が混ざっていても、自動で読み飛ばします。</li>
+                <li><b>結果を必ず読む</b><br>
+                  取り込み後に「新規◯問／更新◯問／スキップ◯行」が出ます。
+                  <b>スキップされた行は、行番号と理由が出ます</b>。直して貼り直せば、同じ問題は二重に増えず上書きされます。</li>
+                <li><b>もう一度取り込んでも、学習の記録は消えません</b><br>
+                  ★も、評価も、書き換えた解説も引き継がれます。念のため、メモがある場合は取り込み前に自動でバックアップを保存します。</li>
+              </ol>
+              <p class="sheet-lead"><b>実際のスプレッドシートは、こんな見た目になります。</b>
+                1行目に見出し、2行目から1問ずつ。左端のA〜Mが列です。</p>
+              <div class="tbl-scroll"><table class="sheet-mock">
+                <tr><th></th><th>A</th><th>B</th><th>C</th><th>D</th><th>E</th><th>F</th>
+                    <th>G</th><th>H</th><th>I</th><th>J</th><th>K</th><th>L</th><th>M</th></tr>
+                <tr><th>1</th><td>単元</td><td>目標</td><td>ランク</td><td>大項目</td><td>中項目</td><td>小項目</td>
+                    <td>形式</td><td>問題文</td><td>選択肢</td><td>正解</td><td>解説</td><td>タグ</td><td>分割</td></tr>
+                <tr><th>2</th><td>必修問題</td><td>目標Ⅰ…</td><td>S</td><td>1. 健康に関する指標</td>
+                    <td>A. 人口静態・人口動態</td><td>a. 総人口</td><td>single</td>
+                    <td>日本の総人口について正しいのはどれか。</td>
+                    <td>["1億人を…","2008年が…","増加し…","横ばい…"]</td><td>[1]</td>
+                    <td>①誤り：まだ1億人超。②正解：…</td><td>[["#人口動態統計"],…]</td>
+                    <td>split</td></tr>
+                <tr><th>3</th><td>必修問題</td><td>目標Ⅰ…</td><td>A</td><td>2. 看護と法律</td>
+                    <td>B. 保健師助産師看護師法</td><td>a. 業務従事者届</td><td>numeric</td>
+                    <td>2年ごとの届出は何年か。</td><td class="sheet-empty">（空）</td><td>2</td>
+                    <td>2年ごとに届け出る。</td><td>[["#保健師助産師看護師法"]]</td>
+                    <td class="sheet-empty">（空）</td></tr>
+              </table></div>
+              <p class="import-guide-note">
+                そのまま使えるテンプレートを同梱しています：
+                <code>sample/20260816_TSV_Template_V1.00.xlsx</code><br>
+                書き出したバックアップJSONも、この同じ欄に貼り付けて復元できます。</p>
+            </details>
+
+            <textarea id="import-area" class="import-area" rows="6" placeholder="ご自身で作った問題データを取り込めます。スプレッドシートの12列をコピーして、そのまま貼り付けてください。（書き出したバックアップJSONもここに貼れます）"></textarea>
+            <div class="import-actions">
+              <button type="button" class="btn-primary" id="btn-import">データを取り込む</button>
+              <button type="button" class="btn-ghost" id="btn-import-file">ファイルから選ぶ</button>
+              <input type="file" id="import-file" accept=".tsv,.txt,.json" hidden>
+            </div>
+            <div class="import-report" id="import-report" hidden></div>
+          </div>
+          <button type="button" class="set-row" id="btn-backup">
+            <span class="set-row-body"><b>バックアップを書き出す</b><small>JSONファイルとして保存します</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="set-row" id="btn-restore">
+            <span class="set-row-body"><b>バックアップから復元する</b><small>書き出したJSONを読み込みます</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">8. 出題と表示のカスタマイズ</h3>
+          <button type="button" class="set-row" id="btn-oneq">
+            <span class="set-row-body"><b>一問一答の出しかた</b><small id="oneq-state">期日の選択肢が1本のときだけ一問一答</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="set-row" id="btn-text-edit">
+            <span class="set-row-body"><b>画面の文言を自分で直す</b><small>ガイドと一言欄の文を書き換えます。問題データの文は含みません</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">9. リセット・問い合わせ</h3>
+          <button type="button" class="set-row" id="btn-reset-medium">
+            <span class="set-row-body"><b>中項目ごとに進捗を消す</b><small>一覧から選びます。問題データは残り、学習記録だけが消えます</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="set-row is-danger" id="btn-reset-all">
+            <span class="set-row-body"><b>すべて消して最初からやり直す</b><small>消す直前に、自動でバックアップを書き出します</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="set-row" id="btn-contact">
+            <span class="set-row-body"><b>問い合わせフォーム</b><small>不具合の報告・要望</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <p class="build-stamp">20260815_NurseExamApp_V1.32 / cache v1.20.0</p>
+        </section>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============================================================
+     ONBOARDING OVERLAY
+     ============================================================ -->
+<div class="onb-layer" id="onb-layer" hidden>
+  <div class="onb-spot" id="onb-spot"></div>
+  <div class="onb-bubble" id="onb-bubble">
+    <p class="onb-text" id="onb-text">まずは選択肢をタップして解答してみよう！</p>
+    <div class="onb-actions">
+      <button type="button" class="btn-ghost btn-sm" id="onb-skip">スキップ</button>
+      <button type="button" class="btn-primary btn-sm" id="onb-next">次へ</button>
+    </div>
+    <span class="onb-tail" aria-hidden="true"></span>
+  </div>
+</div>
+
+<!-- ============================================================
+     MODALS
+     ============================================================ -->
+<div class="modal-layer" id="modal-layer" hidden>
+
+  <!-- 起動時ダイアログ -->
+  <div class="modal-card" id="modal-boot" hidden>
+    <h3 class="modal-title" id="modal-boot-title">今やれる復習があります！</h3>
+    <p class="modal-body" id="modal-boot-body">復習待ちが <b>0</b> 件あります。</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>いいえ</button>
+      <button type="button" class="btn-primary" id="boot-yes">はい</button>
+    </div>
+  </div>
+
+  <!-- チュートリアル中断復帰 -->
+  <div class="modal-card" id="modal-resume" hidden>
+    <h3 class="modal-title">前回の続きから始めますか？</h3>
+    <p class="modal-body">チュートリアルの <b id="resume-n">問7</b> で中断しています。</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="resume-restart">最初から</button>
+      <button type="button" class="btn-primary" id="resume-continue">続きから</button>
+    </div>
+  </div>
+
+  <!-- 一問一答の出しかた -->
+  <div class="modal-card modal-wide" id="modal-oneq" hidden>
+    <h3 class="modal-title">一問一答の出しかた</h3>
+    <p class="modal-body">「本日の復習」で、期日を迎えた選択肢が<b>何本までなら</b>
+      1肢だけの一問一答で出すかを決めます。2本以上なら4択のまま出します。</p>
+    <div class="seg-group seg-stack" role="group" aria-label="一問一答にする条件">
+      <button type="button" class="seg-btn is-active" data-oneq="2">期日が1本のときだけ（標準）</button>
+      <button type="button" class="seg-btn" data-oneq="3">期日が2本までなら</button>
+    </div>
+    <label class="switch-row">
+      <input type="checkbox" id="set-always-multi">
+      <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
+      <span class="switch-text">常に4択で出す（一問一答を使わない）</span>
+    </label>
+    <p class="oneq-note">一問一答になるのは、<b>13列目に <code>split</code> と書いた問題だけ</b>です。
+      書いていない問題は、何本期日でも4択のまま出ます。</p>
+    <div class="oneq-auto">
+      <p class="oneq-auto-lead"><b>13列目より前に取り込んだ問題には、この印がありません。</b>
+        いま入っている問題を、問題文から自動で判定して印を付けられます。</p>
+      <p class="oneq-auto-stat" id="oneq-auto-stat">判定できる問題を数えています…</p>
+      <div class="oneq-auto-btns">
+        <button type="button" class="btn-primary" id="btn-oneq-auto">自動で判定して印を付ける</button>
+        <button type="button" class="btn-ghost" id="btn-oneq-clear">印を全部外す</button>
+      </div>
+      <p class="oneq-auto-note">「最も」「誤っている」「適切でないのは」などが問題文にあるものは、
+        比較や反転が必要なので<b>自動では印を付けません</b>。
+        取り込み直せば<b>13列目の値がこの判定より優先されます</b>。</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-close>閉じる</button>
+    </div>
+  </div>
+
+  <!-- 文言の編集 -->
+  <div class="modal-card modal-wide" id="modal-text-edit" hidden>
+    <h3 class="modal-title" id="text-edit-title">文言を直す</h3>
+    <p class="modal-body" id="text-edit-where"></p>
+    <p class="text-stale" id="text-edit-stale" hidden>元の文がアプリの更新で変わりました。下の「元の文」と見比べて、必要なら直してください。</p>
+    <textarea id="text-edit-area" class="text-edit-area" rows="6"></textarea>
+    <details class="text-default">
+      <summary>元の文を見る</summary>
+      <p class="text-default-body" id="text-edit-default"></p>
+    </details>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+      <button type="button" class="btn-ghost" id="btn-text-revert">元に戻す</button>
+      <button type="button" class="btn-primary" id="btn-text-save">保存する</button>
+    </div>
+  </div>
+
+  <!-- ポモドーロ 25分経過 -->
+  <div class="modal-card" id="modal-pomodoro" hidden>
+    <h3 class="modal-title" id="pomo-title">25分が経過しました。5分休憩しませんか？</h3>
+    <p class="modal-body" id="pomo-body">いったん目を離すと、次の25分の集中が戻りやすくなります。</p>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="pomo-break">5分休憩をはじめる ☕</button>
+      <button type="button" class="btn-secondary" id="pomo-extend">あと10分延長する ⏱️</button>
+      <button type="button" class="btn-ghost" id="pomo-off">ポモドーロをOFFにする</button>
+    </div>
+  </div>
+
+  <!-- 長め休憩 -->
+  <div class="modal-card" id="modal-longbreak" hidden>
+    <h3 class="modal-title">4セッション完了。長めに休みましょう</h3>
+    <p class="modal-body">休憩時間を選んでください。</p>
+    <div class="seg-group" role="group" aria-label="長休憩の時間">
+      <button type="button" class="seg-btn is-active" data-lb="15">15分</button>
+      <button type="button" class="seg-btn" data-lb="20">20分</button>
+      <button type="button" class="seg-btn" data-lb="25">25分</button>
+      <button type="button" class="seg-btn" data-lb="30">30分</button>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>まだ続ける</button>
+      <button type="button" class="btn-primary" id="lb-start">休憩をはじめる</button>
+    </div>
+  </div>
+
+  <!-- 休憩カウントダウン -->
+  <div class="modal-card modal-break" id="modal-break" hidden>
+    <h3 class="modal-title">休憩中</h3>
+    <p class="break-clock" id="break-clock">05:00</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="break-skip">休憩を切り上げる</button>
+    </div>
+  </div>
+
+  <!-- 復習完了（紙吹雪） -->
+  <div class="modal-card modal-celebrate" id="modal-review-done" hidden>
+    <h3 class="modal-title">本日の復習タスク完了！🎉</h3>
+    <p class="modal-body"><b id="done-count">0</b> 件の復習を終えました。</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" id="done-next">閉じる</button>
+    </div>
+  </div>
+
+  <!-- 最優先で埋めたいテーマ TOP3 -->
+  <div class="modal-card modal-top3" id="modal-top3" hidden>
+    <h3 class="modal-title">⚠️ 最優先で埋めたいテーマ TOP 3</h3>
+    <p class="modal-body">理解度が50%を下回っているテーマです。タップすると、そのテーマだけを集中演習します。</p>
+    <ul class="top3-list" id="top3-list"></ul>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>あとで</button>
+    </div>
+  </div>
+
+  <!-- ノック時間選択 -->
+  <div class="modal-card" id="modal-knock-time" hidden>
+    <h3 class="modal-title">テーマ別 弱点ノック</h3>
+    <p class="modal-body">対象テーマ：<b id="knock-target">#人口動態統計</b></p>
+    <div class="modal-actions">
+      <button type="button" class="btn-secondary btn-half" data-knock="5">5分間ノック</button>
+      <button type="button" class="btn-primary btn-half" data-knock="10">10分間ノック</button>
+    </div>
+    <p class="modal-note">このモードは忘却スケジュールを更新しません。</p>
+  </div>
+
+  <!-- 解説の書き換え（上書き型メモ） -->
+  <div class="modal-card modal-memo" id="modal-memo" hidden>
+    <h3 class="modal-title">解説を自分の言葉に書き換える</h3>
+    <p class="memo-target" id="memo-target"></p>
+    <textarea id="memo-input" class="import-area" rows="6"
+      placeholder="長い解説を、自分が思い出しやすい短い言葉に置き換えてください。"></textarea>
+    <p class="memo-hint"><code>**太字**</code>　<code>==マーカー==</code>　<code>- 箇条書き</code> が使えます</p>
+    <details class="memo-orig">
+      <summary>元の解説を見る</summary>
+      <div class="explanation-body" id="memo-orig-body"></div>
+    </details>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="memo-save">保存する</button>
+      <button type="button" class="btn-ghost" id="memo-delete">元の解説に戻す</button>
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+    </div>
+  </div>
+
+  <!-- タグの理解度シート（画面遷移せずここで見せる） -->
+  <div class="modal-card" id="modal-tagsheet" hidden>
+    <h3 class="modal-title" id="tagsheet-name">#テーマ</h3>
+    <div class="exam-score" id="tagsheet-body"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>閉じる</button>
+      <button type="button" class="btn-primary" data-knock-from-tag>このテーマを集中演習</button>
+    </div>
+    <p class="modal-note">解答中の評価は保持されます。</p>
+  </div>
+
+  <!-- ノック終了サマリー -->
+  <div class="modal-card" id="modal-knock-summary" hidden>
+    <h3 class="modal-title">お疲れ様でした！</h3>
+    <p class="modal-body"><b id="knock-solved">0</b> 問の演習が完了しました。</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-close>閉じる</button>
+    </div>
+  </div>
+
+  <!-- 模試ソフト警告 -->
+  <div class="modal-card" id="modal-exam-warn" hidden>
+    <h3 class="modal-title">今の状態でも挑戦できるよ！</h3>
+    <p class="modal-body">ただ、単元学習で少し知識を補強しておくと、合格率がもっと上がるかも。どうする？</p>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-secondary" id="warn-study">単元学習で補強する</button>
+      <button type="button" class="btn-primary" id="warn-go">このまま挑戦する</button>
+    </div>
+  </div>
+
+  <!-- 模試結果 -->
+  <div class="modal-card" id="modal-exam-result" hidden>
+    <h3 class="modal-title" id="exam-result-title">採点結果</h3>
+    <div class="exam-score" id="exam-score"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-close>閉じる</button>
+    </div>
+  </div>
+
+  <!-- 全初期化 -->
+  <div class="modal-card" id="modal-reset" hidden>
+    <h3 class="modal-title">すべて消して最初からやり直しますか？</h3>
+    <p class="modal-body">消す直前に、バックアップJSONを自動で書き出します。この操作は取り消せません。</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+      <button type="button" class="btn-danger" id="reset-go">バックアップして消す</button>
+    </div>
+  </div>
+
+  <!-- 初回起動：概要（3行・5秒。ここに項目を足さないこと。§8-①への妥協点） -->
+  <div class="modal-card modal-welcome" id="modal-welcome" hidden>
+    <h3 class="modal-title">はじめまして</h3>
+    <ul class="welcome-list">
+      <li><b>覚えたかは、自分で決めます。</b>正解・不正解ではなく「その選択肢の根拠を説明できたか」を、解いた直後に自分で選びます。</li>
+      <li><b>忘れる直前に、また出ます。</b>選んだ結果に応じて、10分後・1日後・1週間後…と再出題の日が自動で決まります。</li>
+      <li><b>記録はこの端末の中だけです。</b>ログインも通信も要りません。設定からいつでも書き出せます。</li>
+    </ul>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" id="welcome-start">さっそく1問やってみる</button>
+    </div>
+    <p class="modal-note">操作は、出てきた画面の上で1つずつ案内します。</p>
+  </div>
+
+  <!-- 設定の [？] 共通ヘルプ -->
+  <div class="modal-card" id="modal-help" hidden>
+    <h3 class="modal-title" id="help-title"></h3>
+    <div class="modal-body help-body" id="help-body"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-close>閉じる</button>
+    </div>
+  </div>
+
+  <!-- 中項目ごとの進捗リセット：一覧から選ぶ -->
+  <div class="modal-card modal-wide" id="modal-reset-medium" hidden>
+    <h3 class="modal-title">どの中項目の進捗を消しますか？</h3>
+    <p class="modal-body">問題データは残ります。消えるのは評価・復習期日・弱点ptなどの学習記録だけです。</p>
+    <div class="medium-list" id="reset-medium-list"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+    </div>
+  </div>
+
+  <!-- 中項目リセット：最終確認（取り消せないので2段階） -->
+  <div class="modal-card" id="modal-reset-medium-confirm" hidden>
+    <h3 class="modal-title">この範囲の学習記録を消します</h3>
+    <p class="modal-body" id="reset-medium-confirm-body"></p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+      <button type="button" class="btn-danger" id="reset-medium-go">消す</button>
+    </div>
+  </div>
+
+  <!-- 復習が溜まった状態で他モードへ行こうとしたとき（ブロックはしない） -->
+  <div class="modal-card" id="modal-review-nag" hidden>
+    <h3 class="modal-title">復習が <b id="nag-count">0</b> 件たまっています</h3>
+    <p class="modal-body">先に片付けたほうが、同じ時間でも点になります。
+      忘れかけている選択肢だけが、期日の近い順に出てきます。</p>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="nag-review">復習を片付ける</button>
+      <button type="button" class="btn-ghost" id="nag-go">それでも進む</button>
+    </div>
+    <p class="modal-note">この案内は1日1回だけです。</p>
+  </div>
+
+  <!-- 初見の問題が尽きたとき -->
+  <div class="modal-card" id="modal-no-new" hidden>
+    <h3 class="modal-title" id="nonew-title">初見の問題は残っていません</h3>
+    <p class="modal-body" id="nonew-body">ランダムモードは、まだ一度も解いていない問題だけを出します。
+      この範囲はすべて解き終えました。</p>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="nonew-review">本日の復習へ</button>
+      <button type="button" class="btn-secondary" id="nonew-knock">テーマ別 弱点ノックへ</button>
+      <button type="button" class="btn-ghost" data-close>閉じる</button>
+    </div>
+    <p class="modal-note">設定の「データ」から問題を足すこともできます。</p>
+  </div>
+
+  <!-- PWA更新 -->
+  <div class="modal-card" id="modal-sw-update" hidden>
+    <h3 class="modal-title">新しいバージョンが利用可能です</h3>
+    <p class="modal-body">更新しますか？</p>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>あとで</button>
+      <button type="button" class="btn-primary" id="sw-reload">更新する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 正誤ポップアップ（非ブロッキング：下のUIをそのまま操作できる） -->
+<div class="verdict-pop" id="verdict-pop" hidden aria-live="polite">
+  <div class="vp-card" id="vp-card">
+    <span class="vp-mark" id="vp-mark">○</span>
+    <span class="vp-title" id="vp-title">正解！</span>
+    <p class="vp-answer" id="vp-answer"></p>
+  </div>
+</div>
+
+<!-- 紙吹雪キャンバス -->
+<canvas id="confetti" class="confetti-canvas" hidden></canvas>
+
+<!-- トースト -->
+<div class="toast" id="toast" hidden><span id="toast-text"></span></div>
+
+<!-- 拡大した問題文のオーバーレイ -->
+<div class="stem-overlay" id="stem-overlay" hidden>
+  <div class="stem-overlay-card">
+    <button type="button" class="img-close" id="stem-overlay-close">× 閉じる</button>
+    <p id="stem-overlay-text"></p>
+  </div>
+</div>
+
+<script src="./questions.js"></script>
+<script src="./storage.js"></script>
+<script src="./scheduler.js"></script>
+<script src="./20260815_main_part1_V1.25.js"></script>
+<script src="./drive.js"></script>
+<script src="./20260815_main_part2_V1.23.js"></script>
+</body>
+</html>

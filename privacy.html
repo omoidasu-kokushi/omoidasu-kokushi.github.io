@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>プライバシーポリシー — 看護師国家試験対策アプリ</title>
+<meta name="description" content="看護師国家試験対策アプリのプライバシーポリシー。学習データは端末内に保存され、Googleドライブ同期は利用者自身のドライブのみを使用します。">
+<style>
+  :root{ color-scheme: light dark; }
+  body{
+    max-width: 42rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.9; color:#1a2733; background:#fff;
+  }
+  @media (prefers-color-scheme: dark){ body{ color:#e6edf3; background:#0d1117; } }
+  h1{ font-size:1.5rem; line-height:1.4; }
+  h2{ font-size:1.1rem; margin-top:2.2rem; border-bottom:2px solid currentColor; padding-bottom:.3rem; }
+  .updated{ color:#5a6b7d; font-size:.9rem; }
+  @media (prefers-color-scheme: dark){ .updated{ color:#8b98a5; } }
+  ul{ padding-left:1.3em; }
+  li{ margin-bottom:.5rem; }
+  table{ width:100%; border-collapse:collapse; margin:1rem 0; font-size:.92rem; }
+  th,td{ border:1px solid rgba(127,127,127,.4); padding:.55rem .7rem; text-align:left; vertical-align:top; }
+  th{ background:rgba(127,127,127,.12); }
+  code{ background:rgba(127,127,127,.15); padding:.1em .35em; border-radius:.25em; font-size:.9em; }
+  .key{ border-left:4px solid #0d7377; padding:.6rem 0 .6rem 1rem; margin:1.2rem 0; }
+  footer{ margin-top:3rem; font-size:.85rem; }
+</style>
+</head>
+<body>
+
+<h1>プライバシーポリシー</h1>
+<p class="updated">看護師国家試験対策アプリ（以下「本アプリ」）／最終更新：2026年8月21日</p>
+
+<p>
+本アプリは、個人開発による無料の学習アプリです。
+本ポリシーは、本アプリが利用者の情報をどのように扱うかを説明します。
+</p>
+
+<div class="key">
+<b>要点</b><br>
+本アプリには、利用者のデータを預かるサーバーがありません。
+学習データは利用者の端末内に保存されます。
+Googleドライブ同期を使う場合も、保存先は利用者自身のGoogleドライブであり、
+<b>開発者が内容を閲覧・取得する手段はありません。</b>
+</div>
+
+<h2>1. 取得する情報と保存場所</h2>
+
+<table>
+  <tr><th>情報</th><th>保存場所</th><th>開発者による閲覧</th></tr>
+  <tr>
+    <td>解答履歴、選択肢ごとの評価、復習の予定、進捗、設定（試験日・テーマ等）</td>
+    <td>利用者の端末内（ブラウザのIndexedDB）</td>
+    <td>できません</td>
+  </tr>
+  <tr>
+    <td>利用者が取り込んだ問題データ</td>
+    <td>利用者の端末内</td>
+    <td>できません</td>
+  </tr>
+  <tr>
+    <td>利用者が貼り付けた画像、書き換えた解説文</td>
+    <td>利用者の端末内。<br>同期を有効にした場合は、あわせて<b>利用者自身のGoogleドライブ</b></td>
+    <td>できません</td>
+  </tr>
+</table>
+
+<p>
+本アプリは、氏名・メールアドレス・住所・電話番号などの個人情報を求めません。
+また、アクセス解析ツール、広告配信、トラッキングCookieのいずれも使用していません。
+</p>
+
+<h2>2. Googleドライブ同期について</h2>
+
+<p>この機能は<b>任意</b>です。使わなくても、本アプリのすべての学習機能を利用できます。</p>
+
+<h3>取得する権限</h3>
+<p>
+本アプリは Google の <code>drive.file</code> 権限のみを要求します。
+これは<b>「本アプリが作成したファイルのみ」</b>にアクセスできる権限です。
+利用者のGoogleドライブにある他のファイル、Gmail、連絡先、カレンダーなどには
+一切アクセスできません。
+</p>
+
+<h3>保存されるもの</h3>
+<ul>
+  <li>利用者が問題に貼り付けた画像</li>
+  <li>利用者が自分の言葉で書き換えた解説文</li>
+  <li>上記と問題を対応づけるための索引ファイル（<code>notes_index.json</code>）</li>
+</ul>
+<p>
+これらは利用者のGoogleドライブ内の <code>NurseExamApp</code> フォルダに保存され、
+利用者自身がいつでも閲覧・削除できます。保存容量は利用者のGoogleアカウントのものを使用します。
+</p>
+
+<h3>開発者が内容を見られない理由</h3>
+<p>
+本アプリはブラウザ上のみで動作し、開発者が管理するサーバーを持ちません。
+Googleへの認証および通信は<b>利用者の端末から直接</b>行われ、
+アクセストークンが開発者の管理する場所を経由することはありません。
+したがって、開発者が利用者のファイル内容を取得・保存・閲覧する手段は存在しません。
+</p>
+
+<h3>連携の解除</h3>
+<p>
+連携はいつでも解除できます。
+</p>
+<ul>
+  <li>アプリ内：設定 ＞ ドライブ同期 ＞ ログアウト</li>
+  <li>Google側：<a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Googleアカウントのアクセス権限</a>から本アプリを削除</li>
+  <li>保存済みのファイルは、利用者自身がGoogleドライブから削除できます</li>
+</ul>
+
+<h2>3. 利用者が入力する内容についてのお願い</h2>
+<p>
+本アプリでは、利用者が自分で画像やテキストを取り込めます。次の内容は入力しないでください。
+</p>
+<ul>
+  <li><b>著作権のある資料</b>（市販の参考書・問題集の紙面を撮影した画像など）</li>
+  <li><b>個人が特定できる情報</b>（患者情報、実習記録、第三者の氏名など）</li>
+</ul>
+<p>
+利用者が入力した内容について、開発者は内容を確認できず、責任を負うことができません。
+</p>
+
+<h2>4. 第三者への提供</h2>
+<p>
+本アプリは、利用者の情報を第三者に提供しません。
+そもそも開発者は利用者のデータを取得していないため、提供の対象となる情報を保有していません。
+</p>
+<p>
+Googleドライブ同期を利用する場合、通信の相手方は Google LLC となります。
+Google による情報の取り扱いについては
+<a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google プライバシーポリシー</a>
+をご確認ください。
+</p>
+<p>
+本アプリによる Google API から取得した情報の利用および他アプリへの移転は、
+<a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener">Google API サービスのユーザーデータに関するポリシー</a>
+（限定的使用要件を含む）に準拠します。
+</p>
+
+<h2>5. データの削除</h2>
+<ul>
+  <li><b>端末内のデータ</b>：アプリ内の 設定 ＞ リセット・問い合わせ ＞ 全消去。またはブラウザのサイトデータ削除</li>
+  <li><b>ドライブ上のデータ</b>：利用者自身のGoogleドライブから <code>NurseExamApp</code> フォルダを削除</li>
+</ul>
+
+<h2>6. 対象年齢</h2>
+<p>
+本アプリは看護師国家試験の受験者を対象としており、13歳未満の方の利用を想定していません。
+</p>
+
+<h2>7. 本ポリシーの変更</h2>
+<p>
+内容を変更する場合は、本ページの最終更新日を改めます。
+重要な変更がある場合は、アプリ内でお知らせします。
+</p>
+
+<h2>8. お問い合わせ</h2>
+<p>
+本ポリシーに関するお問い合わせは、アプリ内の
+「設定 ＞ リセット・問い合わせ」に記載の連絡先までお願いします。
+</p>
+
+<footer>
+  <p><a href="./about.html">このアプリについて</a> ・ <a href="./index.html">アプリを開く</a></p>
+</footer>
+
+</body>
+</html>

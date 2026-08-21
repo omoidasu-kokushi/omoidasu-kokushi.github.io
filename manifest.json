@@ -1,0 +1,40 @@
+{
+  "name": "看護師国家試験 適応型学習システム",
+  "short_name": "看護国試SRS",
+  "description": "選択肢ひとつずつの記憶定着度を測り、忘れかけたタイミングだけを狙って出題する看護師国家試験の対策アプリ。オフラインでも全機能が動きます。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "./index.html",
+  "scope": "./",
+  "id": "/nurse-exam-srs/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui", "browser"],
+  "orientation": "portrait",
+  "background_color": "#10151D",
+  "theme_color": "#0FA3B1",
+  "categories": ["education", "medical", "productivity"],
+  "prefer_related_applications": false,
+  "icons": [
+    { "src": "./icons/favicon-32.png",         "sizes": "32x32",   "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-192.png",           "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png",           "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-192.png",  "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "./icons/icon-maskable-512.png",  "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "本日の復習",
+      "short_name": "復習",
+      "description": "期日が来た問題だけを緊急度順に出題します",
+      "url": "./index.html?go=review",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "テーマ別 弱点ノック",
+      "short_name": "弱点ノック",
+      "description": "苦手なテーマだけを5分・10分で集中演習します",
+      "url": "./index.html?go=knock",
+      "icons": [{ "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}

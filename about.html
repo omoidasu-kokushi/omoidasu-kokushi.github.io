@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>看護師国家試験対策アプリ — このアプリについて</title>
+<meta name="description" content="看護師国家試験のための学習アプリ。忘却曲線にもとづく復習、弱点分析、模擬試験。ブラウザだけで動き、学習データは端末内に保存されます。">
+<style>
+  :root{ color-scheme: light dark; }
+  body{
+    max-width: 42rem; margin: 0 auto; padding: 2rem 1.25rem 4rem;
+    font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+    line-height: 1.85; color: #1a2733; background: #fff;
+  }
+  @media (prefers-color-scheme: dark){ body{ color:#e6edf3; background:#0d1117; } }
+  h1{ font-size: 1.6rem; line-height:1.4; margin-bottom:.25rem; }
+  h2{ font-size: 1.15rem; margin-top: 2.2rem; border-bottom: 2px solid currentColor; padding-bottom:.3rem; }
+  .lead{ color:#5a6b7d; margin-top:0; }
+  @media (prefers-color-scheme: dark){ .lead{ color:#8b98a5; } }
+  ul{ padding-left: 1.3em; }
+  li{ margin-bottom:.5rem; }
+  .cta{
+    display:inline-block; margin: 1.5rem 0; padding: .85rem 1.6rem;
+    background:#0d7377; color:#fff; text-decoration:none;
+    border-radius:.6rem; font-weight:700;
+  }
+  footer{ margin-top:3rem; font-size:.85rem; color:#5a6b7d; }
+  @media (prefers-color-scheme: dark){ footer{ color:#8b98a5; } }
+  code{ background:rgba(127,127,127,.15); padding:.1em .35em; border-radius:.25em; font-size:.9em; }
+</style>
+</head>
+<body>
+
+<h1>看護師国家試験対策アプリ</h1>
+<p class="lead">忘却曲線にもとづく復習と、選択肢1つずつの弱点分析で、国家試験対策を進めるための学習アプリです。</p>
+
+<p><a class="cta" href="./index.html">アプリを開く</a></p>
+
+<h2>できること</h2>
+<ul>
+  <li><b>選択肢ごとの復習</b> — 問題単位ではなく、選択肢1つずつに「難しい／普通／簡単／マスター」を付けます。次にいつ出すかは <code>10分 → 1時間 → 1日 → 1週間 → 30日 → 90日 → 180日</code> の間隔で自動的に決まります。</li>
+  <li><b>試験日から逆算した復習間隔</b> — 試験日を入れると、間隔の上限が「残り日数の1/3」に抑えられ、試験日までに必ず復習が一巡します。直前10日は必修問題を優先して出します。</li>
+  <li><b>弱点分析</b> — 単元・大項目・中項目・小項目、およびテーマ別に、定着率と弱点スコアを表示します。</li>
+  <li><b>力試しモード</b> — 30問・60問・120問の模擬試験。学習量に応じて段階的に解放されます。</li>
+  <li><b>自作問題の取り込み</b> — スプレッドシートで作った問題を、13列のTSVとして貼り付けて取り込めます。</li>
+  <li><b>オフライン動作</b> — 一度開けば、通信のない場所でも学習を続けられます。</li>
+</ul>
+
+<h2>学習データの保存場所</h2>
+<p>
+解答履歴・評価・進捗などの学習データは、<b>お使いの端末内（ブラウザのIndexedDB）にのみ保存されます。</b>
+このアプリに、利用者のデータを預かるサーバーはありません。
+</p>
+
+<h2>Googleドライブ同期（任意）</h2>
+<p>
+自分で貼り付けた図と、自分の言葉で書き換えた解説は、
+<b>希望する場合にかぎり</b>、利用者自身のGoogleドライブへ保存できます。
+端末を変えても、同じGoogleアカウントでログインすれば取り戻せます。
+</p>
+<ul>
+  <li>保存先は<b>利用者自身のGoogleドライブ</b>です。開発者のサーバーは経由しません。</li>
+  <li>アプリが扱えるのは<b>このアプリが作成したファイルのみ</b>です（<code>drive.file</code> 権限）。ドライブ内の他のファイルは読み取れません。</li>
+  <li>この機能を使わなくても、アプリのすべての学習機能が利用できます。</li>
+</ul>
+<p>詳しくは <a href="./privacy.html">プライバシーポリシー</a> をご覧ください。</p>
+
+<h2>動作環境</h2>
+<ul>
+  <li>iOS Safari / Android Chrome / パソコンの各ブラウザ</li>
+  <li>スマートフォンでは「ホーム画面に追加」すると、アプリのように起動できます</li>
+</ul>
+
+<h2>ご注意</h2>
+<ul>
+  <li>本アプリは学習を補助するものであり、試験の合格を保証するものではありません。</li>
+  <li>掲載内容の正確性には努めていますが、最終的な確認は公式の出題基準・教科書等でお願いします。</li>
+  <li>自分で取り込む画像や問題文について、<b>著作権のある資料をそのまま取り込まないでください。</b>また、患者情報・実習記録など個人が特定できる情報を入力しないでください。</li>
+</ul>
+
+<footer>
+  <p>
+    <a href="./index.html">アプリを開く</a> ・
+    <a href="./privacy.html">プライバシーポリシー</a>
+  </p>
+  <p>お問い合わせ：アプリ内の「設定 ＞ リセット・問い合わせ」からご連絡ください。</p>
+</footer>
+
+</body>
+</html>
