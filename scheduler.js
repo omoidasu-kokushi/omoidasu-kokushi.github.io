@@ -312,6 +312,84 @@
   }
 
   /* ======================================================================
+   * 2-b. 履歴から状態を組み立て直す（V1.38 / 端末をまたぐ同期のため）
+   *
+   * 【なぜ必要か】
+   *   進捗を2台で同期するとき、「新しい方を採る」では正しくない。
+   *   スマホで問1〜5、PCで問6〜10を解いたなら、【両方が残る】のが正しい。
+   *   片方を丸ごと上書きすると、もう片方の勉強が消える。
+   *
+   * 【どう解くか】
+   *   progress_log は追記しかされない台帳なので、2台ぶんを【合体】できる。
+   *   合体した台帳から、各肢の状態（段・期日・回数・弱点pt）を組み立て直す。
+   *   これは元々 computeWeaknessFromLogs がやっていることの拡張で、
+   *   「弱点ptは累積で持てない」（設計判断1-4）という前提とも一致する。
+   *
+   * 【同じ解答を二重に数えない】
+   *   台帳の1行は atom_id と answered_at の組で一意とみなす。
+   *   同じ端末の同じ解答が2度入っても、片方だけが残る。
+   * ====================================================================== */
+
+  function logKey(l) {
+    return String(l.atom_id) + '|' + String(l.answered_at);
+  }
+
+  /* 2つの台帳を合体する。戻り値は時刻順に並べ直した1本の台帳。 */
+  function mergeLogs(a, b) {
+    var seen = {}, out = [];
+    (a || []).concat(b || []).forEach(function (l) {
+      if (!l || !l.atom_id || !isNum(l.answered_at)) { return; }
+      var k = logKey(l);
+      if (seen[k]) { return; }
+      seen[k] = 1;
+      out.push(l);
+    });
+    out.sort(function (x, y) { return x.answered_at - y.answered_at; });
+    return out;
+  }
+
+  /* 合体後の台帳から、1つの肢の状態を作り直す。
+     予定（段・期日）を決めるのは【最後に予定を更新した行】。
+     単語検索の演習など schedule_updated:false の行は予定に影響させない。 */
+  function rebuildAtomState(atom, logs, opts) {
+    opts = opts || {};
+    var boundary = isNum(opts.boundaryHour) ? opts.boundaryHour : 4;
+    var capMs = (opts.capMs !== undefined) ? opts.capMs : null;
+    var list = (logs || []).slice().sort(function (x, y) {
+      return (x.answered_at || 0) - (y.answered_at || 0);
+    });
+    if (!list.length) { return null; }
+
+    var answers = 0, corrects = 0, lastSched = null, last = null;
+    list.forEach(function (l) {
+      answers++;
+      if (l.is_correct) { corrects++; }
+      last = l;
+      if (l.schedule_updated) { lastSched = l; }
+    });
+
+    var patch = {
+      answer_count     : answers,
+      correct_count    : corrects,
+      last_eval        : last.eval || null,
+      last_answered_at : last.answered_at
+    };
+
+    if (lastSched) {
+      var idx = STEP_INDEX[lastSched.interval_code];
+      if (!isNum(idx)) { idx = Math.max(0, (lastSched.srs_step_after || 1) - 1); }
+      patch.srs_step      = idx + 1;
+      patch.interval_code = stepToCode(idx);
+      patch.due_date      = computeDueDate(lastSched.answered_at, idx, boundary, capMs);
+    }
+
+    var w = computeWeaknessFromLogs(list, atom);
+    patch.weakness_pt = w.pt;
+    patch.hard_streak = w.hard_streak;
+    return patch;
+  }
+
+  /* ======================================================================
    * 3. 弱点スコア（第6章②③）
    * ====================================================================== */
 
@@ -1839,6 +1917,9 @@
     sortCandidates           : sortCandidates,
     EXAM_CAP_RATIO           : EXAM_CAP_RATIO,
     EXAM_FINAL_DAYS          : EXAM_FINAL_DAYS,
+    mergeLogs                : mergeLogs,
+    logKey                   : logKey,
+    rebuildAtomState         : rebuildAtomState,
     applyEvaluation          : applyEvaluation,
     commitDecision          : commitDecision,
     FORMAT                  : FORMAT,

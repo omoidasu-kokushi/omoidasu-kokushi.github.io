@@ -1762,6 +1762,45 @@
     });
   }
 
+  /* --- 端末をまたぐ同期のための一括操作（V1.38） ---
+     合体した台帳を丸ごと置き換える。1行ずつ足すと、同じ解答が
+     二重に入ったときに取り除けないため、いったん空にしてから入れ直す。
+     ※呼ぶ側が「合体済み・重複なし」を保証すること（Scheduler.mergeLogs）。 */
+  function replaceAllLogs(logs) {
+    return write([STORE.PROGRESS], function (s) {
+      s[STORE.PROGRESS].clear();
+      (logs || []).forEach(function (l) {
+        var rec = {};
+        Object.keys(l).forEach(function (k) { if (k !== 'id') { rec[k] = l[k]; } });
+        s[STORE.PROGRESS].add(rec);
+      });
+    }).then(function () { return (logs || []).length; });
+  }
+
+  /* 複数の肢の状態をまとめて書き戻す。{atom_id: patch} を渡す。 */
+  function updateAtomsBulk(patches) {
+    var ids = Object.keys(patches || {});
+    if (!ids.length) { return Promise.resolve(0); }
+    return write([STORE.ATOMS], function (s) {
+      var seq = Promise.resolve(), n = 0;
+      ids.forEach(function (id) {
+        seq = seq.then(function () {
+          return req2promise(s[STORE.ATOMS].get(id)).then(function (a) {
+            if (!a) { return; }
+            var patch = patches[id];
+            Object.keys(patch).forEach(function (k) { a[k] = patch[k]; });
+            if (patch.is_starred !== undefined) { a._star = patch.is_starred ? 1 : 0; }
+            a._unlearned = (a.answer_count > 0) ? 0 : 1;
+            a.updated_at = nowMs();
+            s[STORE.ATOMS].put(a);
+            n++;
+          });
+        });
+      });
+      return seq.then(function () { return n; });
+    });
+  }
+
   /* 進捗を書き換えずにフィールドだけ更新する（★の付け外しなど） */
   function updateAtom(atomId, patch) {
     return write([STORE.ATOMS], function (s) {
@@ -2605,6 +2644,8 @@
     buildTree          : buildTree,
 
     /* --- 書き込み --- */
+    replaceAllLogs     : replaceAllLogs,
+    updateAtomsBulk    : updateAtomsBulk,
     commitAnswer       : commitAnswer,
     updateAtom         : updateAtom,
     updateQuestion     : updateQuestion,

@@ -2005,11 +2005,24 @@
       if (rep.uploaded)     { parts.push('上げた図 ' + rep.uploaded + '件'); }
       if (rep.downloaded)   { parts.push('取り込んだ図 ' + rep.downloaded + '件'); }
       if (rep.memo_updated) { parts.push('解説 ' + rep.memo_updated + '件'); }
+      if (rep.progress && rep.progress.added > 0) {
+        parts.push('学習の記録 ' + rep.progress.added + '件');
+      }
       if (rep.skipped)      { parts.push('できなかったもの ' + rep.skipped + '件'); }
       if (rep.conflicts.length) {
         parts.push('両方で直したもの ' + rep.conflicts.length + '件（新しい方を採用）');
       }
-      toast(parts.length ? '同期しました（' + parts.join(' / ') + '）' : '変わりはありませんでした', 4200);
+      /* 「変わりはありません」だけでは、何を見て何が無かったのかが伝わらない。
+         利用者はここで詰まる（実際に詰まった）ので、状況を言葉にする。 */
+      if (!parts.length) {
+        var pr = rep.progress || {};
+        setText('#drive-note',
+          'この端末から上げるものはなく、ドライブから取り込むものもありませんでした。'
+          + '（記録 ' + (pr.logs_after || 0) + '件で一致）');
+        toast('すでに最新です', 2800);
+      } else {
+        toast('同期しました（' + parts.join(' / ') + '）', 4600);
+      }
       return refreshDrive();
     });
   }

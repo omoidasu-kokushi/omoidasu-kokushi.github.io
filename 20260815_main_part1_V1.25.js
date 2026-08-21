@@ -1569,6 +1569,15 @@
       q.user_image_updated_at = rec.updated_at;
       return renderUserImage(q).then(function () {
         toast('図を保存しました（' + Math.max(1, Math.round(rec.bytes / 1024)) + 'KB）', 2600);
+        /* ログイン済みなら、その場でこの1枚だけ上げる（V1.38）。
+           全体同期は台帳ごと送るので重い。1枚＋目次なら軽い。
+           未ログイン・期限切れのときは黙って見送る。ここで再ログインを
+           促すと、図を貼るたびに邪魔になるため。次の同期で拾われる。 */
+        if (global.Drive && global.Drive.pushOneImage) {
+          global.Drive.pushOneImage(q.q_id).then(function (r) {
+            if (r && r.ok) { toast('ドライブにも保存しました', 2200); }
+          }).catch(noop);
+        }
         return rec;
       });
     }).catch(function (e) {

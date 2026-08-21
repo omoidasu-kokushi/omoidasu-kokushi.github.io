@@ -44,6 +44,11 @@
 
   var FOLDER_NAME = 'Omoidasu';
   var INDEX_NAME  = 'notes_index.json';
+  /* 学習の進捗（台帳）。図の目次とは別ファイルにする。
+     図は1枚ごとに上げるが、台帳は数MBになりうるので、
+     同じ頻度で送ると通信量が釣り合わない。 */
+  var PROGRESS_NAME = 'progress.json';
+  var PROGRESS_SCHEMA = 1;
   var INDEX_SCHEMA = 1;
 
   /* トークンの有効期限は Google が返す expires_in（通常3600秒）。
@@ -67,6 +72,7 @@
   }
 
   function nowMs() { return Date.now(); }
+  function isNum(v) { return typeof v === 'number' && !isNaN(v); }
 
   /* ---------------------------------------------------------------- 設定 */
 
@@ -614,6 +620,15 @@
         return writeIndex({ items: merged.items });
       });
     }).then(function () {
+      /* 学習の記録も合わせる。図と違って「合体」する（上書きしない）。 */
+      say('学習の記録を確認しています…');
+      return syncProgress(say).then(function (pr) {
+        report.progress = pr;
+      }).catch(function (e) {
+        /* 進捗の同期に失敗しても、図の同期の結果は残す。 */
+        report.progress_error = (e && e.message) || String(e);
+      });
+    }).then(function () {
       report.finished_at = nowMs();
       return S.setMeta('drive_last_sync', report.finished_at).then(function () { return report; });
     }).catch(function (e) {
@@ -621,6 +636,205 @@
       report.error = (e && e.message) || String(e);
       report.finished_at = nowMs();
       return report;
+    });
+  }
+
+  /* ======================================================================
+   * 学習の進捗の同期（V1.38）
+   *
+   * 【なぜ「新しい方を採る」ではダメか】
+   *   図やメモは1人が1つの文を書くので、新しい方を採れば足りる。
+   *   進捗は違う。スマホで問1〜5、PCで問6〜10を解いたなら、
+   *   【どちらも残らなければならない】。片方で上書きすると勉強が消える。
+   *
+   * 【どうするか】
+   *   progress_log は追記しかされない台帳なので、2台ぶんを合体できる。
+   *   合体した台帳から各肢の状態を組み立て直す（Scheduler.rebuildAtomState）。
+   *   結果として、どちらの端末で解いた記録も残る。
+   *
+   * 【meta の扱い】
+   *   数えもの（解答数・到達率）は【大きい方】を採る。減らさないため。
+   *   設定（試験日・テーマなど）は新しい方を採る。
+   * ====================================================================== */
+
+  var META_MAX_KEYS = [
+    'total_questions_answered',
+    'max_pct_lv1', 'max_pct_lv2', 'max_pct_lv3', 'max_pct_lv4', 'max_pct_lv5'
+  ];
+  var META_NEWER_KEYS = [
+    'exam_date', 'day_boundary_hour', 'theme', 'prefer_frequent',
+    'user_image_pos', 'pomodoro_enabled', 'pomodoro_alarm',
+    'pomodoro_longbreak_min', 'oneq_threshold', 'oneq_always_multi'
+  ];
+
+  function collectProgress() {
+    return Promise.all([S.getAllLogs(), S.loadMeta(), S.getAllAtoms()])
+      .then(function (r) {
+        var meta = {}, m = r[1] || {};
+        META_MAX_KEYS.concat(META_NEWER_KEYS).forEach(function (k) {
+          if (m[k] !== undefined) { meta[k] = m[k]; }
+        });
+        /* ★は台帳に残らないので別に運ぶ */
+        var stars = r[2].filter(function (a) { return a.is_starred; })
+                        .map(function (a) { return a.atom_id; });
+        return {
+          schema: PROGRESS_SCHEMA,
+          updated_at: nowMs(),
+          logs: r[0] || [],
+          meta: meta,
+          starred_atoms: stars
+        };
+      });
+  }
+
+  function emptyProgress() {
+    return { schema: PROGRESS_SCHEMA, updated_at: 0, logs: [], meta: {}, starred_atoms: [] };
+  }
+
+  function readProgress() {
+    return S.loadMeta().then(function (m) {
+      if (m.drive_progress_id) { return { id: m.drive_progress_id }; }
+      return findByName(PROGRESS_NAME).then(function (f) {
+        if (f) { return rememberId('drive_progress_id', f.id).then(function () { return f; }); }
+        return null;
+      });
+    }).then(function (f) {
+      if (!f) { return emptyProgress(); }
+      return downloadBlob(f.id).then(function (b) { return b.text(); })
+        .then(function (t) {
+          try {
+            var j = JSON.parse(t);
+            if (!j || !Array.isArray(j.logs)) { return emptyProgress(); }
+            return j;
+          } catch (e) { return emptyProgress(); }
+        });
+    });
+  }
+
+  function writeProgress(payload) {
+    payload.schema = PROGRESS_SCHEMA;
+    payload.updated_at = nowMs();
+    var blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+    return S.loadMeta().then(function (m) {
+      return uploadBlob(PROGRESS_NAME, blob, 'application/json', m.drive_progress_id || null);
+    }).then(function (f) {
+      return rememberId('drive_progress_id', f.id);
+    }).then(function () { return payload; });
+  }
+
+  function mergeMeta(localMeta, remoteMeta, localAt, remoteAt) {
+    var out = {}, i, k;
+    for (i = 0; i < META_MAX_KEYS.length; i++) {
+      k = META_MAX_KEYS[i];
+      var a = Number(localMeta[k] || 0), b = Number(remoteMeta[k] || 0);
+      if (localMeta[k] !== undefined || remoteMeta[k] !== undefined) {
+        out[k] = Math.max(a, b);
+      }
+    }
+    var newer = (remoteAt > localAt) ? remoteMeta : localMeta;
+    var older = (remoteAt > localAt) ? localMeta : remoteMeta;
+    for (i = 0; i < META_NEWER_KEYS.length; i++) {
+      k = META_NEWER_KEYS[i];
+      if (newer[k] !== undefined) { out[k] = newer[k]; }
+      else if (older[k] !== undefined) { out[k] = older[k]; }
+    }
+    return out;
+  }
+
+  /* 合体した台帳を手元へ書き戻し、各肢の状態を作り直す。 */
+  function applyProgress(merged, meta) {
+    var K = global.Scheduler;
+    var boundary = isNum(meta.day_boundary_hour) ? meta.day_boundary_hour : 4;
+    var capMs = K.examCapMs ? K.examCapMs(meta, nowMs(), boundary) : null;
+
+    var byAtom = {};
+    merged.forEach(function (l) {
+      if (!byAtom[l.atom_id]) { byAtom[l.atom_id] = []; }
+      byAtom[l.atom_id].push(l);
+    });
+
+    return S.replaceAllLogs(merged).then(function () {
+      return S.getAllAtoms();
+    }).then(function (atoms) {
+      var patches = {}, touched = 0;
+      atoms.forEach(function (a) {
+        var logs = byAtom[a.atom_id];
+        if (!logs || !logs.length) { return; }
+        var patch = K.rebuildAtomState(a, logs, { boundaryHour: boundary, capMs: capMs });
+        if (patch) { patches[a.atom_id] = patch; touched++; }
+      });
+      return S.updateAtomsBulk(patches).then(function () { return touched; });
+    });
+  }
+
+  function syncProgress(say) {
+    var report = { logs_before: 0, logs_after: 0, added: 0, atoms_rebuilt: 0 };
+    return Promise.all([collectProgress(), readProgress()]).then(function (pair) {
+      var mine = pair[0], theirs = pair[1];
+      var K = global.Scheduler;
+      report.logs_before = mine.logs.length;
+      var merged = K.mergeLogs(mine.logs, theirs.logs);
+      report.logs_after = merged.length;
+      report.added = merged.length - mine.logs.length;
+
+      var meta = mergeMeta(mine.meta || {}, theirs.meta || {},
+                           mine.updated_at || 0, theirs.updated_at || 0);
+      var stars = {};
+      (mine.starred_atoms || []).concat(theirs.starred_atoms || [])
+        .forEach(function (id) { stars[id] = 1; });
+
+      if (say) { say('学習の記録を合わせています…'); }
+      return applyProgress(merged, meta).then(function (n) {
+        report.atoms_rebuilt = n;
+        /* meta を書き戻す（数えものは大きい方、設定は新しい方） */
+        var seq = Promise.resolve();
+        Object.keys(meta).forEach(function (k) {
+          seq = seq.then(function () { return S.setMeta(k, meta[k]); });
+        });
+        return seq;
+      }).then(function () {
+        return writeProgress({ logs: merged, meta: meta,
+                               starred_atoms: Object.keys(stars) });
+      }).then(function () { return report; });
+    });
+  }
+
+  /* --- 図を1枚入れたら、その場で上げる（V1.38） ---
+     全体同期は台帳ごと送るので重い。図の追加は「その1枚＋目次」だけで済む。
+     ログイン済みで期限内のときだけ走らせ、そうでなければ黙って見送る
+     （ここで再ログインを促すと、図を貼るたびに邪魔になる）。 */
+  function pushOneImage(qId) {
+    if (!tokenValid()) { return Promise.resolve({ skipped: true, reason: 'NOT_SIGNED_IN' }); }
+    return hasConsent().then(function (okd) {
+      if (!okd) { return { skipped: true, reason: 'CONSENT_REQUIRED' }; }
+      return S.getUserImage(qId).then(function (rec) {
+        if (!rec || !rec.blob) { return { skipped: true, reason: 'NO_IMAGE' }; }
+        return withFolderRetry(function () {
+          return uploadBlob(qId + '.jpg', rec.blob, rec.mime || 'image/jpeg', null);
+        }).then(function (f) {
+          return S.getQuestion(qId).then(function (q) {
+            if (q) { q.drive_image_id = f.id; return S.putQuestionShallow(q); }
+            return null;
+          }).then(function () { return f; });
+        }).then(function (f) {
+          /* 目次にも反映する。ここを飛ばすと別端末が見つけられない。 */
+          return readIndex().then(function (idx) {
+            var key = String(qId) + '|';
+            var hit = null;
+            (idx.items || []).forEach(function (it) { if (keyOf(it) === key) { hit = it; } });
+            if (!hit) {
+              hit = { q_id: qId, atom_id: null, memo: null, updated_at: 0 };
+              idx.items = (idx.items || []).concat([hit]);
+            }
+            hit.image_name = qId + '.jpg';
+            hit.image_file_id = f.id;
+            hit.updated_at = nowMs();
+            return writeIndex({ items: idx.items });
+          });
+        }).then(function () { return { ok: true, q_id: qId }; });
+      });
+    }).catch(function (e) {
+      return { skipped: true, reason: (e && e.message) || 'ERROR' };
     });
   }
 
@@ -661,6 +875,14 @@
     collectLocal     : collectLocal,
     mergeIndex       : mergeIndex,
     syncNow          : syncNow,
+    syncProgress     : syncProgress,
+    collectProgress  : collectProgress,
+    readProgress     : readProgress,
+    writeProgress    : writeProgress,
+    mergeMeta        : mergeMeta,
+    applyProgress    : applyProgress,
+    pushOneImage     : pushOneImage,
+    PROGRESS_NAME    : PROGRESS_NAME,
     lastSync         : lastSync,
 
     /* テスト用。本番では触らない。 */
