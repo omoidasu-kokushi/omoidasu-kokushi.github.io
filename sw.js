@@ -15,20 +15,23 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v1.30.0';
+const CACHE_NAME = 'v1.32.0';
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
+/* 共有ファイルは ?v=<版> 付きで登録する。index.html が要求するURLと
+   1文字でも違うと、キャッシュに当たらず毎回ネットワークへ行く
+   （オフラインで起動できなくなる）。index.html と必ず揃えること。 */
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css',
-  './questions.js',
-  './storage.js',
-  './scheduler.js',
-  './drive.js',
-  './20260815_main_part1_V1.28.js',
-  './20260815_main_part2_V1.26.js',
+  './styles.css?v=1.42',
+  './questions.js?v=1.42',
+  './storage.js?v=1.42',
+  './scheduler.js?v=1.42',
+  './drive.js?v=1.42',
+  './20260815_main_part1_V1.29.js',
+  './20260815_main_part2_V1.27.js',
   './about.html',
   './privacy.html',
   './terms.html',

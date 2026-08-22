@@ -43,7 +43,17 @@ def static_checks():
     ok("part2 から prompt( 全消", "global.prompt" not in read(p2))
     # 実ファイルが CORE_ASSETS に全部あるか
     for a in re.findall(r"'\./([^']+)'", sw.split("CORE_ASSETS")[1].split("]")[0]):
-        ok("CORE_ASSETS 実在: %s" % a, os.path.exists(os.path.join(APP, a)))
+        _p = a.split("?")[0]
+        ok("CORE_ASSETS 実在: %s" % a, os.path.exists(os.path.join(APP, _p)))
+    # V1.42：共有ファイルは ?v=<版> 付き。index.html と1文字でも違うと
+    # キャッシュに当たらず、オフラインで起動できなくなる。
+    _swq = dict(re.findall(r"'\./([^'?]+)\?v=([^']+)'", sw))
+    _idxq = dict(re.findall(r'"\./([^"?]+)\?v=([^"]+)"', idx))
+    for f in ["styles.css", "questions.js", "storage.js", "scheduler.js", "drive.js"]:
+        ok("%s に版が付いている" % f, f in _swq and f in _idxq,
+           "sw=%s idx=%s" % (_swq.get(f), _idxq.get(f)))
+        ok("%s の版が index と sw で一致" % f, _swq.get(f) == _idxq.get(f),
+           "sw=%s idx=%s" % (_swq.get(f), _idxq.get(f)))
 
 # ---------------------------------------------------------------- 実行時検査
 def _external(t):
@@ -70,6 +80,20 @@ def runtime_checks():
         ok("起動診断パネルが出ていない", not pg.evaluate("!!document.getElementById('boot-diagnostics')"))
 
         # --- 依頼12：初回に概要モーダル
+        # V1.42：シードが457問になり、起動直後はスプラッシュが覆っている。
+        # 覆いが外れてから見る（見た目の順序を守る）。
+        try:
+            pg.wait_for_function(
+                "document.getElementById('splash').classList.contains('is-gone')",
+                timeout=15000)
+        except Exception:
+            pass
+        # シードの取り込みが終わってから出るので、時間ではなく状態で待つ。
+        try:
+            pg.wait_for_function(
+                "!document.getElementById('modal-welcome').hidden", timeout=20000)
+        except Exception:
+            pass
         ok("初回：概要モーダルが出る",
            pg.evaluate("!document.getElementById('modal-welcome').hidden"))
         ok("概要は3行ちょうど",
@@ -103,8 +127,11 @@ def runtime_checks():
         ok("タグは .cx の外側にある（クリック判定の前提）",
            pg.evaluate("""() => { var t=document.querySelector('#rv-choices .tag-pill');
                                   return !!t && !t.closest('.cx'); }"""))
-        ok("評価ボタンは4肢×4個",
-           pg.evaluate("document.querySelectorAll('#rv-choices .eval-btn').length") == 16)
+        # 肢の数はシードの問題によって変わる。肢数×4（難/普/易/マ）で見る。
+        _nc = pg.evaluate("document.querySelectorAll('#rv-choices .cx').length")
+        ok("評価ボタンは 肢数×4個",
+           pg.evaluate("document.querySelectorAll('#rv-choices .eval-btn').length") == _nc * 4,
+           "肢=%d ボタン=%d" % (_nc, pg.evaluate("document.querySelectorAll('#rv-choices .eval-btn').length")))
 
         # --- 依頼8：ガイドがタグ無しでも止まらない
         stall = pg.evaluate("""async () => {

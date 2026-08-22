@@ -13,7 +13,17 @@
 <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
 <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
-<link rel="stylesheet" href="./styles.css">
+<!-- V1.42：styles.css が読めなかったときの最低限の見た目。
+     ここが無いと、覆いが素の縦積みで左上に出て、下の画面が透けて見える
+     （実際に、古い styles.css がキャッシュに残っていて起きた）。
+     styles.css より前に置く：読めたときは向こうが上書きする。 -->
+<style>
+  #splash{ position:fixed; inset:0; z-index:900; display:flex;
+           align-items:center; justify-content:center; padding:24px;
+           background:#f2f5f9; text-align:center; }
+  #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
+</style>
+<link rel="stylesheet" href="./styles.css?v=1.42">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -28,18 +38,24 @@
      window.Storage（localStorage用）と window.Scheduler（優先度付きタスクAPI）は
      ブラウザの組み込みグローバルとして最初から存在するため、
      単なる真偽判定だと、ファイルが読めていなくても OK と誤判定してしまう。 */
+  /* V1.42：共有ファイルのURLには ?v=<版> を付ける。
+     版番号がファイル名に入っているのは main part1/part2 だけだったため、
+     styles.css などは Service Worker のキャッシュ優先に当たり続け、
+     【新しい index.html なのに古い styles.css】が起きた
+     （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
+     ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.42",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.42",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.42",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.28.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.29.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.26.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.27.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.42",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -257,7 +273,7 @@
         <!-- V1.41：同期をヘッダーへ。設定の奥にあると、未同期が溜まっても
              気づけない。未同期の件数はここに出す。 -->
         <button type="button" id="btn-hdr-sync" class="hdr-btn" aria-label="同期する">
-          <span class="ico-cloud" aria-hidden="true"></span><span class="hdr-btn-text">同期</span>
+          <span class="ico-cloud" aria-hidden="true"></span><span class="hdr-btn-text" id="hdr-sync-text">同期</span>
           <span class="hdr-badge" id="hdr-sync-badge" hidden>0</span>
         </button>
         <button type="button" id="btn-theme" class="hdr-btn" aria-label="テーマ切替">
@@ -363,11 +379,15 @@
         <!-- 主動線（#card-review）の座標を動かさないため、必ずツール一覧より下に置く -->
         <section class="home-tip" id="home-tip" hidden>
           <span class="home-tip-name">ひとことメモ</span>
+          <!-- V1.42：大きさで役割を分ける。
+               大＝話の題（何の話か）／中＝その回の見出し／小＝本文。
+               以前は「話の題」が色付きの小さなバッジで、一番小さいのに
+               一番目立つ、という読み順の壊れた状態だった。 -->
           <div class="home-tip-head">
-            <span class="home-tip-label" id="home-tip-label">このアプリの使い方</span>
+            <h3 class="home-tip-label" id="home-tip-label">このアプリの使い方</h3>
             <span class="home-tip-count" id="home-tip-count">1 / 33</span>
           </div>
-          <h3 class="home-tip-title" id="home-tip-title"></h3>
+          <p class="home-tip-title" id="home-tip-title"></p>
           <p class="home-tip-body" id="home-tip-body"></p>
           <div class="home-tip-nav">
             <button type="button" class="home-tip-prev" id="home-tip-prev">◀ 前へ</button>
@@ -375,7 +395,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260822_Omoidasu_V1.41</p>
+        <p class="build-stamp">20260822_Omoidasu_V1.42</p>
       </div>
     </section>
 
@@ -780,11 +800,11 @@
               <option value="chime">チャイム</option>
               <option value="bell">ベル</option>
               <option value="soft">やわらかい音</option>
-              <option value="custom">自分の音</option>
+              <option value="custom">&lt;&lt;Free&gt;&gt;</option>
             </select>
           </div>
           <div class="set-row set-static set-stack">
-            <span class="set-row-body"><b>自分の音を入れる</b>
+            <span class="set-row-body"><b>好きな音を入れる</b>
               <small id="alarm-file-note">まだ入っていません。mp3 / m4a / wav などを1つ（1MBまで）</small></span>
             <div class="alarm-actions">
               <button type="button" class="btn-ghost btn-sm" id="btn-alarm-pick">音を選ぶ</button>
@@ -924,7 +944,19 @@
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">7. データ
+          <h3 class="set-head">7. 出題と表示のカスタマイズ</h3>
+          <button type="button" class="set-row" id="btn-oneq">
+            <span class="set-row-body"><b>一問一答の出しかた</b><small id="oneq-state">期日の選択肢が1本のときだけ一問一答</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <button type="button" class="set-row" id="btn-text-edit">
+            <span class="set-row-body"><b>画面の文言を自分で直す</b><small>ガイドと一言欄の文を書き換えます。問題データの文は含みません</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">8. データ
             <button type="button" class="help-btn" data-help="import" aria-label="取り込みの説明">？</button>
           </h3>
           <div class="import-box">
@@ -1030,18 +1062,6 @@
           </button>
           <button type="button" class="set-row" id="btn-restore">
             <span class="set-row-body"><b>バックアップから復元する</b><small>書き出したJSONを読み込みます</small></span>
-            <span class="tool-arrow" aria-hidden="true"></span>
-          </button>
-        </section>
-
-        <section class="set-block">
-          <h3 class="set-head">8. 出題と表示のカスタマイズ</h3>
-          <button type="button" class="set-row" id="btn-oneq">
-            <span class="set-row-body"><b>一問一答の出しかた</b><small id="oneq-state">期日の選択肢が1本のときだけ一問一答</small></span>
-            <span class="tool-arrow" aria-hidden="true"></span>
-          </button>
-          <button type="button" class="set-row" id="btn-text-edit">
-            <span class="set-row-body"><b>画面の文言を自分で直す</b><small>ガイドと一言欄の文を書き換えます。問題データの文は含みません</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
         </section>
@@ -1423,11 +1443,11 @@
   </div>
 </div>
 
-<script src="./questions.js"></script>
-<script src="./storage.js"></script>
-<script src="./scheduler.js"></script>
-<script src="./20260815_main_part1_V1.28.js"></script>
-<script src="./drive.js"></script>
-<script src="./20260815_main_part2_V1.26.js"></script>
+<script src="./questions.js?v=1.42"></script>
+<script src="./storage.js?v=1.42"></script>
+<script src="./scheduler.js?v=1.42"></script>
+<script src="./20260815_main_part1_V1.29.js"></script>
+<script src="./drive.js?v=1.42"></script>
+<script src="./20260815_main_part2_V1.27.js"></script>
 </body>
 </html>

@@ -30,7 +30,7 @@ ok("sw CACHE_NAME が上がっている",
    bool(_cn) and tuple(int(x) for x in _cn.groups()) >= (1, 2, 0),
    _cn.group(0) if _cn else "not found")
 for a in re.findall(r"'\./([^']+)'", sw.split("CORE_ASSETS")[1].split("]")[0]):
-    ok("CORE_ASSETS 実在: %s" % a, os.path.exists(os.path.join(APP, a)))
+    ok("CORE_ASSETS 実在: %s" % a, os.path.exists(os.path.join(APP, a.split("?")[0])))
 ok("level-name を撤去", 'id="level-name"' not in idx)
 ok("level-facts を追加", 'id="level-facts"' in idx)
 

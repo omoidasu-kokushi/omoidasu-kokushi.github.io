@@ -1652,9 +1652,14 @@
         Math.round(fileBlob.size / 1024) + 'KB あり、上限の1MBを超えています。' +
         '短い音（5秒程度）を選んでください。'));
     }
+    /* ファイル名を残す（V1.42）。選択肢に「<<Free>>」ではなく
+       入れた音の名前を出すため。拡張子は落とす：一覧で見せる名前に
+       .mp3 が付いていても情報が増えない。 */
+    var nm = String(fileBlob.name || '').replace(/\.[^.]+$/, '').slice(0, 40);
     var rec = {
       file_id: ALARM_FILE_ID, kind: 'audio', q_id: null,
       blob: fileBlob, mime: fileBlob.type || 'audio/mpeg',
+      name: nm || null,
       bytes: fileBlob.size, w: 0, h: 0, updated_at: nowMs()
     };
     return write([STORE.FILES], function (s) { s[STORE.FILES].put(rec); })

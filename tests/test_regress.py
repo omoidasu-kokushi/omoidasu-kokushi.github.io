@@ -21,7 +21,10 @@ with sync_playwright() as p:
     base = pg.evaluate("""async () => ({
         q: await window.Storage.countQuestions(),
         a: await window.Storage.countAtoms() })""")
-    ok("シード投入（5問/20肢）", base == {"q": 5, "a": 20}, str(base))
+    # V1.42：シードを実データ457問に差し替えた。件数は questions.js の
+    # SEED_QUESTIONS_TSV の行数で決まるので、ここでは固定値にしない。
+    SEED_Q = base["q"]
+    ok("シードが入っている（100問以上）", base["q"] >= 100 and base["a"] >= base["q"] * 2, str(base))
 
     # ユーザーデータを仕込む：★・メモ・進捗
     seeded = pg.evaluate("""async () => {
@@ -47,7 +50,7 @@ with sync_playwright() as p:
         return { imported: rep.imported, updated: rep.updated, skipped: rep.skipped,
                  mismatch: rep.mismatch, atoms: rep.atoms }; }""")
     ok("再インポートは『更新』であって『追加』ではない",
-       reimp["updated"] == 5 and reimp["imported"] == 0, str(reimp))
+       reimp["updated"] == SEED_Q and reimp["imported"] == 0, str(reimp))
     ok("正解検算でスキップされた行が無い", reimp["skipped"] == 0 and reimp["mismatch"] == 0, str(reimp))
 
     after = pg.evaluate("""async (s) => {
@@ -57,7 +60,7 @@ with sync_playwright() as p:
                  memo: a.user_memo, qmemo: q.user_memo, star: a.is_starred, qstar: q.is_starred,
                  due: a.due_date, cnt: a.answer_count, ev: a.last_eval }; }""",
         seeded)
-    ok("問題数が増えていない", after["qc"] == 5, str(after["qc"]))
+    ok("問題数が増えていない", after["qc"] == SEED_Q, str(after["qc"]))
     ok("選択肢メモが消えていない", after["memo"] == "**自分の言葉**の解説", str(after["memo"]))
     ok("全体解説メモが消えていない", after["qmemo"] == "全体解説の書き換え", str(after["qmemo"]))
     ok("★（問題／選択肢）が消えていない", after["star"] and after["qstar"])
@@ -76,8 +79,11 @@ with sync_playwright() as p:
                  q: rep.questions, a: rep.atoms }; }""")
     ok("進捗リセットで学習済みが0になる", rt["mid"] == 0, str(rt))
     ok("バックアップ復元で学習済みが戻る", rt["back"] > 0, str(rt))
-    ok("復元件数（5問/20肢）", rt["q"] == 5 and rt["a"] == 20, str(rt))
-    ok("バックアップJSONは軽い（%d KB）" % (rt["bytes"] // 1024), rt["bytes"] < 2_000_000)
+    ok("復元件数がシードと一致", rt["q"] == SEED_Q and rt["a"] == base["a"], str(rt))
+    # 問題データを丸ごと含むので、シードの量に比例する。
+    # 1問あたり8KBを超えたら、どこかで不要なものを抱え込んでいる。
+    ok("バックアップJSONの1問あたりが8KB未満（%d KB / %d問）"
+       % (rt["bytes"] // 1024, SEED_Q), rt["bytes"] < SEED_Q * 8192, str(rt["bytes"]))
 
     # 弱点pt・スケジュールの基本
     sch = pg.evaluate("""() => {

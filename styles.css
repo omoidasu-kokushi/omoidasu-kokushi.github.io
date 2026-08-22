@@ -2599,20 +2599,25 @@ html[data-theme="dark"] .memo-body strong{
   font-size:.64rem; font-weight:800; letter-spacing:.1em;
   color:var(--text-mute);
 }
-.home-tip-head{ display:flex; align-items:center; gap:8px; margin-bottom:5px; }
-/* タイトルは「そこに何があるか」が分かれば足りる。
-   色面のバッジにすると、押せるものと見分けがつかなくなる。 */
+.home-tip-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+/* V1.42：大きさの順を「題 ＞ 見出し ＞ 本文」に揃える。
+   色面のバッジにはしない（押せるものと見分けがつかなくなる）。
+   大きさで役割を示せば、色に頼らずに読み順が伝わる。 */
 .home-tip-label{
-  font-size:.66rem; font-weight:800; letter-spacing:.08em;
-  color:var(--text-mute);
+  font-size:1.16rem; font-weight:800; line-height:1.4;
+  color:var(--accent);
 }
 .home-tip-count{
   margin-left:auto;
   font-family:var(--font-num); font-size:var(--fs-xs); color:var(--text-mute); font-weight:700;
 }
-.home-tip-title{ font-size:var(--fs-md); font-weight:800; line-height:1.5; }
+.home-tip-title{
+  margin-top:2px;
+  font-size:var(--fs-sm); font-weight:800; line-height:1.55;
+  color:var(--text);
+}
 .home-tip-body{
-  margin-top:5px; font-size:var(--fs-sm); line-height:1.72; color:var(--text-sub);
+  margin-top:5px; font-size:var(--fs-xs); line-height:1.75; color:var(--text-sub);
   /* 文言編集で入れた改行を、そのまま改行として描く。
      pre-wrap ではなく pre-line：行頭の字下げや連続スペースまで残すと、
      コピペ由来の空白が意図せず画面に出る。改行だけを尊重する。 */
