@@ -3456,3 +3456,100 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   --warn-bg: #2e2611;
   --warn-fg: #f0dca6;
 }
+
+
+/* ==========================================================================
+   50. 起動スプラッシュ（V1.40）
+   覆いなので、消える経路を必ず持たせる（.is-gone）。
+   pointer-events を切ってから消すのは、消えかけに下のボタンを
+   誤爆させないため。
+   ========================================================================== */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg, #f7f8fa);
+  transition: opacity .28s ease-out, visibility .28s ease-out;
+}
+.splash.is-gone {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.splash-inner {
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+}
+
+.splash-logo {
+  width: 96px;
+  height: 96px;
+  border-radius: 22px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .14);
+}
+
+.splash-title {
+  margin: 16px 0 0;
+  font-size: 1.62rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  color: var(--fg, #1b1d21);
+}
+
+.splash-tag {
+  margin: 6px 0 0;
+  font-size: .92rem;
+  letter-spacing: .04em;
+  color: var(--fg-sub, #5a6069);
+}
+
+.splash-status {
+  margin: 22px 0 0;
+  min-height: 1.4em;
+  font-size: .84rem;
+  color: var(--fg-sub, #5a6069);
+}
+.splash-status::after {
+  content: "";
+  display: inline-block;
+  width: 0;
+  animation: splashDots 1.2s steps(4, end) infinite;
+}
+@keyframes splashDots { to { width: 0; } }
+
+.splash-ask { margin-top: 20px; }
+
+.splash-ask-lead {
+  margin: 0 0 14px;
+  font-size: .84rem;
+  line-height: 1.6;
+  text-align: left;
+  color: var(--fg-sub, #5a6069);
+}
+
+.splash-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 14px;
+  font-size: .96rem;
+}
+.splash-btn small {
+  display: block;
+  margin-top: 2px;
+  font-size: .72rem;
+  font-weight: 400;
+  opacity: .78;
+}
+
+/* 動きを減らす設定の人には、点滅も遷移も出さない */
+@media (prefers-reduced-motion: reduce) {
+  .splash { transition: none; }
+  .splash-status::after { animation: none; }
+}

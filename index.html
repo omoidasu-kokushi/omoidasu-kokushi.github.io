@@ -35,9 +35,9 @@
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
     { file: "./scheduler.js",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.26.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.27.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.24.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.25.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
     { file: "./drive.js",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
@@ -181,6 +181,41 @@
 <meta property="og:url" content="https://omoidasu-kokushi.github.io/">
 </head>
 <body>
+<!-- V1.40：起動時のスプラッシュ。
+     【なぜ最初からHTMLに置くか】
+       JSで作ると、JSが読まれるまでの真っ白な一瞬が残る。それが
+       「重い」という印象を作るので、器はHTMLに直接置いて
+       最初から見えている状態にする。
+     【なぜ必ず消えるようにするか】
+       覆いは、消えない事故が一番怖い。JSが1行も動かなくても
+       6秒で必ず消えるよう、ここのインラインscriptで保険をかける。 -->
+<div class="splash" id="splash">
+  <div class="splash-inner">
+    <img class="splash-logo" id="splash-logo" src="./icons/icon-192.png" alt="" width="96" height="96">
+    <h1 class="splash-title">オモイダス</h1>
+    <p class="splash-tag">― 想起を、早期に。</p>
+    <p class="splash-status" id="splash-status">準備しています…</p>
+
+    <div class="splash-ask" id="splash-ask" hidden>
+      <p class="splash-ask-lead" id="splash-ask-lead">
+        Googleドライブにつなぐと、他の端末で解いた分もここに反映されます。
+      </p>
+      <button type="button" class="btn-primary splash-btn" id="splash-login">ログインして同期</button>
+      <button type="button" class="btn-ghost splash-btn" id="splash-skip">
+        ログインせずに続ける
+        <small>この端末だけで学習します</small>
+      </button>
+    </div>
+  </div>
+</div>
+<script>
+  /* 保険：何が起きても6秒で覆いを外す。 */
+  setTimeout(function () {
+    var s = document.getElementById('splash');
+    if (s) { s.classList.add('is-gone'); }
+  }, 6000);
+</script>
+
 
 <!-- ============================================================
      APP SHELL
@@ -1385,8 +1420,8 @@
 <script src="./questions.js"></script>
 <script src="./storage.js"></script>
 <script src="./scheduler.js"></script>
-<script src="./20260815_main_part1_V1.26.js"></script>
+<script src="./20260815_main_part1_V1.27.js"></script>
 <script src="./drive.js"></script>
-<script src="./20260815_main_part2_V1.24.js"></script>
+<script src="./20260815_main_part2_V1.25.js"></script>
 </body>
 </html>
