@@ -56,7 +56,8 @@ with sync_playwright() as p:
     tools = pg.evaluate("""() => Array.from(document.querySelectorAll('.tool-list .tool-row'))
       .map(b => ({ a: b.getAttribute('data-action'), t: b.querySelector('b').textContent }))""")
     # V1.39：「力試し」がサブカードへ移り、ツールは4行（アプリ側が正）
-    ok("ツールは4行", len(tools) == 4, json.dumps(tools, ensure_ascii=False))
+    # V1.41：単元別学習をランダムの階層UIへ統合したので3行（アプリ側が正）
+    ok("ツールは3行", len(tools) == 3, json.dumps(tools, ensure_ascii=False))
     ok("1行目が「弱点分析」",
        tools[0]["a"] == "go-dashboard" and tools[0]["t"] == "弱点分析",
        json.dumps(tools[0], ensure_ascii=False))

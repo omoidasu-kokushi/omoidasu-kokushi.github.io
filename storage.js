@@ -1700,29 +1700,61 @@
     });
   }
 
+  /* --- 階層ごとの「難しい」件数（V1.41） ---
+     未学習バッジは、全部に一度触れた時点で0になって死ぬ。
+     そのあと「どこが弱いか」を示すものが階層UIから消えるので、
+     最新評価が「難しい」の肢を数える。
+
+     ※ last_eval に索引は張っていない。ここは画面を開いたときだけ
+        呼ばれる集計なので、1回の全走査で足りる。索引を足すと
+        DB_VERSION を上げることになり、既存利用者の移行を伴う。 */
+  function countBadgesByScope() {
+    return getAll(STORE.ATOMS).then(function (list) {
+      var mk = function () { return { unit: {}, major: {}, medium: {}, sub_item: {}, total: 0 }; };
+      var hard = mk(), unlearned = mk();
+      var bump = function (acc, a) {
+        acc.unit[a.unit]         = (acc.unit[a.unit] || 0) + 1;
+        acc.major[a.major]       = (acc.major[a.major] || 0) + 1;
+        acc.medium[a.medium]     = (acc.medium[a.medium] || 0) + 1;
+        acc.sub_item[a.sub_item] = (acc.sub_item[a.sub_item] || 0) + 1;
+        acc.total++;
+      };
+      list.forEach(function (a) {
+        if (a.answer_count > 0) {
+          if (a.last_eval === 'hard') { bump(hard, a); }
+        } else {
+          bump(unlearned, a);
+        }
+      });
+      return { hard: hard, unlearned: unlearned };
+    });
+  }
+
   /* 単元 ＞ 大項目 ＞ 中項目 の3階層ツリーを構築して返す */
   function buildTree() {
-    return Promise.all([getAllQuestions(), countUnlearnedByScope()]).then(function (r) {
-      var questions = r[0], badge = r[1];
+    return Promise.all([getAllQuestions(), countBadgesByScope()]).then(function (r) {
+      var questions = r[0];
+      var badge = r[1].unlearned;     /* 既存の unlearned はそのまま維持 */
+      var hard = r[1].hard;
       var unitOrder = [], unitMap = {};
       questions.forEach(function (q) {
         if (!unitMap[q.unit]) {
           unitMap[q.unit] = { key: q.unit, label: q.unit, unit_no: q.unit_no || 0,
-                              unlearned: badge.unit[q.unit] || 0, count: 0, children: {}, order: [] };
+                              unlearned: badge.unit[q.unit] || 0, hard: hard.unit[q.unit] || 0, count: 0, children: {}, order: [] };
           unitOrder.push(q.unit);
         }
         var u = unitMap[q.unit];
         u.count++;
         if (!u.children[q.major]) {
           u.children[q.major] = { key: q.major, label: q.major,
-                                  unlearned: badge.major[q.major] || 0, count: 0, children: {}, order: [] };
+                                  unlearned: badge.major[q.major] || 0, hard: hard.major[q.major] || 0, count: 0, children: {}, order: [] };
           u.order.push(q.major);
         }
         var mj = u.children[q.major];
         mj.count++;
         if (!mj.children[q.medium]) {
           mj.children[q.medium] = { key: q.medium, label: q.medium,
-                                    unlearned: badge.medium[q.medium] || 0, count: 0, q_ids: [] };
+                                    unlearned: badge.medium[q.medium] || 0, hard: hard.medium[q.medium] || 0, count: 0, q_ids: [] };
           mj.order.push(q.medium);
         }
         var md = mj.children[q.medium];
@@ -1735,11 +1767,13 @@
         .sort(function (a, b) { return (a.unit_no || 0) - (b.unit_no || 0); })
         .map(function (u) {
           return {
-            key: u.key, label: u.label, count: u.count, unlearned: u.unlearned,
+            key: u.key, label: u.label, count: u.count,
+            unlearned: u.unlearned, hard: u.hard,
             children: u.order.map(function (mk) {
               var mj = u.children[mk];
               return {
-                key: mj.key, label: mj.label, count: mj.count, unlearned: mj.unlearned,
+                key: mj.key, label: mj.label, count: mj.count,
+                unlearned: mj.unlearned, hard: mj.hard,
                 children: mj.order.map(function (dk) { return mj.children[dk]; })
               };
             })
@@ -2717,6 +2751,7 @@
     updateQuestionsBulk: updateQuestionsBulk,
     toggleQuestionStar : toggleQuestionStar,
     toggleAtomStar     : toggleAtomStar,
+    countBadgesByScope : countBadgesByScope,
     getStarredNote     : getStarredNote,
 
     /* --- 履歴 --- */

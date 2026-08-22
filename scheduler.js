@@ -1084,6 +1084,32 @@
   }
 
   /* --- 汎用キュー（新規／ランダム／単元別／弱点／概念ノック） --- */
+  /* 克服モードの「上位帯」の広さ。出題数の何倍まで候補に入れるか。 */
+  var CONQUER_BAND = 3;
+
+  /* 並び済みの上位帯から、点数に比例した重みで count 件を選ぶ（重複なし）。
+     点数0のものにも 1 の下駄を履かせるのは、帯の末尾が絶対に
+     出ないと「ここから先は永久に出ない」帯ができてしまうため。 */
+  function weightedPick(sorted, count, bandFactor) {
+    var band = sorted.slice(0, Math.max(count, count * (bandFactor || 3)));
+    if (band.length <= count) { return band.slice(0, count); }
+
+    var pool = band.slice();
+    var out = [];
+    while (out.length < count && pool.length) {
+      var total = 0, i;
+      for (i = 0; i < pool.length; i++) { total += (Number(pool[i].max_priority) || 0) + 1; }
+      var r = Math.random() * total, acc = 0, hit = pool.length - 1;
+      for (i = 0; i < pool.length; i++) {
+        acc += (Number(pool[i].max_priority) || 0) + 1;
+        if (r <= acc) { hit = i; break; }
+      }
+      out.push(pool[hit]);
+      pool.splice(hit, 1);
+    }
+    return out;
+  }
+
   function buildQueue(options) {
     options = options || {};
     var mode = options.mode || 'random';
@@ -1133,6 +1159,16 @@
           if (mode === 'weak') {
             cands = cands.filter(function (c) { return c.unlearned > 0 || c.max_priority > 0; });
           }
+          /* --- 克服モード（V1.41） ---
+             未学習が0になったあとのランダムモードの顔。
+             「一度触れた」だけで覚えたことにはならないので、
+             苦手なものから出し直す。
+             マスター済み（0pt）は仕様§6-②で弱点判定から外れるので、
+             ここでも候補から落とす。全部マスターしたら候補0になり、
+             呼び出し側が行き止まりの案内を出す。 */
+          if (mode === 'conquer') {
+            cands = cands.filter(function (c) { return c.max_priority > 0; });
+          }
           if (!cands.length) {
             return { mode: mode, questions: [], reason: '条件に合う問題が残っていません', guard: null };
           }
@@ -1156,8 +1192,18 @@
               /* 直前10日は狙いが変わる。本日の復習は期日順のままで、
                  ここ（新規・ランダム・弱点）だけ並べ替えを差し替える。 */
               var phase = examPhase(meta, nowMs(), meta.day_boundary_hour);
-              picked = sortCandidates(pool, preferFrequent,
-                                      { phase: phase, now: nowMs() }).slice(0, count);
+              var sorted = sortCandidates(pool, preferFrequent,
+                                          { phase: phase, now: nowMs() });
+              /* 克服モードは【上位帯からの重み付き抽出】にする。
+                 単純な降順の先頭N件だと、
+                   ・毎回まったく同じ顔ぶれになって飽きる
+                   ・2番手以降がいつまでも出てこない
+                 という2つが同時に起きる。苦手なものほど出やすいまま、
+                 顔ぶれだけを揺らすのが狙い。帯の広さは3倍（実測ではなく
+                 設計値：狭いと1番と同じ、広いと得意なものが混ざりすぎる）。 */
+              picked = (mode === 'conquer')
+                ? weightedPick(sorted, count, CONQUER_BAND)
+                : sorted.slice(0, count);
             }
 
             var qIds = picked.map(function (c) { return c.q_id; });
@@ -1931,6 +1977,8 @@
 
     /* --- 出題 --- */
     buildQueue      : buildQueue,
+    weightedPick    : weightedPick,
+    CONQUER_BAND    : CONQUER_BAND,
     getReviewQueue  : getReviewQueue,
     getKnockQueue   : getKnockQueue,
     applyTopicGuard : applyTopicGuard,

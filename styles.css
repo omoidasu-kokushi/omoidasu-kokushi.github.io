@@ -290,7 +290,10 @@ small{ font-size:var(--fs-xs); }
 .rank-badge.B{ background:var(--rank-b); }
 .rank-badge.C{ background:var(--rank-c); }
 
-.hdr-tools{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
+.hdr-tools{ flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  /* V1.41：左は移動（戻る・ホーム）、右は道具。パンくずも戻るも
+     隠れている画面があるので、押し出しに頼らず自分で右端へ寄せる。 */
+  margin-left:auto; }
 
 /* ポモドーロチップ */
 .pomo-chip{
@@ -2582,19 +2585,26 @@ html[data-theme="dark"] .memo-body strong{
 
 /* --- ホーム最下部：使い方カード ---
    主動線の座標を動かさないため、必ず .tool-list より下にのみ置く。 */
+/* V1.41：枠・面・影を外す。ここは押せないので、決まり4-13
+   （押せるものは立体、押せないものはフラット）に従うと枠は不要。
+   面があると、下のツール一覧（押せる）と同じ重みに見えてしまう。
+   ボタン（次の話へ）は押せるので、そのまま立体を残す。 */
 .home-tip{
-  margin-top:18px; padding:13px 15px 12px;
-  border-radius:var(--r-lg);
-  background:var(--surface);
-  border:1px solid var(--border);
-  border-left:3px solid var(--accent);
-  box-shadow:var(--shadow-1);
+  margin-top:18px; padding:2px 2px 0;
+  background:none; border:0; box-shadow:none;
+}
+/* 何の欄かが分かる最小限の見出し。押せないので色面は付けない。 */
+.home-tip-name{
+  display:block; margin-bottom:3px;
+  font-size:.64rem; font-weight:800; letter-spacing:.1em;
+  color:var(--text-mute);
 }
 .home-tip-head{ display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+/* タイトルは「そこに何があるか」が分かれば足りる。
+   色面のバッジにすると、押せるものと見分けがつかなくなる。 */
 .home-tip-label{
-  font-size:.62rem; font-weight:800; letter-spacing:.08em;
-  padding:2px 8px; border-radius:var(--r-sm);
-  background:var(--accent-soft); color:var(--accent);
+  font-size:.66rem; font-weight:800; letter-spacing:.08em;
+  color:var(--text-mute);
 }
 .home-tip-count{
   margin-left:auto;
@@ -3552,4 +3562,105 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 @media (prefers-reduced-motion: reduce) {
   .splash { transition: none; }
   .splash-status::after { animation: none; }
+}
+
+
+/* ==========================================================================
+   51. ランダムの階層ドリルダウン ＆ ヘッダーの追加ボタン（V1.41）
+   ========================================================================== */
+
+/* --- パンくず --- */
+.pick-crumb{
+  display:flex; flex-wrap:wrap; align-items:center; gap:4px;
+  margin:2px 0 10px;
+  font-size:var(--fs-xs); color:var(--text-mute);
+}
+.pick-crumb button{
+  padding:3px 8px; border-radius:var(--r-pill);
+  background:var(--surface-3); border:1px solid var(--border);
+  box-shadow:var(--shadow-1);
+  color:var(--text-sub); font-size:var(--fs-xs); font-weight:700;
+}
+.pick-crumb button:active{ transform:translateY(1px) scale(.99); box-shadow:none; }
+.pick-crumb .pick-crumb-here{ font-weight:800; color:var(--text-sub); padding:3px 2px; }
+.pick-crumb .pick-crumb-sep{ opacity:.55; }
+
+/* --- 一覧の行：左が「掘る」、右が「その場で出す」 --- */
+.pick-row{ display:flex; align-items:stretch; gap:6px; margin-bottom:8px; }
+
+.pick-main{
+  flex:1 1 auto; min-width:0;
+  display:flex; align-items:center; gap:8px;
+  padding:11px 12px; border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--border);
+  box-shadow:var(--shadow-1);
+  text-align:left;
+}
+.pick-main:active{ transform:translateY(1px) scale(.99); box-shadow:none; background:var(--surface-3); }
+
+.pick-name{
+  flex:1 1 auto; min-width:0;
+  font-size:var(--fs-sm); font-weight:700; color:var(--text);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pick-count{
+  flex:0 0 auto;
+  font-family:var(--font-num); font-size:var(--fs-xs);
+  color:var(--text-mute); font-weight:700;
+}
+
+/* まだ一度も触れていない数。難バッジが無いときだけ出す控えめな表示。
+   赤（難しい）と同時に出すと、どちらを見ればいいか分からなくなる。 */
+.badge-soft{
+  flex:0 0 auto;
+  min-width:20px; padding:1px 7px; border-radius:var(--r-pill);
+  background:var(--surface-3); border:1px solid var(--border);
+  color:var(--text-mute);
+  font-family:var(--font-num); font-size:.68rem; font-weight:800;
+  text-align:center;
+}
+
+.pick-dice{
+  flex:0 0 auto; width:48px;
+  display:grid; place-items:center;
+  border-radius:var(--r-md);
+  background:var(--accent-soft); border:1px solid var(--border);
+  box-shadow:var(--shadow-1);
+  font-size:1.05rem;
+}
+.pick-dice:active{ transform:translateY(1px) scale(.99); box-shadow:none; }
+
+/* --- ヘッダーの同期バッジ --- */
+.hdr-badge{
+  min-width:17px; padding:0 5px; border-radius:var(--r-pill);
+  background:var(--danger, #d1434b); color:#fff;
+  font-family:var(--font-num); font-size:.62rem; font-weight:800;
+  line-height:16px; text-align:center;
+}
+
+.ico-home{ -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.9' stroke-linejoin='round' d='M3.6 10.6 12 3.6l8.4 7V20a.6.6 0 0 1-.6.6h-4.6v-6h-6.4v6H4.2a.6.6 0 0 1-.6-.6Z'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.9' stroke-linejoin='round' d='M3.6 10.6 12 3.6l8.4 7V20a.6.6 0 0 1-.6.6h-4.6v-6h-6.4v6H4.2a.6.6 0 0 1-.6-.6Z'/%3E%3C/svg%3E"); }
+.ico-cloud{ -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.9' stroke-linejoin='round' d='M7 18.4a4 4 0 0 1-.3-8 5.2 5.2 0 0 1 10-1.1 3.8 3.8 0 0 1 .5 7.5 3.9 3.9 0 0 1-.6.05Z'/%3E%3C/svg%3E"); mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='none' stroke='%23000' stroke-width='1.9' stroke-linejoin='round' d='M7 18.4a4 4 0 0 1-.3-8 5.2 5.2 0 0 1 10-1.1 3.8 3.8 0 0 1 .5 7.5 3.9 3.9 0 0 1-.6.05Z'/%3E%3C/svg%3E"); }
+
+
+/* ==========================================================================
+   52. 主動線の拡大（V1.41）
+   単元別学習をランダムの階層UIへ統合してツール一覧が4行→3行になった。
+   浮いた 68px（行60px＋隙間8px）を、毎日押す3枚へ配る。
+   §2 の実測（1280×800 で 789px）に対し、拡大後も 1画面に収まる範囲。
+   ========================================================================== */
+.hero-card{ min-height:96px; }
+.hero-title{ font-size:1.18rem; }
+
+/* 文字は大きくしない。実測で「ランダムモード」「テーマ別 弱点ノック」が
+   2行に折り返し、カード内の行数が揃わずかえって読みにくくなった。
+   広げるのは【当たり判定】だけにする。 */
+.sub-card{ min-height:118px; padding-top:14px; padding-bottom:13px; }
+.sub-icon{ width:30px; height:30px; }
+
+/* 340px を切る端末では元の高さに戻す。ここを広げたまま押し込むと
+   3枚のうち1枚だけが縦に潰れて、押し間違いが増える。 */
+@media (max-width: 340px){
+  .hero-card{ min-height:84px; }
+  .sub-card{ min-height:104px; }
+  .sub-title{ font-size:.8rem; }
 }

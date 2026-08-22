@@ -35,9 +35,9 @@
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
     { file: "./scheduler.js",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.27.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.28.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.25.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.26.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
     { file: "./drive.js",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
@@ -230,6 +230,11 @@
       <button type="button" id="btn-back" class="hdr-icon" aria-label="戻る" hidden>
         <span class="ico-chevron-left" aria-hidden="true"></span>
       </button>
+      <!-- V1.41：左は「移動」、右は「道具」。戻るが既に左にあるので、
+           ホームも左に置かないと移動系が2箇所に散る。 -->
+      <button type="button" id="btn-home" class="hdr-btn" aria-label="ホームへ">
+        <span class="ico-home" aria-hidden="true"></span><span class="hdr-btn-text">ホーム</span>
+      </button>
 
       <div class="hdr-crumb" id="hdr-crumb" hidden>
         <span class="rank-badge S" id="hdr-rank">S</span>
@@ -249,6 +254,12 @@
                 aria-pressed="true" aria-label="ポモドーロをOFFにする" hidden>ON</button>
         <!-- V1.30：記号だけでは何のボタンか分からなかったので、
              枠を付けて文字を添える。押せることは枠と影で示す（決まり4-13）。 -->
+        <!-- V1.41：同期をヘッダーへ。設定の奥にあると、未同期が溜まっても
+             気づけない。未同期の件数はここに出す。 -->
+        <button type="button" id="btn-hdr-sync" class="hdr-btn" aria-label="同期する">
+          <span class="ico-cloud" aria-hidden="true"></span><span class="hdr-btn-text">同期</span>
+          <span class="hdr-badge" id="hdr-sync-badge" hidden>0</span>
+        </button>
         <button type="button" id="btn-theme" class="hdr-btn" aria-label="テーマ切替">
           <span class="ico-theme" aria-hidden="true"></span><span class="hdr-btn-text">テーマ</span>
         </button>
@@ -347,15 +358,11 @@
             <span class="badge-line" id="starred-badge" hidden>0</span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button></li>
-          <li><button type="button" class="tool-row" data-action="go-tree">
-            <span class="tool-ico ico-tree" aria-hidden="true"></span>
-            <span class="tool-body"><b>単元別学習</b><small>単元 ＞ 大項目 ＞ 中項目</small></span>
-            <span class="tool-arrow" aria-hidden="true"></span>
-          </button></li>
         </ul>
 
         <!-- 主動線（#card-review）の座標を動かさないため、必ずツール一覧より下に置く -->
         <section class="home-tip" id="home-tip" hidden>
+          <span class="home-tip-name">ひとことメモ</span>
           <div class="home-tip-head">
             <span class="home-tip-label" id="home-tip-label">このアプリの使い方</span>
             <span class="home-tip-count" id="home-tip-count">1 / 33</span>
@@ -368,7 +375,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260815_NurseExamApp_V1.38</p>
+        <p class="build-stamp">20260822_Omoidasu_V1.41</p>
       </div>
     </section>
 
@@ -543,12 +550,20 @@
     <!-- ======================= RANDOM (2段階選択) ======================= -->
     <section id="screen-random" class="screen" data-screen="random">
       <div class="screen-scroll">
-        <h2 class="sc-title">ランダムモード</h2>
-        <p class="sc-lead">単元まるごと、または大項目を選んで出題します。</p>
+        <h2 class="sc-title" id="random-title">ランダムモード</h2>
+        <p class="sc-lead" id="random-lead">そのまま出すことも、範囲を絞ることもできます。</p>
+
+        <!-- V1.41：単元 ＞ 大項目 ＞ 中項目 の段階的開示。
+             仕様§9-①は「中項目階層を排した2段階」だったが、
+             実利用で「まだ学習前の単元があるので範囲を絞りたい」という
+             要求が強かった。決定迷いを増やさないために、
+             【どの階層にも必ず最上部に「ここまででランダム」を置く】。
+             掘るのは任意で、いつでもその場で始められる。 -->
+        <nav class="pick-crumb" id="pick-crumb" hidden></nav>
 
         <button type="button" class="unit-hero" id="unit-hero">
           <span class="unit-hero-dice" aria-hidden="true">🎲</span>
-          <span class="unit-hero-title" id="unit-hero-title">必修問題 全体ランダム</span>
+          <span class="unit-hero-title" id="unit-hero-title">全単元ランダム</span>
           <span class="unit-hero-sub" id="unit-hero-sub">全 0 問から出題</span>
         </button>
 
@@ -568,16 +583,7 @@
       </div>
     </section>
 
-    <!-- ======================= TREE (単元別学習) ======================= -->
-    <section id="screen-tree" class="screen" data-screen="tree">
-      <div class="screen-scroll">
-        <h2 class="sc-title">単元別学習</h2>
-        <p class="sc-lead">赤いバッジは「まだ一度も解いていない選択肢」の数です。</p>
-        <div class="tree-root" id="tree-root"></div>
-      </div>
-    </section>
-
-    <!-- ======================= DASHBOARD ======================= -->
+<!-- ======================= DASHBOARD ======================= -->
     <section id="screen-dashboard" class="screen" data-screen="dashboard">
       <div class="screen-scroll">
         <h2 class="sc-title">弱点分析</h2>
@@ -1420,8 +1426,8 @@
 <script src="./questions.js"></script>
 <script src="./storage.js"></script>
 <script src="./scheduler.js"></script>
-<script src="./20260815_main_part1_V1.27.js"></script>
+<script src="./20260815_main_part1_V1.28.js"></script>
 <script src="./drive.js"></script>
-<script src="./20260815_main_part2_V1.25.js"></script>
+<script src="./20260815_main_part2_V1.26.js"></script>
 </body>
 </html>

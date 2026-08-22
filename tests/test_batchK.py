@@ -166,34 +166,62 @@ with sync_playwright() as p:
     ok("4桁でもアイコンを押し出さない",
        wide["iconVisible"] and not wide["overlap"], json.dumps(wide))
 
-    # ---------- 単元別ツリー ----------
-    tree = pg.evaluate("""async () => {
-      await window.Half2Impl.openTree();
-      await new Promise(r=>setTimeout(r,600));
-      document.querySelectorAll('#tree-root .tree-head').forEach(b=>b.click());
-      await new Promise(r=>setTimeout(r,400));
-      return [...document.querySelectorAll('#tree-root .tree-leaf')]
-        .map(e=>({ t:e.querySelector('.tree-label').textContent,
-                   scope:e.getAttribute('data-scope'),
-                   value:e.getAttribute('data-value') })); }""")
-    scoped = [x for x in tree if "まとめて出題" in x["t"]]
-    ok("「まとめて出題」の行が複数ある（単元と大項目）", len(scoped) >= 2,
-       json.dumps(tree, ensure_ascii=False))
-    ok("同じ文言の行が2つ以上ない（どれがどの範囲か読める）",
-       len(set(x["t"] for x in scoped)) == len(scoped), json.dumps(scoped, ensure_ascii=False))
-    ok("文面に範囲の名前が入っている",
-       all(x["value"] in x["t"] for x in scoped), json.dumps(scoped, ensure_ascii=False))
-    ok("大項目と単元でスコープが違う",
-       len(set(x["scope"] for x in scoped)) == len(scoped), json.dumps(scoped, ensure_ascii=False))
+    # ---------- ランダムの階層ドリルダウン（V1.41で単元別ツリーを統合） ----------
+    drill = pg.evaluate("""async () => {
+      const H = window.Half2Impl;
+      await H.openRandomSelect();
+      await new Promise(r=>setTimeout(r,500));
+      const snap = () => ({
+        hero: document.getElementById('unit-hero-title').textContent,
+        crumbHidden: document.getElementById('pick-crumb').hidden,
+        rows: [...document.querySelectorAll('#major-list .pick-row')].map(r => ({
+          name: r.querySelector('.pick-name').textContent,
+          drill: r.querySelector('.pick-main').getAttribute('data-drill'),
+          field: r.querySelector('.pick-main').getAttribute('data-field'),
+          dice: !!r.querySelector('.pick-dice') })) });
+      const l0 = snap();
+      document.querySelector('#major-list .pick-main').click();
+      await new Promise(r=>setTimeout(r,300));
+      const l1 = snap();
+      document.querySelector('#major-list .pick-main').click();
+      await new Promise(r=>setTimeout(r,300));
+      const l2 = snap();
+      return { l0, l1, l2 }; }""")
+    l0, l1, l2 = drill["l0"], drill["l1"], drill["l2"]
+    ok("最上位は全単元から始まる", "全単元" in l0["hero"], json.dumps(l0["hero"]))
+    ok("最上位ではパンくずを出さない（場所を取るだけ）", l0["crumbHidden"] is True)
+    ok("掘るとパンくずが出る", l1["crumbHidden"] is False)
+    ok("階層ごとに範囲名が変わる",
+       l0["hero"] != l1["hero"] != l2["hero"], json.dumps([l0["hero"], l1["hero"], l2["hero"]]))
+    ok("各階層の行に「その場で出す」サイコロがある",
+       all(r["dice"] for r in l0["rows"] + l1["rows"] + l2["rows"]),
+       json.dumps(drill, ensure_ascii=False)[:300])
+    ok("第1階層は単元", all(r["field"] == "unit" for r in l0["rows"]),
+       json.dumps(l0["rows"], ensure_ascii=False))
+    ok("第2階層は大項目", all(r["field"] == "major" for r in l1["rows"]),
+       json.dumps(l1["rows"], ensure_ascii=False))
+    ok("第3階層は中項目で、それ以上は掘れない",
+       all(r["field"] == "medium" and r["drill"] == "0" for r in l2["rows"]),
+       json.dumps(l2["rows"], ensure_ascii=False))
 
+    up = pg.evaluate("""async () => {
+      document.querySelector('#pick-crumb button[data-up="0"]').click();
+      await new Promise(r=>setTimeout(r,300));
+      return { hero: document.getElementById('unit-hero-title').textContent,
+               crumbHidden: document.getElementById('pick-crumb').hidden }; }""")
+    ok("パンくずで一番上まで戻れる",
+       "全単元" in up["hero"] and up["crumbHidden"] is True, json.dumps(up, ensure_ascii=False))
+    _idx = open(os.path.join(APP, "index.html"), encoding="utf-8").read()
+    ok("単元別学習の画面は残っていない",
+       "screen-tree" not in _idx and 'data-action="go-tree"' not in _idx)
+
+    # 範囲を指定するとその場で出題が始まる（旧「まとめて出題」の代替）
     tapped = pg.evaluate("""async () => {
-      const rows=[...document.querySelectorAll('#tree-root .tree-leaf')]
-        .filter(e=>e.querySelector('.tree-label').textContent.indexOf('まとめて出題')>=0);
-      rows[0].click();
-      await new Promise(r=>setTimeout(r,900));
+      document.querySelector('#major-list .pick-dice').click();
+      await new Promise(r=>setTimeout(r,1200));
       return { screen: window.Main.state.screen, mode: window.Main.state.session.mode,
                qs: window.Main.state.session.questions.length }; }""")
-    ok("「まとめて出題」を押すと出題が始まる",
+    ok("サイコロを押すとその場で出題が始まる",
        tapped["screen"] == "quiz" and tapped["qs"] > 0, json.dumps(tapped, ensure_ascii=False))
 
     # ---------- 一言欄 ----------

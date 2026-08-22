@@ -117,20 +117,20 @@ with sync_playwright() as p:
        real["master_lock"] and real["master_ok"] and real["master_val"] == "180日後",
        json.dumps(real, ensure_ascii=False))
 
-    # ================= ランダムカードの3段階 =================
+    # ================= ランダムカードの2状態（V1.41） =================
+    # いじわる模試は力試しモードの中にあるので、ホームから独立して出さない。
+    # 「全問読破」も行き止まりだったため、読破後は【克服モード】へ変わる。
     ok("状態判定：初見あり → random",
-       pg.evaluate("window.Main.randomCardState(5, false)") == "random")
-    ok("状態判定：初見0・いじわる未解禁 → clear",
-       pg.evaluate("window.Main.randomCardState(0, false)") == "clear")
-    ok("状態判定：初見0・いじわる解禁 → evil",
-       pg.evaluate("window.Main.randomCardState(0, true)") == "evil")
+       pg.evaluate("window.Main.randomCardState(5)") == "random")
+    ok("状態判定：初見0 → conquer",
+       pg.evaluate("window.Main.randomCardState(0)") == "conquer")
     ok("状態判定：未学習数が取れないときは動線を消さない（random のまま）",
-       pg.evaluate("window.Main.randomCardState(null, false)") == "random"
-       and pg.evaluate("window.Main.randomCardState(undefined, true)") == "random")
+       pg.evaluate("window.Main.randomCardState(null)") == "random"
+       and pg.evaluate("window.Main.randomCardState(undefined)") == "random")
 
-    def card(un, evil):
-        return pg.evaluate("""(a) => {
-            window.Main.renderRandomCard(a.un, a.evil);
+    def card(un):
+        return pg.evaluate("""(un) => {
+            window.Main.renderRandomCard(un);
             const c = document.getElementById('card-random');
             const tag = document.getElementById('random-tag');
             return { state: c.dataset.state, action: c.getAttribute('data-action'),
@@ -138,64 +138,45 @@ with sync_playwright() as p:
                      meta : c.querySelector('.sub-meta').textContent,
                      icon : c.querySelector('.sub-icon').className,
                      badgeHidden: document.getElementById('random-badge').hidden,
-                     tagHidden: tag.hidden, tag: tag.textContent }; }""",
-            {"un": un, "evil": evil})
+                     tagHidden: tag.hidden, tag: tag.textContent }; }""", un)
 
-    c1 = card(5, False)
-    ok("① 初見あり：ランダムモードのまま", c1["state"] == "random" and c1["title"] == "ランダムモード"
+    c1 = card(5)
+    ok("① 初見あり：ランダムモード", c1["state"] == "random" and c1["title"] == "ランダムモード"
        and c1["action"] == "go-random" and c1["badgeHidden"] is False and c1["tagHidden"] is True,
        json.dumps(c1, ensure_ascii=False))
 
-    c2 = card(0, False)
-    ok("② 初見0・未解禁：全問読破に変身", c2["state"] == "clear" and c2["title"] == "全問読破"
-       and c2["action"] == "go-cleared", json.dumps(c2, ensure_ascii=False))
+    c2 = card(0)
+    ok("② 初見0：克服モードに変わる", c2["state"] == "conquer" and c2["title"] == "克服モード"
+       and "苦手" in c2["meta"], json.dumps(c2, ensure_ascii=False))
+    ok("② 押し先は同じ選択画面（入口を増やさない）", c2["action"] == "go-random")
     ok("② 出題数バッジは消える", c2["badgeHidden"] is True)
-    ok("② いじわる模試の予告が出る（非アクティブ）",
-       c2["tagHidden"] is False and "フル模試2回合格で出現" in c2["tag"]
-       and "いじわる模試" in c2["meta"], json.dumps(c2, ensure_ascii=False))
-
-    c3 = card(0, True)
-    ok("③ 初見0・解禁済：いじわる模試に変身", c3["state"] == "evil" and c3["title"] == "いじわる模試"
-       and c3["action"] == "go-evil" and "120問" in c3["meta"], json.dumps(c3, ensure_ascii=False))
-    ok("③ 解禁ずみの表示に変わる", "解禁ずみ" in c3["tag"], c3["tag"])
-    ok("アイコンも3状態で変わる",
-       len({c1["icon"], c2["icon"], c3["icon"]}) == 3, str([c1["icon"], c2["icon"], c3["icon"]]))
-    # 横に3枚並ぶ場所なので、隣のカードとアイコンが被ってはいけない
+    ok("② 何が起きたかがカードに書いてある",
+       c2["tagHidden"] is False and "解答ずみ" in c2["tag"], json.dumps(c2, ensure_ascii=False))
+    ok("アイコンが2状態で変わる", c1["icon"] != c2["icon"],
+       str([c1["icon"], c2["icon"]]))
     sib = pg.evaluate("""() => [
         document.querySelector('#card-knock .sub-icon').className,
         document.querySelector('#card-exam .sub-icon').className ]""")
-    ok("読破・いじわるのアイコンが隣のカードと被らない",
-       c2["icon"] not in sib and c3["icon"] not in sib,
-       "%s / %s vs %s" % (c2["icon"], c3["icon"], sib))
-    ok("追加アイコンのCSSが定義されている",
-       "ico-check" in read("styles.css") and "ico-bolt" in read("styles.css"))
+    ok("克服モードのアイコンが隣のカードと被らない", c2["icon"] not in sib,
+       "%s vs %s" % (c2["icon"], sib))
+    ok("追加アイコンのCSSが定義されている", "ico-bolt" in read("styles.css"))
 
     # 位置は一切動かない（主動線の座標を守る）
     pos = pg.evaluate("""(states) => {
         const out = [];
         for (const s of states) {
-          window.Main.renderRandomCard(s[0], s[1]);
+          window.Main.renderRandomCard(s);
           const r = document.getElementById('card-random').getBoundingClientRect();
           const h = document.getElementById('card-review').getBoundingClientRect();
           out.push([Math.round(r.top), Math.round(r.left), Math.round(h.top)]);
         }
-        return out; }""", [[5, False], [0, False], [0, True]])
-    ok("3状態を通じてカードと主動線の座標が動かない",
+        return out; }""", [5, 0])
+    ok("2状態を通じてカードと主動線の座標が動かない",
        len({tuple(x) for x in pos}) == 1, str(pos))
 
-    # 「全問読破」を押したときの案内
-    pg.evaluate("window.Main.renderRandomCard(0, false)")
-    pg.evaluate("document.getElementById('card-random').click()")
-    pg.wait_for_timeout(900)
-    sheet = pg.evaluate("""() => ({ open: !document.getElementById('modal-no-new').hidden,
-        title: document.getElementById('nonew-title').textContent,
-        body: document.getElementById('nonew-body').textContent })""")
-    ok("読破カードを押すと案内が出る", sheet["open"], json.dumps(sheet, ensure_ascii=False))
-    ok("案内で到達を認めている", "すべて解き終えました" in sheet["body"], sheet["body"][:60])
-    ok("案内にいじわる模試の解禁条件が書いてある",
-       "いじわる模試" in sheet["body"] and "2回連続" in sheet["body"], sheet["body"][:200])
-    ok("案内に復習・ノックへの導線がある",
-       pg.evaluate("!!document.getElementById('nonew-review') && !!document.getElementById('nonew-knock')"))
+    ok("ホームからいじわる模試への独立動線が無い（力試しモードの中だけ）",
+       'data-action="go-evil"' not in read("index.html"))
+
     pg.evaluate("window.Main.closeModals()")
 
     # 解禁後は同じ案内が別の文面になる
