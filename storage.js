@@ -36,6 +36,17 @@
    *            12列あることを確認して原因を見失う。最も気づきにくい壊れ方だった。
    *            途中の行は落ちず最終行だけが消えるため、被害にも気づきにくい。
    *            以後、行の区切り（前後の改行）だけを落とし、タブは1文字も触らない。
+   *  V1.45 (1) JSON取り込みにも「正解数の検算」を掛けた。
+   *            TSVには V1.43 で入れたのに、JSON経路には掛かっておらず、
+   *            「2つ選べ」と書いてあるのに正解1つ、single なのに正解2つ、
+   *            select_count と正解数が食い違う、といったデータが
+   *            エラーも警告も出ずに素通りで入っていた。
+   *            TSVで弾かれるものがJSONでは通る、という差自体が事故のもとなので、
+   *            同じ基準・同じ文面で弾く（黙って直さない。出ない方がまし）。
+   *        (2) select_count が未指定のJSONは、正解数から補うようにした。
+   *            従来はそのまま undefined が入り、出題側の判定が不定だった。
+   *        (3) 「Nつ選べ」の不一致メッセージを「〜しかありません」から
+   *            「〜あります」へ変更。正解が多すぎる場合に文が嘘になっていた。
    */
 
   /* ======================================================================
@@ -1156,13 +1167,54 @@
     return m ? (PICK_N[m[1]] || null) : null;
   }
 
-  function crossCheckSelectCount(stem, indices) {
+  function crossCheckPickCount(stem, got) {
     var want = statedPickCount(stem);
     if (!want) { return null; }
-    var got = (indices || []).length;
     if (got === want) { return null; }
+    /* V1.45：以前は「〜しかありません」固定だった。TSVでは正解が足りない例しか
+       無かったが、JSONでは多すぎる例が出る。文面が嘘になるので中立語にする。 */
     return '問題文は「' + want + 'つ選べ」ですが、正解が ' + got +
-           'つしかありません（作問データを直してください）';
+           'つあります（作問データを直してください）';
+  }
+
+  function crossCheckSelectCount(stem, indices) {
+    return crossCheckPickCount(stem, (indices || []).length);
+  }
+
+  /* --- JSON取り込みの検算（V1.45） ---
+     TSVは「正解列」と「解説文」の2系統を突き合わせられるが、
+     JSONは is_correct が唯一の正解情報なので、突き合わせる相手が違う。
+     JSONで食い違いうるのは次の4つ。ここを全部見る。
+       ・正解が1つも無い
+       ・問題文の「Nつ選べ」と正解数
+       ・select_count と正解数
+       ・question_type（single / multiple）と正解数 */
+  function countCorrectAtoms(atoms) {
+    var n = 0, i;
+    var list = atoms || [];
+    for (i = 0; i < list.length; i++) { if (list[i] && list[i].is_correct) { n++; } }
+    return n;
+  }
+
+  function crossCheckJsonQuestion(q, qtype) {
+    /* 数値問題は「選択肢の正誤」という概念が無い。TSVでも検算を飛ばしている。 */
+    if (qtype === 'numeric') { return null; }
+    var got = countCorrectAtoms(q.atoms);
+    if (got === 0) {
+      return '正解の選択肢がありません（is_correct が true のアトムが1つも無い）';
+    }
+    var pickErr = crossCheckPickCount(q.stem, got);
+    if (pickErr) { return pickErr; }
+    if (isNum(q.select_count) && q.select_count !== got) {
+      return 'select_count は ' + q.select_count + ' ですが、正解が ' + got + 'つあります';
+    }
+    if (qtype === 'single' && got !== 1) {
+      return 'question_type が single ですが、正解が ' + got + 'つあります';
+    }
+    if (qtype === 'multiple' && got < 2) {
+      return 'question_type が multiple ですが、正解が ' + got + 'つしかありません';
+    }
+    return null;
   }
 
   /* ここで trim() を使ってはいけない（V1.01で撤去）。
@@ -1306,6 +1358,22 @@
           });
           return;
         }
+
+        /* 正解数の検算（V1.45）。TSVと同じ基準・同じ扱いで弾く。
+           黙って single に倒したり正解を足したりしない。
+           問題文が嘘になるより、出ない方がまし。 */
+        var jsonQtype = QTYPE_ALIAS[String(q.question_type || 'single').toLowerCase()] || 'single';
+        var jsonErr = crossCheckJsonQuestion(q, jsonQtype);
+        if (jsonErr) {
+          report.skipped++;
+          report.mismatch++;
+          report.errors.push({
+            line: idx + 1, type: 'mismatch',
+            message: (idx + 1) + '件目で正解判定の不一致を検出しスキップしました（' + jsonErr + '）'
+          });
+          return;
+        }
+
         var unitNo = ctx.unitIndexMap[q.unit];
         if (!unitNo) { unitNo = ctx.nextUnitNo++; ctx.unitIndexMap[q.unit] = unitNo; }
 
@@ -1317,7 +1385,10 @@
         qq.num_code    = q.num_code || buildNumCode(unitNo, q.major, q.medium, q.sub_item);
         qq.unit_no     = unitNo;
         qq.rank        = (q.rank || 'B').toUpperCase();
-        qq.question_type = QTYPE_ALIAS[String(q.question_type || 'single').toLowerCase()] || 'single';
+        qq.question_type = jsonQtype;
+        /* select_count 未指定のJSONは正解数から補う（V1.45）。
+           従来は undefined のまま入り、出題側の判定が不定だった。 */
+        qq.select_count  = isNum(q.select_count) ? q.select_count : countCorrectAtoms(q.atoms);
         qq.is_starred  = !!q.is_starred;
         qq.atom_count  = q.atoms.length;
         qq.verify_status = q.verify_status || 'json';
@@ -2790,6 +2861,7 @@
     shrinkImage        : shrinkImage,
     USER_IMG_MAX_EDGE  : USER_IMG_MAX_EDGE,
     judgeSplittable    : judgeSplittable,
+    crossCheckJsonQuestion : crossCheckJsonQuestion,
     autoMarkSplittable : autoMarkSplittable,
     clearSplittable    : clearSplittable,
     countUnlearned     : countUnlearned,

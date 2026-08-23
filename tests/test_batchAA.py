@@ -21,8 +21,8 @@ sw = open(os.path.join(APP, "sw.js"), encoding="utf-8").read()
 p2s = open(os.path.join(APP, P2), encoding="utf-8").read()
 
 _c = re.search(r"CACHE_NAME = 'v(\d+)\.(\d+)\.(\d+)'", sw)
-ok("sw CACHE_NAME が v1.33.0 以降",
-   bool(_c) and tuple(int(x) for x in _c.groups()) >= (1, 33, 0),
+ok("sw CACHE_NAME が v1.35.0 以降",
+   bool(_c) and tuple(int(x) for x in _c.groups()) >= (1, 35, 0),
    _c.group(0) if _c else "not found")
 ok("テーマのボタンがヘッダーから消えている", 'id="btn-theme"' not in idx)
 ok("設定のテーマ行に指し先がある", 'id="set-theme"' in idx)
