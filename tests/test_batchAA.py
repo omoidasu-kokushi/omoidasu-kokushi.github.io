@@ -195,9 +195,20 @@ with sync_playwright() as p:
     ok("正解の面と誤答の面が違う",
        bool(corr) and bool(wrong) and corr[0]["bg"] != wrong[0]["bg"],
        json.dumps([corr[0]["bg"] if corr else None, wrong[0]["bg"] if wrong else None]))
-    ok("正解の面のほうが濃い（誤答は薄く抑える）",
-       bool(corr) and bool(wrong) and lum(corr[0]["bg"]) < lum(wrong[0]["bg"]),
-       "correct=%.4f wrong=%.4f" % (lum(corr[0]["bg"]), lum(wrong[0]["bg"])) if corr and wrong else "")
+    # V1.44：誤答は面を塗らない（.cx.is-wrong{background:none}）。
+    # 3つ並ぶ誤答を薄い赤で塗ると、画面全体が赤く見えて正解が埋もれたため。
+    # 誤りであることは左端の細い赤帯だけで示す。
+    # ここで輝度を比べてはいけない：透明は「明るい」でも「暗い」でもないので、
+    # 比較そのものが成立しない（V1.44以降ずっと嘘の合格／不合格になっていた）。
+    ok("正解には面の色が付く",
+       bool(corr) and corr[0]["bg"] not in ("rgba(0, 0, 0, 0)", "transparent"),
+       json.dumps(corr[0]["bg"] if corr else None))
+    ok("誤答は面を塗らない（画面が赤く染まらない）",
+       bool(wrong) and all(x["bg"] in ("rgba(0, 0, 0, 0)", "transparent") for x in wrong),
+       json.dumps([x["bg"] for x in wrong]))
+    ok("誤答は左端の帯で示す（色は残す）",
+       bool(wrong) and all(x["edge"] not in ("rgba(0, 0, 0, 0)", "transparent") for x in wrong),
+       json.dumps([x["edge"] for x in wrong]))
     ok("正解の左端の帯が誤答より太い",
        bool(corr) and bool(wrong)
        and float(corr[0]["edgeW"].replace("px", "")) > float(wrong[0]["edgeW"].replace("px", "")),

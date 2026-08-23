@@ -164,23 +164,32 @@ with sync_playwright() as p:
     ok("画面から「自分の音」の語が消えている", "自分の音" not in idx)
 
     # ---------- 同期ボタンの文言 ----------
+    # V1.44：ヘッダーの同期ボタンは撤去し、設定 6. に一本化した。
+    # 文言は【押したら何が起きるか】で決める決まりなので、
+    # 未ログインなら「ログインして同期」＝押した1回でログインまで済む、と読める。
     r = pg.evaluate("""async () => {
       const D = window.Drive, H = window.Half2Impl;
       D.__state.token = null;
       await window.Storage.setMeta('drive_token', null);
-      await H.refreshHdrSync();
+      await H.openSettings();
+      await H.refreshDrive();
       const out = D.tokenValid();
-      const outText = document.getElementById('hdr-sync-text').textContent;
+      const outText = document.getElementById('drive-sync-label').textContent;
       D.__state.token = { access_token: 'x', expires_at: Date.now() + 3600000 };
-      await H.refreshHdrSync();
-      const inText = document.getElementById('hdr-sync-text').textContent;
-      const cls = document.getElementById('btn-hdr-sync').classList.contains('is-signed-in');
+      await H.refreshDrive();
+      const inText = document.getElementById('drive-sync-label').textContent;
+      const logoutShown = !document.getElementById('btn-drive-logout').hidden;
       D.__state.token = null;
-      return { out, outText, inText, cls };
+      await H.refreshDrive();
+      return { out, outText, inText, logoutShown,
+               hdrBtn: !!document.getElementById('btn-hdr-sync') };
     }""")
-    ok("未ログインは「ログイン」", r["outText"] == "ログイン", json.dumps(r["outText"]))
-    ok("ログイン済は「同期」", r["inText"] == "同期", json.dumps(r["inText"]))
-    ok("ログイン済であることが印として付く", r["cls"] is True)
+    ok("同期ボタンはヘッダーに無い（設定に一本化）", r["hdrBtn"] is False, json.dumps(r))
+    ok("未ログインは「ログインして同期」", r["outText"] == "ログインして同期",
+       json.dumps(r["outText"], ensure_ascii=False))
+    ok("ログイン済は「今すぐ同期」", r["inText"] == "今すぐ同期",
+       json.dumps(r["inText"], ensure_ascii=False))
+    ok("ログイン済のときだけログアウトが出る", r["logoutShown"] is True, json.dumps(r))
 
     # ---------- ノックの時計：途中で抜けても止まる ----------
     r = pg.evaluate("""async () => {

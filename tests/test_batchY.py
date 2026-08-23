@@ -60,16 +60,16 @@ with sync_playwright() as p:
                w: window.innerWidth };
     }""")
     ok("ヘッダーにホームがある", bool(r["home"]), json.dumps(r))
-    ok("ヘッダーに同期がある", bool(r["sync"]), json.dumps(r))
     # V1.43：テーマはヘッダーから外し、設定 4. に一本化した
     # （狭い画面でボタンが溢れたため。同じ入口を2つ置かない決まりにも合う）。
     ok("テーマはヘッダーに出さない", r["theme"] is None, json.dumps(r))
+    # V1.44：同期ボタンもヘッダーから外し、設定 6. に一本化した。
+    # 390px でボタンが溢れ、パンくずが下に隠れていたため。
+    # 未同期の件数だけは設定ボタンのバッジとして残す（気づけなくなるのを防ぐ）。
+    ok("同期ボタンはヘッダーに出さない（設定に一本化）", r["sync"] is None, json.dumps(r))
     ok("ホームは左半分にある", r["home"]["l"] < r["w"] / 2, json.dumps(r))
-    ok("道具はまとめて右端に寄っている",
-       r["set"]["r"] >= r["w"] - 16 and r["sync"]["l"] > r["home"]["r"], json.dumps(r))
-    ok("道具の並び順は 同期 → 設定",
-       r["sync"]["r"] <= r["set"]["l"], json.dumps(r))
-    ok("ホームと道具が重なっていない", r["home"]["r"] < r["sync"]["l"], json.dumps(r))
+    ok("道具は右端に寄っている", r["set"]["r"] >= r["w"] - 16, json.dumps(r))
+    ok("ホームと道具が重なっていない", r["home"]["r"] < r["set"]["l"], json.dumps(r))
     ok("390px 幅でヘッダーが溢れない", r["set"]["r"] <= r["w"], json.dumps(r))
 
     r = pg.evaluate("""async () => {
@@ -78,8 +78,10 @@ with sync_playwright() as p:
       const b = document.getElementById('hdr-sync-badge');
       return { hidden: b.hidden, text: b.textContent };
     }""")
-    ok("未同期があるとヘッダーにバッジが出る",
+    ok("未同期があるとバッジが出る",
        r["hidden"] is False and r["text"] == "4", json.dumps(r))
+    ok("バッジの置き場所は設定ボタンの上",
+       pg.evaluate("!!document.querySelector('#btn-settings #hdr-sync-badge')"))
     r = pg.evaluate("""async () => {
       await window.Storage.clearDirty();
       await window.Half2Impl.refreshHdrSync();

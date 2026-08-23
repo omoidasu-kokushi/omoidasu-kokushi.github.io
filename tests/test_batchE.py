@@ -27,9 +27,13 @@ ok("短い休憩は5分固定と明記", "5分（固定）" in idx)
 ok("ヘッダーに専用トグルがある", 'id="pomodoro-toggle"' in idx)
 # 記号を「使わない」ことの検証。コメント内の言及は許すが、
 # 画面に出る文字列（HTMLの初期値と textContent の代入）に混ざっていないことを見る。
+# V1.44：ラベルに「⏲タイマー」を添えたので、ボタン全体の textContent を
+# 書き換えるとその行ごと消える。状態は .pomo-toggle-state だけに書く。
 ok("トグルは絵文字グリフを使わない（環境差を避ける）",
    "⏸" not in idx and "OFF</button>" not in idx
-   and "tg.textContent = p.enabled ? 'ON' : 'OFF';" in read(P1))
+   and "setText('#pomodoro-toggle .pomo-toggle-state', p.enabled ? 'ON' : 'OFF');" in read(P1))
+ok("トグルに「⏲タイマー」の説明文字が付いている（何のONか分かる）",
+   'class="pomo-toggle-text">⏲タイマー<' in idx)
 # V1.39：13列TSVに合わせて col13 が増えたので10個（アプリ側が正）
 ok("列ごとの[？]は10個", idx.count('class="help-btn help-col"') == 10, str(idx.count('class="help-btn help-col"')))
 for c in [1, 2, 3, 4, 5, 6, 7, 9, 12, 13]:
@@ -194,11 +198,12 @@ with sync_playwright() as p:
         await window.Main.startSession({ mode:'random', count:3, applyGuard:false, newOnly:false }); }""")
     pg.wait_for_timeout(1600)
     ok("出題中はトグルが見える", pg.evaluate("!document.getElementById('pomodoro-toggle').hidden"))
-    ok("ON中は ON と出る", pg.evaluate("document.getElementById('pomodoro-toggle').textContent") == "ON")
+    ok("ON中は ON と出る",
+       pg.evaluate("document.querySelector('#pomodoro-toggle .pomo-toggle-state').textContent") == "ON")
     pg.evaluate("document.getElementById('pomodoro-toggle').click()")
     pg.wait_for_timeout(700)
     offst = pg.evaluate("""() => ({
-        label: document.getElementById('pomodoro-toggle').textContent,
+        label: document.querySelector('#pomodoro-toggle .pomo-toggle-state').textContent,
         pressed: document.getElementById('pomodoro-toggle').getAttribute('aria-pressed'),
         chipShown: !document.getElementById('pomodoro-chip').hidden,
         chipOff: document.getElementById('pomodoro-chip').classList.contains('is-off'),
@@ -214,7 +219,8 @@ with sync_playwright() as p:
        pg.evaluate("async () => await window.Storage.getMeta('pomodoro_enabled')") is False)
     pg.evaluate("document.getElementById('pomodoro-toggle').click()")
     pg.wait_for_timeout(700)
-    onst = pg.evaluate("""() => ({ label: document.getElementById('pomodoro-toggle').textContent,
+    onst = pg.evaluate("""() => ({
+        label: document.querySelector('#pomodoro-toggle .pomo-toggle-state').textContent,
         running: window.Main.state.pomodoro.running,
         time: document.getElementById('pomodoro-time').textContent })""")
     ok("もう1タップでONに戻り、計測が再開する",
