@@ -776,19 +776,31 @@
       return syncProgress(say).then(function (pr) {
         report.progress = pr;
       }).catch(function (e) {
-        /* 進捗の同期に失敗しても、図の同期の結果は残す。 */
+        /* 図の同期の結果（件数）は残す。ただし【成功として扱わない】。
+           V1.47まで、ここで握りつぶしていたのが最悪の壊れ方だった。
+           進捗が1件も上がっていないのに report.ok は true のままで、
+           このあと clearDirty() が未同期バッジまで0に戻していた。
+           利用者から見ると「同期できている」。実際には学習の記録が
+           上がっておらず、機種変更で初めて失われていたと分かる。 */
         report.progress_error = (e && e.message) || String(e);
+        report.ok = false;
+        report.error = '学習の記録を同期できませんでした：' + report.progress_error;
       });
     }).then(function () {
       report.finished_at = nowMs();
-      return S.clearDirty()
+      /* 失敗したときは未同期の印を消さない。
+         印が残ることが、利用者にとって唯一の「まだ上がっていない」合図になる。 */
+      return (report.ok ? S.clearDirty() : Promise.resolve(null))
         .then(function () { return S.setMeta('drive_last_sync', report.finished_at); })
+        .then(function () { return S.setMeta('drive_last_error', report.ok ? null : report.error); })
         .then(function () { return report; });
     }).catch(function (e) {
       report.ok = false;
       report.error = (e && e.message) || String(e);
       report.finished_at = nowMs();
-      return report;
+      return S.setMeta('drive_last_error', report.error)
+        .catch(function () { return null; })
+        .then(function () { return report; });
     });
   }
 
@@ -890,7 +902,17 @@
         return {
           schema: PROGRESS_SCHEMA,
           updated_at: nowMs(),
-          logs: r[0] || [],
+          /* V1.48：log_id は端末ごとの連番で、他の端末では意味を持たない。
+             送ると、別端末の別の解答に同じ番号が付いた状態で戻ってきて、
+             書き戻しのときに主キーが衝突する。端末の外へ出さない。
+             （storage.js 側でも落としているので二重の守り） */
+          logs: (r[0] || []).map(function (l) {
+            var o = {}, k;
+            for (k in l) {
+              if (Object.prototype.hasOwnProperty.call(l, k) && k !== 'log_id') { o[k] = l[k]; }
+            }
+            return o;
+          }),
           meta: meta,
           stars_atom: starRows(r[2], 'atom_id'),
           stars_question: starRows(r[3], 'q_id'),

@@ -47,6 +47,15 @@
    *            従来はそのまま undefined が入り、出題側の判定が不定だった。
    *        (3) 「Nつ選べ」の不一致メッセージを「〜しかありません」から
    *            「〜あります」へ変更。正解が多すぎる場合に文が嘘になっていた。
+   *  V1.48 (1) replaceAllLogs が除外する主キーの名前が間違っていた。
+   *            progress_log の keyPath は 'log_id' なのに 'id' を除外していたため、
+   *            端末をまたぐと主キーが衝突して add() が ConstraintError を投げ、
+   *            トランザクションごと abort していた。
+   *            log_id は端末ごとの連番なので、別端末の【別の解答】に同じ番号が付く。
+   *            mergeLogs の重複判定は atom_id|answered_at なので、この衝突は
+   *            取り除かれない。つまり2台目を使い始めた最初の同期で必ず起きる。
+   *            同じ処理の restoreBackup 側は最初から 'log_id' で正しかった。
+   *            片方だけ間違っている＝写し間違い。実機で再現を確認済み。
    */
 
   /* ======================================================================
@@ -1967,7 +1976,11 @@
       s[STORE.PROGRESS].clear();
       (logs || []).forEach(function (l) {
         var rec = {};
-        Object.keys(l).forEach(function (k) { if (k !== 'id') { rec[k] = l[k]; } });
+        /* 除外するのは 'log_id'（このストアの keyPath）。'id' ではない。
+           落とさずに add() すると、別端末から来た連番がそのまま主キーになり、
+           自分の連番と衝突してトランザクションごと落ちる（V1.48で修正）。
+           落としておけば autoIncrement が採番し直すので、必ず一意になる。 */
+        Object.keys(l).forEach(function (k) { if (k !== 'log_id') { rec[k] = l[k]; } });
         s[STORE.PROGRESS].add(rec);
       });
     }).then(function () { return (logs || []).length; });

@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.29.js
+ * 20260815_main_part2_V1.30.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,10 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.30 (1) 同期に失敗したとき、その理由を設定画面に出すようにした。
+ *            V1.48 で drive.js が失敗を握りつぶすのをやめたが、自動同期は
+ *            画面に何も出さないため、直しただけでは利用者に届かない。
+ *            未同期バッジが減らないことに加えて、理由も読めるようにする。
  *  V1.29 (1) V1.44 でヘッダーの同期ボタンを外したとき、未同期件数のバッジを
  *            更新する呼び出しも一緒に消えていた。実機で確認したところ、
  *            未同期が7件あってもバッジは一度も出ない状態だった
@@ -2113,12 +2117,13 @@
     renderDriveSteps();
     return Promise.all([D.getClientId(), D.lastSync(), D.hasConsent()]).then(function (r) {
       var id = r[0], last = r[1], consent = r[2];
-      var own = null;
+      var own = null, lastErr = null;
       var inp = $('#drive-client-id');
       /* 入力欄には【自分で入れたIDだけ】を映す。組み込みIDをここへ書くと、
          保存し直したときに自分のIDとして固定されてしまう。 */
       return S.loadMeta().then(function (mm) {
         own = mm.drive_client_id || null;
+        lastErr = mm.drive_last_error || null;
         if (inp && !inp.value) { inp.value = own || ''; }
         refreshDriveAdvanced(!!own);
         return null;
@@ -2133,7 +2138,9 @@
       setText('#drive-note', !id
         ? (builtIn ? 'ログインの準備ができていません。'
                    : 'このアプリにはIDが組み込まれていません。下の「自分のGoogle Cloudで動かす」を開いてください。')
-        : fmtStamp(last) + (consent ? '' : '（初回は注意事項の確認があります）'));
+        : fmtStamp(last) + (consent ? '' : '（初回は注意事項の確認があります）')
+          /* 自動同期は黙って走るので、失敗はここでしか気づけない。 */
+          + (lastErr ? '　⚠ ' + lastErr : ''));
 
       var logout = $('#btn-drive-logout'), sync = $('#btn-drive-sync');
       var label = $('#drive-sync-label'), badge = $('#drive-pending');
