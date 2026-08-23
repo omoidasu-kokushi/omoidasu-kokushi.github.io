@@ -1,9 +1,15 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.33.js
+ * 20260815_main_part1_V1.34.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.34 (1) 取り消せない操作の共通確認（confirmAction）。
+ *            個別にモーダルを増やす方式だと、増やし忘れた操作だけが
+ *            素通りする。実際「すべて元の文に戻す」「この図を消す」が
+ *            1タップで通っていた。入口を1つにした。
+ *        (2) Escape で覆いを畳めるようにした（§4-14 の二重の経路）。
+ *            背景タップは指なら届くが、PCでは逃げ道が［やめる］1つだった。
  *  V1.33 (1) 買い切りライセンス（アプリ V1.53）。無料枠は 200問。
  *            止めるのは【初見の問題】だけで、復習は鍵が無くても続く。
  *            解いた記録を人質に取らないことを前提にした。取れば
@@ -1851,6 +1857,20 @@
   function removeUserImage() {
     var q = state.current.question;
     if (!q) { return Promise.resolve(false); }
+    /* V1.55：確認を挟む。自分で描いた図は作り直せない。
+       1タップで戻せなくなる操作に、逃げ道が無かった。 */
+    return confirmAction({
+      title: 'この図を消しますか',
+      body: '自分で入れた図を消します。元には戻せません。'
+          + 'もう一度使うには、撮り直すか描き直すことになります。',
+      ok: '消す'
+    }).then(function (yes) {
+      if (!yes) { return false; }
+      return doRemoveUserImage(q);
+    });
+  }
+
+  function doRemoveUserImage(q) {
     return S.deleteUserImage(q.q_id).then(function () {
       q.user_image_id = null;
       q.user_image_updated_at = null;
@@ -2692,6 +2712,35 @@
     layer.hidden = false;
   }
 
+  /* --- 取り消せない操作の共通確認（V1.55） ---
+     個別にモーダルを増やす方式だと、増やし忘れた操作だけが素通りする。
+     実際「すべて元の文に戻す」と「この図を消す」は素通りしていた。
+     入口を1つにして、確認が要る操作は必ずここを通す。
+
+     Promise<boolean> を返す。押されなければ false のまま解決する
+     （reject にすると呼び出し側が毎回 catch を書くことになり、
+       書き忘れたところで未処理の拒否が飛ぶ）。 */
+  var confirmResolve = null;
+
+  function confirmAction(cfg) {
+    cfg = cfg || {};
+    /* 前の確認が開いたままなら、それは「やめる」として畳む。
+       畳まないと、古い解決関数が残って別の操作に同意したことになる。 */
+    if (confirmResolve) { var prev = confirmResolve; confirmResolve = null; prev(false); }
+    setText('#confirm-title', cfg.title || '取り消せません');
+    setText('#confirm-body', cfg.body || 'この操作は取り消せません。実行しますか？');
+    setText('#confirm-go', cfg.ok || '実行する');
+    openModal('#modal-confirm');
+    return new Promise(function (resolve) { confirmResolve = resolve; });
+  }
+
+  function settleConfirm(yes) {
+    if (!confirmResolve) { return; }
+    var f = confirmResolve;
+    confirmResolve = null;
+    f(!!yes);
+  }
+
   /* V1.53：購入案内。買わせる画面ではなく【止まったのは初見だけ】を
      伝える画面。ここで復習まで止まっていると誤解されると、
      いちばん大事な使い方（毎日の復習）ごと離脱される。 */
@@ -2703,6 +2752,9 @@
   }
 
   function closeModals() {
+    /* 覆いを畳むときは、開いていた確認を必ず「やめる」で解決する。
+       解決しないまま閉じると、待っている Promise が永久に残る。 */
+    settleConfirm(false);
     var layer = $('#modal-layer');
     if (layer) { layer.hidden = true; }
     $$('#modal-layer > .modal-card').forEach(function (c) { c.hidden = true; });
@@ -2845,6 +2897,14 @@
     on($('#btn-next'), 'click', function () { nextQuestion(); });
 
     /* --- モーダル共通 --- */
+    on($('#confirm-go'), 'click', function () {
+      /* 先に解決してから畳む。順序が逆だと closeModals() が
+         「やめる」として畳んでしまい、押しても何も起きない。 */
+      var f = confirmResolve;
+      confirmResolve = null;
+      closeModals();
+      if (f) { f(true); }
+    });
     on($('#modal-layer'), 'click', function (ev) {
       if (ev.target.id === 'modal-layer') { closeModals(); return; }
       if (ev.target.closest('[data-close]')) { closeModals(); }
@@ -2882,6 +2942,16 @@
     });
 
     /* --- キーボード（PC操作の補助） --- */
+    /* --- Escape で覆いを畳む（V1.55・§4-14 の二重の経路） ---
+       覆いが残る事故は白画面より重い。背景タップは指では届くが、
+       PCで開いたときに逃げ道が［やめる］ボタン1つしかなかった。
+       出題中の判定より前に置く（出題中でも覆いは畳めなければならない）。 */
+    on(doc, 'keydown', function (ev) {
+      if (ev.key !== 'Escape' && ev.key !== 'Esc') { return; }
+      var layer = $('#modal-layer');
+      if (layer && !layer.hidden) { ev.preventDefault(); closeModals(); }
+    });
+
     on(doc, 'keydown', function (ev) {
       if (state.screen !== 'quiz') { return; }
       var phase = $('#screen-quiz').getAttribute('data-phase');
@@ -3203,6 +3273,8 @@
     openModal     : openModal,
     /* V1.53：ライセンス。後半（設定画面）から呼ぶ。 */
     openBuyDialog : openBuyDialog,
+    /* V1.55：取り消せない操作の共通確認。後半からも使う。 */
+    confirmAction : confirmAction,
     licGate       : licGate,
     refreshFreeGate: function () { renderFreeGate(state.homeState); },
     BUY_URL       : BUY_URL,

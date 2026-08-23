@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.36.js
+ * 20260815_main_part2_V1.37.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,8 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.37 (1) 「すべて元の文に戻す」「この音を消す」に確認を挟んだ。
+ *            前半の confirmAction を通す。個別モーダルは増やさない。
  *  V1.36 (1) 模試の分類を【最後に見てからの距離】へ作り直した。
  *            V1.52〜V1.54 の familiar / novel は「その中項目を学んだか」で
  *            決めていたため、**学習が進むと必ず消える**分類だった。
@@ -1041,6 +1043,20 @@
   }
 
   function resetAllText() {
+    /* V1.55：確認を挟む。書き換えた文は一つずつ手で直したもので、
+       一括で消すと全部やり直しになる。1タップで通してはいけない。 */
+    return M.confirmAction({
+      title: 'すべて元の文に戻しますか',
+      body: '書き換えた文をすべて元に戻します。元には戻せません。'
+          + '書き出しておけば、あとから貼り直せます。',
+      ok: 'すべて戻す'
+    }).then(function (yes) {
+      if (!yes) { return false; }
+      return doResetAllText();
+    });
+  }
+
+  function doResetAllText() {
     return clearAllOverrides().then(function () {
       tipFixedFor = null;
       return renderTextList();
@@ -4263,7 +4279,15 @@
     on($('#btn-alarm-test'), 'click', function () {
       playAlarm((M.state.meta && M.state.meta.pomodoro_alarm) || 'chime');
     });
-    on($('#btn-alarm-del'), 'click', function () { deleteAlarmFile(); });
+    on($('#btn-alarm-del'), 'click', function () {
+      /* 音は入れ直せるので、確認の文面は軽くする。
+         ただし「押したら消えた」は同じなので、経路は共通にする。 */
+      M.confirmAction({
+        title: 'この音を消しますか',
+        body: '自分で入れたアラーム音を消します。もう一度使うには入れ直しになります。',
+        ok: '消す'
+      }).then(function (yes) { if (yes) { deleteAlarmFile(); } }).catch(noop);
+    });
 
     on($('#set-longbreak'), 'change', function (ev) {
       S.setMeta('pomodoro_longbreak_min', parseInt(ev.target.value, 10) || 15);

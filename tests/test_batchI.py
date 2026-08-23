@@ -249,14 +249,23 @@ with sync_playwright() as p:
 
     resetall = pg.evaluate("""async () => {
       const H=window.Half2Impl, S=window.Storage;
-      await H.resetAllText();
+      /* V1.55：一括リセットは確認を通る。
+         呼んだ直後に確認が開いているので、そこで［実行する］を押してから待つ。
+         押さずに await すると永久に待つ（実際に固まった）。 */
+      const yes = async (fn) => { const p = fn();
+        document.getElementById('confirm-go').click(); return await p; };
+      const opened = (() => { const p = H.resetAllText();
+        const o = !document.getElementById('modal-confirm').hidden;
+        document.getElementById('confirm-go').click(); return p.then(() => o); })();
+      const confirmShown = await opened;
       const saved = await S.getMeta('text_overrides', {});
       await S.setMeta('home_tip_index', 0); await H.renderHomeTips();
       const def = H.textCatalog().find(r=>r.id==='t01.body').def;
-      return { empty: Object.keys(saved).length === 0,
+      return { empty: Object.keys(saved).length === 0, confirmShown,
                back: document.getElementById('home-tip-body').textContent === def }; }""")
     ok("[すべて元に戻す]で書き換えが全部消える", resetall["empty"], json.dumps(resetall))
     ok("戻したあと画面も既定文に戻る", resetall["back"], json.dumps(resetall))
+    ok("一括で戻す前に確認が出る（V1.55）", resetall["confirmShown"], json.dumps(resetall))
 
     inbk = pg.evaluate("""async () => {
       const H=window.Half2Impl, S=window.Storage;
@@ -264,7 +273,9 @@ with sync_playwright() as p:
       await H.setOverride('t05.body', 'バックアップ確認用', def);
       const bk = await S.exportBackup();
       const m = bk.stores.meta.filter(x => x.key === 'text_overrides')[0];
-      await H.resetAllText();
+      const p2 = H.resetAllText();
+      document.getElementById('confirm-go').click();
+      await p2;
       return { inBackup: !!(m && m.value && m.value['t05.body']) }; }""")
     ok("書き換えた文はバックアップに含まれる（新ストアを増やしていない）",
        inbk["inBackup"], json.dumps(inbk))
