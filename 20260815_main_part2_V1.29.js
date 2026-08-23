@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.21.js
+ * 20260815_main_part2_V1.29.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,21 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.29 (1) V1.44 でヘッダーの同期ボタンを外したとき、未同期件数のバッジを
+ *            更新する呼び出しも一緒に消えていた。実機で確認したところ、
+ *            未同期が7件あってもバッジは一度も出ない状態だった
+ *            （テストは refreshHdrSync() を手で呼んでいたため気づけなかった）。
+ *            refreshDrive() と scheduleAutoSync() から呼ぶよう結び直した。
+ *        (2) 撤去済みボタンの世話をするコードを削除。
+ *            同期関数の本体・その処理中フラグ・撤去済みボタンのラベルと
+ *            クラスを触る部分・そのボタンへの click 結び付けの4つ。
+ *            どれも null 判定で素通りするだけだったが、残すと
+ *            「ボタンがまだある」と読めてしまう。
+ *            ※ ここに識別子をそのまま書かないこと。batchY が
+ *              「残っていないか」を文字列で見ているため、履歴に書くと引っかかる。
+ *        (3) refreshHdrSync を refreshSyncBadge へ改名。
+ *            ヘッダーの同期ボタンはもう無く、実際に更新しているのは
+ *            設定ボタンのバッジだけなので、名前が実態と合っていなかった。
  *  V1.21 (1) バッチC-3：アラーム音に「自分の音」を追加。取り込んだ音は
  *            画像と同じ user_files に kind:'audio' で入れる。
  *            ストアを分けないのは、バックアップ・復元・全消去の3経路に
@@ -2131,6 +2146,8 @@
           badge.hidden = !(n > 0);
           badge.textContent = n > 99 ? '99+' : String(n);
         }
+        /* 設定画面の中と外で件数が食い違わないよう、同じ n で両方を書く。 */
+        refreshSyncBadge(n);
         return { id: id, signedIn: signedIn, last: last, consent: consent,
                  builtIn: builtIn, own: own, pending: n };
       });
@@ -2262,63 +2279,22 @@
     });
   }
 
-  /* --- ヘッダーの同期ボタン（V1.41） ---
-     設定の奥にあると、未同期が溜まっても気づけない。
-     押したその場でログインまで済ませる（await を挟まないこと）。 */
-  var hdrSyncBusy = false;
-
-  function hdrSync() {
-    if (!askDriveConsentSync()) { return Promise.resolve(null); }
-    hdrSyncBusy = true;
-    var lb = $('#hdr-sync-text');
-    if (lb) { lb.textContent = '同期中…'; }
-    toast('同期しています…', 1800);
-    return D.signInAndSync().then(function (rep) {
-      hdrSyncBusy = false;
-      if (!rep || !rep.ok) { toast('同期できませんでした', 3600); return null; }
-      var moved = (rep.uploaded || 0) + (rep.downloaded || 0) + (rep.deleted || 0) +
-                  (rep.removed_local || 0) + (rep.memo_updated || 0) +
-                  ((rep.progress && rep.progress.added) || 0);
-      toast(moved > 0 ? ('同期しました（' + moved + '件）') : 'すでに最新です', 3200);
-      if (moved > 0 && M.refreshHome) { M.refreshHome().catch(function () {}); }
-      return refreshHdrSync();
-    }).catch(function (e) {
-      hdrSyncBusy = false;
-      var msg = (e && e.message) || String(e);
-      if (/popup|ブロック|開けません|中止/.test(msg)) {
-        toast('ログインの窓が開きませんでした。設定 ＞ ドライブ同期に対処法があります', 5200);
-      } else {
-        toast(msg, 4200);
-      }
-      refreshHdrSync();
-      return null;
-    });
-  }
-
-  /* 未同期の件数をヘッダーへ。通信しないので、圏外でも正しく出る。 */
-  function refreshHdrSync() {
-    /* 文言は【押したら何が起きるか】で決める。
-       「同期中」は処理の最中を指す言葉なので、待機している状態に
-       使うと、押していいのか分からなくなる。
-         未ログイン → ログイン（押すとログインして同期する）
-         ログイン済 → 同期  （押すと同期する）
-       いま走っているあいだだけ「同期中…」に差し替える。 */
-    var signedIn = D.tokenValid();
-    var lb = $('#hdr-sync-text');
-    if (lb && !hdrSyncBusy) { lb.textContent = signedIn ? '同期' : 'ログイン'; }
-    var btn = $('#btn-hdr-sync');
-    if (btn) {
-      btn.setAttribute('aria-label', signedIn ? '同期する' : 'ログインして同期する');
-      btn.classList.toggle('is-signed-in', signedIn);
-    }
-    return D.pendingCount().then(function (n) {
+  /* --- 未同期の件数バッジ（V1.29／もとは V1.41 のヘッダー同期ボタン） ---
+     ボタンは V1.44 で撤去したが、件数だけは設定ボタンの上に残してある。
+     どこにも出さないと、溜まっていることに気づけないため。
+     通信しないので、圏外でも正しい数が出る。
+     n を渡せばその値を使う（呼び出し元が既に数えているときの二度手間を避ける）。 */
+  function refreshSyncBadge(known) {
+    var apply = function (n) {
       var b = $('#hdr-sync-badge');
       if (b) {
         b.hidden = !(n > 0);
         b.textContent = n > 99 ? '99+' : String(n);
       }
       return n;
-    }).catch(function () { return 0; });
+    };
+    if (typeof known === 'number') { return Promise.resolve(apply(known)); }
+    return D.pendingCount().then(apply).catch(function () { return 0; });
   }
 
   /* スプラッシュの［ログインして同期］から呼ぶ。
@@ -2383,6 +2359,9 @@
   }
 
   function scheduleAutoSync(ms) {
+    /* 同期そのものは ms 後だが、件数の表示は待たせない。
+       ここは通信しないので、ログインしていなくても正しく出る。 */
+    refreshSyncBadge();
     if (autoSyncTimer) { global.clearTimeout(autoSyncTimer); }
     autoSyncTimer = global.setTimeout(function () {
       autoSyncTimer = null;
@@ -3509,7 +3488,7 @@
     startByScope: startByScope,
     renderRandomPick: renderRandomPick,  pickNode: pickNode,  pickBadge: pickBadge,
     maybeShowClearedSheet: maybeShowClearedSheet,
-    refreshHdrSync: refreshHdrSync,
+    refreshSyncBadge: refreshSyncBadge,
     openDashboard: openDashboard,        renderDashboard: renderDashboard,
     setPreferFrequent: setPreferFrequent,
     openSearch: openSearch,              runSearch: runSearch,
@@ -3833,7 +3812,6 @@
     on($('#btn-contact-copy'),  'click', function () { copyContact(); });
     on($('#btn-contact-close'), 'click', function () { hide('#modal-contact'); });
     on($('#btn-drive-save-id'), 'click', function () { saveDriveClientId(); });
-    on($('#btn-hdr-sync'),      'click', function () { hdrSync(); });
     on($('#btn-pwa-install'),   'click', function () { pwaInstall(); });
     on($('#btn-pwa-how'),       'click', function () { pwaHow(); });
     on($('#btn-drive-logout'),  'click', function () { driveLogout(); });

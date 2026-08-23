@@ -8,6 +8,7 @@ APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__f
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
 R = []
 def ok(n, c, d=""): R.append((bool(c), n, d))
+def read(f): return open(os.path.join(APP, f), encoding="utf-8").read()
 
 P1 = os.path.basename(sorted(glob.glob(os.path.join(APP, "*main_part1_V*.js")))[-1])
 P2 = os.path.basename(sorted(glob.glob(os.path.join(APP, "*main_part2_V*.js")))[-1])
@@ -72,9 +73,11 @@ with sync_playwright() as p:
     ok("ホームと道具が重なっていない", r["home"]["r"] < r["set"]["l"], json.dumps(r))
     ok("390px 幅でヘッダーが溢れない", r["set"]["r"] <= r["w"], json.dumps(r))
 
+    # V1.47：この関数は refreshSyncBadge へ改名した。
+    # ヘッダーの同期ボタンはもう無く、更新しているのは設定ボタンのバッジだけ。
     r = pg.evaluate("""async () => {
       await window.Storage.clearDirty(); await window.Storage.bumpDirty(4);
-      await window.Half2Impl.refreshHdrSync();
+      await window.Half2Impl.refreshSyncBadge();
       const b = document.getElementById('hdr-sync-badge');
       return { hidden: b.hidden, text: b.textContent };
     }""")
@@ -84,10 +87,43 @@ with sync_playwright() as p:
        pg.evaluate("!!document.querySelector('#btn-settings #hdr-sync-badge')"))
     r = pg.evaluate("""async () => {
       await window.Storage.clearDirty();
-      await window.Half2Impl.refreshHdrSync();
+      await window.Half2Impl.refreshSyncBadge();
       return document.getElementById('hdr-sync-badge').hidden;
     }""")
     ok("未同期0ならバッジは出ない", r is True)
+
+    # V1.47：ここが今回の本丸。
+    # V1.44 でヘッダーの同期ボタンを外したとき、バッジを更新する呼び出しも
+    # 一緒に消えていた。手で refreshSyncBadge() を呼べば出るので、
+    # 上の2件だけでは「実際には一度も出ない」ことに気づけない。
+    # ホームへ行くだけでバッジが立つか、を見る。
+    r = pg.evaluate("""async () => {
+      await window.Storage.clearDirty();
+      const b = document.getElementById('hdr-sync-badge');
+      b.hidden = true; b.textContent = '0';
+      await window.Storage.bumpDirty(7);
+      window.Main.go('home');
+      await new Promise(r => setTimeout(r, 1200));
+      return { hidden: b.hidden, text: b.textContent };
+    }""")
+    ok("ホームへ行くだけでバッジが立つ（手で呼ばなくても更新される）",
+       r["hidden"] is False and r["text"] == "7", json.dumps(r))
+    r = pg.evaluate("""async () => {
+      await window.Storage.clearDirty();
+      await window.Half2Impl.refreshDrive();
+      const b = document.getElementById('hdr-sync-badge');
+      return { hidden: b.hidden, text: b.textContent };
+    }""")
+    ok("同期のあと（refreshDrive）にもバッジが下がる",
+       r["hidden"] is True, json.dumps(r))
+    # 引用符つきの形（＝実際にコードとして書かれている形）だけを見る。
+    # 素の名前で見ると、改版履歴に書いた説明文にも当たってしまう。
+    _p2 = read(P2)
+    ok("撤去したヘッダー同期ボタンの世話をするコードが残っていない",
+       "function hdrSync" not in _p2
+       and "'#btn-hdr-sync'" not in _p2
+       and "'#hdr-sync-text'" not in _p2,
+       "P2=" + P2)
 
     # ---------- ホームへ1タップで戻れる ----------
     r = pg.evaluate("""async () => {
