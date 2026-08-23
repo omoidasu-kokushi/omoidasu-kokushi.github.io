@@ -151,10 +151,10 @@ def runtime_checks():
                    style: window.Half2Impl.st && window.Half2Impl.st.exam
                           && window.Half2Impl.st.exam.style };
         }""")
-        # V1.52：preferKnown（2分類）は mix（3分類）に置き換わった。
+        # V1.54：分類を「最後に見てからの距離」へ作り直した（fresh/faded/unseen）。
         ok("直前モードを選ぶと S/A ＋ 既習寄りの配分で組まれる",
            r["ranks"] == ["S", "A"] and r["mix"] is not None
-           and r["mix"]["solved"] > r["mix"]["novel"], json.dumps(r))
+           and r["mix"]["fresh"] > r["mix"]["unseen"], json.dumps(r))
 
         ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))
         br.close()

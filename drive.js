@@ -857,6 +857,11 @@
   /* 集合の足し算。分析スキャン精度の分子。 */
   var META_UNION_KEYS = ['scan_answered_qids'];
 
+  /* V1.54：肢ごとの時刻表。肢ごとに新しい方を採る。
+     範囲リセット（中項目単位の消去）の墓標。全消しの progress_reset_at と違い、
+     【どの肢を、いつ消したか】が要るので1つの時刻では持てない。 */
+  var META_MAP_MAX_KEYS = ['scope_reset_at'];
+
   /* V1.53：ライセンスは【持っている側】が勝つ。
      設定の新旧で決めると、買っていない端末で日界を変えただけで
      鍵が消えることになる。片方にあれば残す。 */
@@ -920,7 +925,8 @@
                         S.getAllQuestions()])
       .then(function (r) {
         var meta = {}, m = r[1] || {};
-        META_MAX_KEYS.concat(META_OR_KEYS, META_UNION_KEYS, META_NEWER_KEYS, META_KEEP_KEYS)
+        META_MAX_KEYS.concat(META_OR_KEYS, META_UNION_KEYS, META_NEWER_KEYS,
+                             META_KEEP_KEYS, META_MAP_MAX_KEYS)
           .forEach(function (k) { if (m[k] !== undefined) { meta[k] = m[k]; } });
         return {
           schema: PROGRESS_SCHEMA,
@@ -1023,6 +1029,22 @@
         out[k] = list;
       }
     }
+    for (i = 0; i < META_MAP_MAX_KEYS.length; i++) {
+      k = META_MAP_MAX_KEYS[i];
+      var lm = (localMeta[k] && typeof localMeta[k] === 'object') ? localMeta[k] : null;
+      var rm = (remoteMeta[k] && typeof remoteMeta[k] === 'object') ? remoteMeta[k] : null;
+      if (lm || rm) {
+        var mm = {};
+        [lm, rm].forEach(function (src) {
+          if (!src) { return; }
+          Object.keys(src).forEach(function (id) {
+            var v = Number(src[id]) || 0;
+            if (!(mm[id] >= v)) { mm[id] = v; }
+          });
+        });
+        out[k] = mm;
+      }
+    }
     for (i = 0; i < META_KEEP_KEYS.length; i++) {
       k = META_KEEP_KEYS[i];
       var kv = localMeta[k] || remoteMeta[k];
@@ -1120,6 +1142,29 @@
       if (cut > 0) {
         merged = merged.filter(function (l) { return Number(l.answered_at || 0) > cut; });
       }
+      /* --- V1.54：範囲リセット（中項目単位）の墓標を適用する ---
+         肢ごとに「この時刻までの記録は消した」を持つ。
+         全消しと同じ理由で、これが無いと消した範囲だけが
+         向こうの台帳からよみがえる。 */
+      var scopeCut = {};
+      [(mine.meta || {}).scope_reset_at, (theirs.meta || {}).scope_reset_at]
+        .forEach(function (src) {
+          if (!src || typeof src !== 'object') { return; }
+          Object.keys(src).forEach(function (id) {
+            var v = Number(src[id]) || 0;
+            if (!(scopeCut[id] >= v)) { scopeCut[id] = v; }
+          });
+        });
+      var scopeKeys = Object.keys(scopeCut);
+      if (scopeKeys.length) {
+        var before2 = merged.length;
+        merged = merged.filter(function (l) {
+          var c2 = scopeCut[l.atom_id];
+          return !(c2 > 0) || Number(l.answered_at || 0) > c2;
+        });
+        report.dropped_by_scope_reset = before2 - merged.length;
+      }
+
       report.logs_after = merged.length;
       report.added = merged.length - mine.logs.length;
       report.dropped_by_reset = cut > 0 ? 1 : 0;

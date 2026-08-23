@@ -2799,7 +2799,27 @@
           });
           victims.forEach(function (l) { st[STORE.PROGRESS].delete(l.log_id); });
         }).then(function () {
-          return { ok: true, atoms: atoms.length, logs: victims.length };
+          /* --- V1.54：範囲リセットにも墓標を残す ---
+             これが無いと、次の同期で向こうの台帳から消した範囲だけが
+             よみがえる。利用者が明示的に実行した破壊的操作が
+             無言で取り消されるのが、いちばんまずい壊れ方（§11-10）。
+
+             全消し（progress_reset_at）は1つの時刻で足りるが、
+             範囲リセットは【どの肢を、いつ消したか】が要るので
+             肢ごとの時刻表で持つ。合体は肢ごとに新しい方を採る。 */
+          var t = nowMs();
+          return loadMeta().then(function (m) {
+            var map = (m && typeof m.scope_reset_at === 'object' && m.scope_reset_at)
+              ? m.scope_reset_at : {};
+            var next = {};
+            Object.keys(map).forEach(function (k) { next[k] = Number(map[k]) || 0; });
+            atoms.forEach(function (a) {
+              if (!(next[a.atom_id] > t)) { next[a.atom_id] = t; }
+            });
+            return setMeta('scope_reset_at', next);
+          }).then(function () {
+            return { ok: true, atoms: atoms.length, logs: victims.length, reset_at: t };
+          });
         });
       });
     });
@@ -2831,7 +2851,10 @@
              全部よみがえる。利用者が明示的に実行した破壊的操作が、
              無言で取り消されるのが一番まずい。
              この時刻以前の記録は、合体のときに落とす（drive.js）。 */
-          progress_reset_at: nowMs()
+          progress_reset_at: nowMs(),
+          /* V1.54：全消しは範囲リセットの上位互換なので、肢ごとの墓標は畳む。
+             残しても効果は同じだが、時刻表が延々と太り続ける。 */
+          scope_reset_at: {}
         });
       }).then(function () {
         return { ok: true, backup_filename: saved.filename };

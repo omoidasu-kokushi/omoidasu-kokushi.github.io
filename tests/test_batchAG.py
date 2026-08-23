@@ -45,68 +45,91 @@ def runtime_checks():
         except Exception: pass
         pg.wait_for_timeout(600)
 
-        # ---------- 既出／初見の混合 ----------
+        # ---------- 模試の3分類（V1.54：最後に見てからの距離） ----------
         r = pg.evaluate("""async () => {
           const S = window.Storage, K = window.Scheduler;
-          // 一部の問題だけ「全肢を解いた」状態にする
           const qs = await S.getAllQuestions();
-          /* 中項目ごとに【1問だけ】解いた状態にする。
-             まとめて先頭40問を解くと、その中項目が丸ごと解答済みになり、
-             「同じ中項目の別の問題」＝familiar が構造的に作れない。 */
+          const day = 86400000, now = Date.now();
+          /* fresh（昨日解いた）と faded（60日前に解いた）を作り分ける。
+             V1.52 までは「中項目が学習済みか」で分けていたが、
+             学習が進むと必ず消える分類だったので作り直した。 */
+          const fresh = qs.slice(0, 30), faded = qs.slice(30, 70);
+          const patches = {}, logs = [];
+          const put = async (list, at, code) => {
+            for (const q of list) {
+              const ats = await S.getAtomsByQuestion(q.q_id);
+              ats.forEach((a, i) => {
+                patches[a.atom_id] = {
+                  answer_count: 2, correct_count: 2, last_eval: 'normal',
+                  interval_code: code, last_answered_at: at, _unlearned: 0 };
+                logs.push({ atom_id: a.atom_id, answered_at: at + i,
+                            eval: 'normal', is_correct: true,
+                            schedule_updated: true, interval_code: code });
+              });
+            }
+          };
+          await put(fresh, now - day, '1d');
+          await put(faded, now - 60 * day, '1d');
+          await S.replaceAllLogs(logs);
+          await S.updateAtomsBulk(patches);
+          const F = new Set(fresh.map(q => q.q_id));
+          const D = new Set(faded.map(q => q.q_id));
+          const pick = async (mix) => {
+            const q = await K.buildQueue({ mode:'exam', count:20, applyGuard:false,
+                                           shuffle:true, mix });
+            let f = 0, d = 0, u = 0;
+            for (const x of q.questions) {
+              if (F.has(x.q_id)) { f++; } else if (D.has(x.q_id)) { d++; } else { u++; }
+            }
+            return { total: q.questions.length, fresh: f, faded: d, unseen: u };
+          };
+          return {
+            real:  await pick({ fresh:0.25, faded:0.45, unseen:0.30 }),
+            final: await pick({ fresh:0.55, faded:0.45, unseen:0.00 }),
+            allNew: await pick({ fresh:0, faded:0, unseen:1.00 })
+          };
+        }""")
+        ok("本番モードは「最近解いた問題」を出しすぎない（測定を汚さない）",
+           r["real"]["fresh"] <= r["real"]["total"] * 0.4, json.dumps(r["real"]))
+        ok("直前モードのほうが「最近解いた問題」が多い",
+           r["final"]["fresh"] >= r["real"]["fresh"], json.dumps(r))
+        ok("直前モードは初見をぶつけない",
+           r["final"]["unseen"] <= r["final"]["total"] * 0.2, json.dumps(r["final"]))
+        ok("初見だけを指定すれば初見が中心になる",
+           r["allNew"]["unseen"] >= r["allNew"]["total"] * 0.5, json.dumps(r["allNew"]))
+        ok("どの比率でも問題数は減らない",
+           r["real"]["total"] == 20 and r["final"]["total"] == 20, json.dumps(r))
+        ok("本番モードには「文面を忘れた既習」が入る",
+           r["real"]["faded"] > 0, json.dumps(r["real"]))
+
+        # ---------- 分類が学習の進行で死なないこと（V1.54の主目的） ----------
+        r = pg.evaluate("""async () => {
+          const S = window.Storage, K = window.Scheduler;
+          /* 全ての中項目に手を付けた状態を作る。V1.52 の novel（中項目が未学習）は
+             ここで必ず0になり、分類として働かなくなっていた。 */
+          const qs = await S.getAllQuestions();
           const byMed = {};
           qs.forEach(q => { (byMed[q.medium || ''] = byMed[q.medium || ''] || []).push(q); });
-          const target = Object.keys(byMed)
-            .filter(m => byMed[m].length >= 2)
-            .slice(0, 40)
-            .map(m => byMed[m][0]);
+          const day = 86400000, now = Date.now();
           const patches = {}, logs = [];
-          const t0 = Date.now() - 86400000;
-          for (const q of target) {
-            const at = await S.getAtomsByQuestion(q.q_id);
-            at.forEach((a, i) => {
-              patches[a.atom_id] = {
-                answer_count: 2, correct_count: 2, last_eval: 'easy',
-                last_answered_at: t0, _unlearned: 0 };
-              /* 「解いた」は台帳（progress_log）が根拠。
-                 アトムの数字だけ書き換えても未学習のまま扱われる。 */
-              logs.push({ atom_id: a.atom_id, answered_at: t0 + i,
-                          eval: 'easy', is_correct: true,
-                          schedule_updated: true, interval_code: '30d' });
+          for (const m of Object.keys(byMed)) {
+            const ats = await S.getAtomsByQuestion(byMed[m][0].q_id);
+            ats.forEach((a, i) => {
+              patches[a.atom_id] = { answer_count:2, correct_count:2, last_eval:'normal',
+                interval_code:'1d', last_answered_at: now - 60 * day, _unlearned:0 };
+              logs.push({ atom_id:a.atom_id, answered_at: now - 60 * day + i,
+                          eval:'normal', is_correct:true,
+                          schedule_updated:true, interval_code:'1d' });
             });
           }
           await S.replaceAllLogs(logs);
           await S.updateAtomsBulk(patches);
-          const known = new Set(target.map(q => q.q_id));
-          const learnedSubs = new Set(target.map(q => q.medium).filter(Boolean));
-          const pick = async (mix) => {
-            const q = await K.buildQueue({ mode:'exam', count:20, applyGuard:false,
-                                           shuffle:true, mix });
-            let solved = 0, familiar = 0, novel = 0;
-            for (const x of q.questions) {
-              if (known.has(x.q_id)) { solved++; }
-              else if (learnedSubs.has(x.medium)) { familiar++; }
-              else { novel++; }
-            }
-            return { total: q.questions.length, solved, familiar, novel };
-          };
-          return {
-            real:  await pick({ solved:0.25, familiar:0.60, novel:0.15 }),
-            final: await pick({ solved:0.55, familiar:0.45, novel:0.00 }),
-            zero:  await pick({ solved:0,    familiar:0,    novel:1.00 })
-          };
+          const q = await K.buildQueue({ mode:'exam', count:20, applyGuard:false,
+                    shuffle:true, mix:{ fresh:0.25, faded:0.45, unseen:0.30 } });
+          return { mediums: Object.keys(byMed).length, total: q.questions.length };
         }""")
-        ok("本番モードは「解いた問題」を出しすぎない（測定を汚さない）",
-           r["real"]["solved"] <= r["real"]["total"] * 0.4, json.dumps(r["real"]))
-        ok("直前モードのほうが「解いた問題」が多い",
-           r["final"]["solved"] >= r["real"]["solved"], json.dumps(r))
-        ok("直前モードは未習の範囲をぶつけない",
-           r["final"]["novel"] <= r["final"]["total"] * 0.2, json.dumps(r["final"]))
-        ok("未習だけを指定すれば未習が中心になる",
-           r["zero"]["novel"] >= r["zero"]["total"] * 0.5, json.dumps(r["zero"]))
-        ok("どの比率でも問題数は減らない",
-           r["real"]["total"] == 20 and r["final"]["total"] == 20, json.dumps(r))
-        ok("本番モードの主成分は「知識は既習・問題は初見」",
-           r["real"]["familiar"] >= r["real"]["solved"], json.dumps(r["real"]))
+        ok("全ての中項目に手を付けても模試は成立する（V1.52の分類はここで死んだ）",
+           r["total"] == 20, json.dumps(r))
 
         # ---------- カレンダー書き出し ----------
         r = pg.evaluate("""async () => {

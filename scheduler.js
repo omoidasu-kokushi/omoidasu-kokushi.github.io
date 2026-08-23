@@ -74,6 +74,18 @@
   /* 緊急度昇順（本日の復習の出題順）。10m が最も緊急。 */
   var URGENCY_ORDER = { '10m': 0, '1h': 1, '1d': 2, '1w': 3, '30d': 4, '90d': 5, '180d': 6 };
 
+  /* --- 模試の分類のものさし（V1.54。V1.52 の「中項目が未学習か」を置き換え） ---
+     V1.52 は novel を【その中項目をまだ学んでいない】と定義した。
+     これは学習が進むほど必ず0に近づき、最後は消える。
+     消えた瞬間、模試は「解いた問題」ばかりになり、
+     記憶で解けてしまって実力が測れなくなる。分類そのものが間違っていた。
+
+     本番で問われているのは【文字を忘れた頃の知識】なので、
+     ものさしを「学んだ範囲かどうか」から【最後に見てからの距離】へ変える。
+     この軸なら、学習が進んでも faded が増えるだけで、分類は死なない。 */
+  var FADE_MS = 14 * 24 * 60 * 60 * 1000;   /* 最終解答からこれだけ経てば、文面は思い出せない */
+  var FADE_STEP = URGENCY_ORDER['30d'];     /* 全肢が30日段以上＝次に見るのはずっと先 */
+
   /* マスターボタンの解禁は「30日以上の長期ステップ到達時のみ」 */
   var MASTER_UNLOCK_FROM = STEP_INDEX['30d'];
 
@@ -1148,30 +1160,34 @@
             weakMap[a.atom_id] = computeWeaknessFromLogs(logMap[a.atom_id] || [], a);
           });
 
-          /* --- 「知識として既習か」を中項目で見る（V1.52） ---
-             問題そのものを解いたかどうかと、その知識を学んだかどうかは別。
-             本番で問われるのは【文字は初見だが知識は既習】がほとんどで、
-             この区別が無いと模試の難しさを本番に寄せられない。
+          /* --- 模試の3分類（V1.54。V1.52 の中項目基準を置き換え） ---
+             ものさしは【最後に見てからの距離】。学習が進んでも死なない。
 
-             単位に小項目ではなく中項目を使う理由は2つ。
-             ① いまのデータは349小項目に453問＝1小項目あたり1.3問しかなく、
-                小項目で見ると「解いた＝その小項目の全部」になり、区別として働かない。
-             ② 学習は中項目のまとまりで進む。「人口静態・人口動態」を一通りやった人にとって、
-                その中の別の問題は【知識としては既習】に近い。 */
+               fresh  … 最近解いた。文面を覚えている ＝ 記憶で解ける（測定を汚す）
+               faded  … 解いたが、文面を思い出せないところまで離れた ＝ 本番に最も近い
+               unseen … この問題自体が初見（全問読破するまで無くならない）
+
+             V1.52 の novel（＝その中項目が未学習）を捨てた理由：
+             学習が進むほど必ず0に近づき、最後は消える。消えた時点で
+             模試が「解いた問題」だらけになり、実力が測れなくなる。
+             同じ理由で familiar（＝中項目は学習済み）も捨てた。
+             どちらも「範囲を学んだか」を見ており、時間の経過を見ていない。 */
           var cands = foldAtomsToCandidates(atoms, weakMap, preferFrequent);
 
-          /* 学習済みの中項目を、畳んだあとの候補から拾う。
-             アトムのレコードは中項目を持っていないので、ここで作る
-             （持っていない項目を参照しても静かに空になるだけで、
-               気づけないまま familiar が常にゼロになる）。 */
-          var learnedScope = {};
+          var nowT = nowMs();
           cands.forEach(function (c) {
-            if (c.medium && c.unlearned < c.atoms.length) { learnedScope[c.medium] = 1; }
-          });
-
-          cands.forEach(function (c) {
-            c.solved   = (c.unlearned === 0);                     /* 全部の肢を解いた */
-            c.familiar = !c.solved && !!learnedScope[c.medium];   /* 知識は既習・問題は初見 */
+            c.solved = (c.unlearned === 0);          /* 全部の肢を解いた */
+            c.unseen = !c.solved;
+            /* 「離れた」の判定は2本立て。どちらか片方で足りる。
+               ① 最終解答から14日以上（実時間で忘れている）
+               ② 全肢が30日段以上（＝アプリ自身が「当分見なくていい」と判断した）
+               ②を入れるのは、①だけだと始めて2週間の人に faded が
+               1問も作れず、模試がいきなり「解いた問題」だらけになるため。 */
+            c.faded = c.solved && (
+              (isNum(c.last_seen) && c.last_seen > 0 && (nowT - c.last_seen) >= FADE_MS) ||
+              (isNum(c.min_urgency) && c.min_urgency >= FADE_STEP)
+            );
+            c.fresh = c.solved && !c.faded;
           });
 
           /* options.newOnly は「ランダムモードを初見だけにする」ための入口。
@@ -1233,35 +1249,24 @@
             var picked;
 
             if (options.shuffle && options.mix) {
-              /* --- 3つに分けて混ぜる（V1.52。V1.51の2分類を置き換え） ---
-                 V1.51 は「解いた／解いていない」の2分類だった。
-                 これでは本番に寄せられない。本番で出るのは
-                 【文字は初見だが知識は既習】がほとんどだからで、
-                 2分類ではそこを表せない。
-
-                   solved   … 全部の肢を解いた問題。記憶で解けてしまう
-                   familiar … 同じ小項目を学習済みだが、この問題は初見（本番に最も近い）
-                   novel    … その小項目をまだ学んでいない（本番より難しい）
-
-                 足りない分は familiar → solved → novel の順で埋める。
-                 本番に近い側を優先して埋め、数は減らさない。 */
-              var want = {
-                solved:   Math.round(count * (options.mix.solved   || 0)),
-                familiar: Math.round(count * (options.mix.familiar || 0)),
-                novel:    Math.round(count * (options.mix.novel    || 0))
-              };
-              var bucket = {
-                solved:   shuffle(pool.filter(function (c) { return c.solved; }), options.seed),
-                familiar: shuffle(pool.filter(function (c) { return c.familiar; }), options.seed),
-                novel:    shuffle(pool.filter(function (c) { return !c.solved && !c.familiar; }), options.seed)
-              };
-              var taken = [], used = { solved: 0, familiar: 0, novel: 0 };
-              ['familiar', 'solved', 'novel'].forEach(function (k) {
+              /* --- 3つに分けて混ぜる（V1.54） ---
+                 足りない分は faded → fresh → unseen の順に埋める。
+                 本番に近い側から埋め、問題数は絶対に減らさない
+                 （60問の模試が52問になって始まるほうが、混合比のずれより悪い）。 */
+              var ORDER = ['faded', 'fresh', 'unseen'];
+              var want = {}, bucket = {}, used = {};
+              ORDER.forEach(function (k) {
+                want[k] = Math.round(count * (options.mix[k] || 0));
+                bucket[k] = shuffle(pool.filter(function (c) { return !!c[k]; }), options.seed);
+                used[k] = 0;
+              });
+              var taken = [];
+              ORDER.forEach(function (k) {
                 var n = Math.min(want[k], bucket[k].length);
                 taken = taken.concat(bucket[k].slice(0, n));
                 used[k] = n;
               });
-              ['familiar', 'solved', 'novel'].forEach(function (k) {
+              ORDER.forEach(function (k) {
                 if (taken.length >= count) { return; }
                 var more = bucket[k].slice(used[k], used[k] + (count - taken.length));
                 taken = taken.concat(more);

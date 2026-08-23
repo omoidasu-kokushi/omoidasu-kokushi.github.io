@@ -244,6 +244,49 @@ def runtime_checks():
         }""")
         ok("解答画面からでも上がる（未同期が残らない）", r["pending"] == 0, json.dumps(r))
 
+        # ---------- 範囲リセット（中項目単位）の墓標（V1.54） ----------
+        r = pg.evaluate("""async () => {
+          const S = window.Storage, D = window.Drive;
+          const atoms = await S.getAllAtoms();
+          const a = atoms[0];
+          const med = a.medium;
+          const t0 = Date.now() - 3600000;
+          // その中項目をひととおり解いた状態にする
+          const target = atoms.filter(x => x.medium === med);
+          const patches = {}, logs = [];
+          target.forEach((x, i) => {
+            patches[x.atom_id] = { answer_count:1, correct_count:1, last_eval:'normal',
+                                   last_answered_at:t0, _unlearned:0 };
+            logs.push({ atom_id:x.atom_id, answered_at:t0+i, eval:'normal',
+                        is_correct:true, schedule_updated:true, interval_code:'1d' });
+          });
+          await S.replaceAllLogs(logs);
+          await S.updateAtomsBulk(patches);
+          const before = (await S.getAllLogs()).length;
+          const res = await S.resetProgressByScope('medium', med);
+          const after = (await S.getAllLogs()).length;
+          const meta = await S.loadMeta();
+          const map = meta.scope_reset_at || {};
+          // 相手の端末には、消す前の記録がまだ残っている
+          const theirs = logs.map(l => Object.assign({}, l));
+          const merged = D.mergeMeta({ scope_reset_at: map }, {}, 1000, 9000);
+          const cut = merged.scope_reset_at || {};
+          const survive = theirs.filter(l => {
+            const c = cut[l.atom_id];
+            return !(c > 0) || l.answered_at > c;
+          });
+          return { removed: before - after, marked: Object.keys(map).length,
+                   targets: target.length, survive: survive.length,
+                   resetAt: !!res.reset_at };
+        }""")
+        ok("範囲リセットで記録が消える", r["removed"] > 0, json.dumps(r))
+        ok("消した肢すべてに墓標が立つ",
+           r["marked"] >= r["targets"], json.dumps(r))
+        ok("墓標は合体しても残る（相手が新しくても消えない）",
+           r["marked"] > 0, json.dumps(r))
+        ok("相手の端末に残っていた記録は、合体でよみがえらない",
+           r["survive"] == 0, json.dumps(r))
+
         ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))
         br.close()
 
