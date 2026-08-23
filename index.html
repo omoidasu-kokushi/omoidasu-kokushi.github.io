@@ -276,9 +276,6 @@
           <span class="ico-cloud" aria-hidden="true"></span><span class="hdr-btn-text" id="hdr-sync-text">同期</span>
           <span class="hdr-badge" id="hdr-sync-badge" hidden>0</span>
         </button>
-        <button type="button" id="btn-theme" class="hdr-btn" aria-label="テーマ切替">
-          <span class="ico-theme" aria-hidden="true"></span><span class="hdr-btn-text">テーマ</span>
-        </button>
         <!-- 設定はホームのツール一覧から出してここへ。毎日押すものではないが
              どの画面からでも要るので、常設のヘッダーが置き場所として正しい。 -->
         <button type="button" id="btn-settings" class="hdr-btn" aria-label="設定">
@@ -395,7 +392,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260822_Omoidasu_V1.42</p>
+        <p class="build-stamp">20260823_Omoidasu_V1.43</p>
       </div>
     </section>
 
@@ -831,7 +828,7 @@
 
         <section class="set-block">
           <h3 class="set-head">4. テーマ切替</h3>
-          <div class="seg-group" role="group" aria-label="テーマ">
+          <div class="seg-group" id="set-theme" role="group" aria-label="テーマ">
             <button type="button" class="seg-btn is-active" data-theme-set="light">ライト</button>
             <button type="button" class="seg-btn" data-theme-set="dark">ダーク</button>
             <button type="button" class="seg-btn" data-theme-set="sepia">セピア</button>

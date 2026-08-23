@@ -61,12 +61,16 @@ with sync_playwright() as p:
     }""")
     ok("ヘッダーにホームがある", bool(r["home"]), json.dumps(r))
     ok("ヘッダーに同期がある", bool(r["sync"]), json.dumps(r))
+    # V1.43：テーマはヘッダーから外し、設定 4. に一本化した
+    # （狭い画面でボタンが溢れたため。同じ入口を2つ置かない決まりにも合う）。
+    ok("テーマはヘッダーに出さない", r["theme"] is None, json.dumps(r))
     ok("ホームは左半分にある", r["home"]["l"] < r["w"] / 2, json.dumps(r))
     ok("道具はまとめて右端に寄っている",
        r["set"]["r"] >= r["w"] - 16 and r["sync"]["l"] > r["home"]["r"], json.dumps(r))
-    ok("道具の並び順は 同期 → テーマ → 設定",
-       r["sync"]["r"] <= r["theme"]["l"] and r["theme"]["r"] <= r["set"]["l"], json.dumps(r))
+    ok("道具の並び順は 同期 → 設定",
+       r["sync"]["r"] <= r["set"]["l"], json.dumps(r))
     ok("ホームと道具が重なっていない", r["home"]["r"] < r["sync"]["l"], json.dumps(r))
+    ok("390px 幅でヘッダーが溢れない", r["set"]["r"] <= r["w"], json.dumps(r))
 
     r = pg.evaluate("""async () => {
       await window.Storage.clearDirty(); await window.Storage.bumpDirty(4);
@@ -111,8 +115,10 @@ with sync_playwright() as p:
     }""")
     ok("一言欄に枠が無い", r["bw"] == "0px/0px", json.dumps(r["bw"]))
     ok("一言欄に影が無い", r["shadow"] in ("none", ""), json.dumps(r["shadow"]))
-    ok("一言欄に面（背景）が無い",
-       r["bg"] in ("rgba(0, 0, 0, 0)", "transparent"), json.dumps(r["bg"]))
+    # V1.43：背景と同色だと塊の境目が読めなかったので、白い面に戻した。
+    # 押せないことは「影が無い」で示す（決まり4-13）。
+    ok("一言欄は白い面（背景と見分けられる）",
+       r["bg"] == "rgb(255, 255, 255)", json.dumps(r["bg"]))
     ok("「ひとことメモ」の見出しがある", r["name"] == "ひとことメモ", json.dumps(r["name"]))
     ok("見出しは目立たない大きさ（12px以下）",
        r["nameSize"] is not None and r["nameSize"] <= 12, str(r["nameSize"]))

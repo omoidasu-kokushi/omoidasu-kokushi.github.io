@@ -43,7 +43,7 @@ for t in tests/test_batch*.py tests/test_regress.py; do
 done
 ```
 
-**V1.42 時点の期待値：15スイート・821項目・全通過。**
+**V1.43 時点の期待値：16スイート・855項目・全通過。**
 
 ---
 
@@ -84,7 +84,7 @@ def edit(src, old, new, count, label):
 | PWA | `sw.js` `manifest.json` `icons/` |
 | 公開ページ | `about.html` `privacy.html` `terms.html` |
 | 設計記録 | `DESIGN_DECISIONS.md` `CHANGELOG_*.md` `RECOVERY.md`（このファイル） |
-| テスト | `tests/`（15スイート ＋ `mock_drive.js`） |
+| テスト | `tests/`（16スイート ＋ `mock_drive.js`） |
 | その他 | `sample/` `vendor/mermaid.min.js` |
 
 **作業を始める前に、必ず `DESIGN_DECISIONS.md` を読むこと。**

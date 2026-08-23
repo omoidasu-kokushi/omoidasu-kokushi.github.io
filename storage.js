@@ -958,6 +958,11 @@
         return { ok: false, error: verify.hint, mismatch: true };
       }
       if (verify.status === 'unverified') { warnings.push(verify.hint); }
+
+      /* 「2つ選べ」と書いてあるのに正解が1つ、という行を弾く（V1.43）。
+         黙って single に倒さない。問題文が嘘になるより、出ない方がまし。 */
+      var pickErr = crossCheckSelectCount(stem, ans.indices);
+      if (pickErr) { return { ok: false, error: pickErr, mismatch: true }; }
     }
 
     /* --- 階層コード ＆ ID --- */
@@ -1033,6 +1038,10 @@
       sub_item           : subItem,
       source             : source,
       question_type      : qtype,
+      /* 「2つ選べ」と書いてあるのに正解が1つ、という行が実データにあった。
+         そのまま入れると【2つ選べと書いてあるのに1つしか選べない】
+         という、利用者から見て明確な不具合になる。
+         crossCheckSelectCount() が取り込み時に弾くので、ここまで来ない。 */
       select_count       : (qtype === 'multiple') ? ans.indices.length : 1,
       image_url          : imageUrl,
       stem               : stem,
@@ -1130,6 +1139,30 @@
     if (QTYPE_ALIAS[c7]) { return false; }
     var joined = cells.slice(0, 8).map(csvUnquote).join('');
     return /単元|問題文|選択肢|正解|解説|ランク|大項目|中項目|小項目|形式/.test(joined);
+  }
+
+  /* --- 「Nつ選べ」の検算（V1.43） ---
+     問題文が「2つ選べ」と言っているのに正解が1つしか無い行が実データにあった。
+     10列目（正解番号）が空で、解説文から1つしか拾えなかったのが原因。
+     そのまま取り込むと【2つ選べと書いてあるのに1つしか選べない】
+     という形で利用者に出る。ここで弾き、行番号つきで報告する。
+     ※ 黙って single に倒さない。問題文が嘘になるより、出ない方がまし。 */
+  var PICK_N = { '1': 1, '2': 2, '3': 3, '4': 4, '5': 5,
+                 '１': 1, '２': 2, '３': 3, '４': 4, '５': 5,
+                 '一': 1, '二': 2, '三': 3, '四': 4, '五': 5 };
+
+  function statedPickCount(stem) {
+    var m = /([0-9０-９一二三四五])\s*つ選/.exec(String(stem || ''));
+    return m ? (PICK_N[m[1]] || null) : null;
+  }
+
+  function crossCheckSelectCount(stem, indices) {
+    var want = statedPickCount(stem);
+    if (!want) { return null; }
+    var got = (indices || []).length;
+    if (got === want) { return null; }
+    return '問題文は「' + want + 'つ選べ」ですが、正解が ' + got +
+           'つしかありません（作問データを直してください）';
   }
 
   /* ここで trim() を使ってはいけない（V1.01で撤去）。
@@ -1735,6 +1768,24 @@
     });
   }
 
+  /* --- 階層の並び順（V1.43） ---
+     取り込んだ順のままだと「14, 15, 16, 1, 2, …」のように並ぶ。
+     元データの行順がそうなっているだけで、利用者にとっては意味がない。
+     見出しの先頭にある番号（"1. 健康に関する指標" の 1）で並べ替える。
+
+     番号が無いものは末尾へ回し、そのなかでは文字順にする。
+     ※ 数値は文字列比較にしない："10" は "9" より小さくなってしまう。 */
+  function headNo(label) {
+    var m = /^\s*(\d+)\s*[.．、]/.exec(String(label || ''));
+    return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+  }
+
+  function byHeadNo(a, b) {
+    var na = headNo(a.label), nb = headNo(b.label);
+    if (na !== nb) { return na - nb; }
+    return String(a.label) < String(b.label) ? -1 : 1;
+  }
+
   /* 単元 ＞ 大項目 ＞ 中項目 の3階層ツリーを構築して返す */
   function buildTree() {
     return Promise.all([getAllQuestions(), countBadgesByScope()]).then(function (r) {
@@ -1780,8 +1831,9 @@
                 key: mj.key, label: mj.label, count: mj.count,
                 unlearned: mj.unlearned, hard: mj.hard,
                 children: mj.order.map(function (dk) { return mj.children[dk]; })
+                                   .sort(byHeadNo)
               };
-            })
+            }).sort(byHeadNo)
           };
         });
     });

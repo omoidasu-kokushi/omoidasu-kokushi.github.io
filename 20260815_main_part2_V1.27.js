@@ -273,7 +273,7 @@
     }
 
     setText('#unit-hero-title', node.depth === 0
-      ? '全単元ランダム' : (node.label + ' すべて'));
+      ? '全単元からランダム出題' : (node.label + ' すべてからランダム出題'));
     setText('#unit-hero-sub', '全 ' + node.count + ' 問から出題');
     var hero = $('#unit-hero');
     if (hero) {
@@ -292,9 +292,11 @@
                  '<span class="pick-count">' + it.count + '問</span>' +
                  (hasKids ? '<span class="tool-arrow" aria-hidden="true"></span>' : '') +
                  '</button>';
+      /* 絵柄ではなく言葉にする。サイコロ＝ランダムという連想は
+         人によって無い。押した先が何かは、文字で書くのが一番速い。 */
       var dice = '<button type="button" class="pick-dice" data-field="' + childField +
                  '" data-key="' + esc(it.key) + '" aria-label="' + esc(it.label) +
-                 ' からランダム出題">🎲</button>';
+                 ' からランダム出題">ランダム</button>';
       return '<div class="pick-row">' + main + dice + '</div>';
     }).join(''));
   }
@@ -2996,7 +2998,9 @@
     home_tip: { step:'下の一言',     sel:'#home-tip',
                 text:'ここに使い方と考え方を1つずつ出しています。' +
                      '［次の話］で送り、［前へ］で戻れます。全34件あります。' },
-    theme:    { step:'見た目を変える', sel:'#btn-theme',
+    /* V1.43：ヘッダーから外したので、案内先を設定のテーマ行へ移す。
+       指し先が無いガイドは、吹き出しが画面の隅に出て意味不明になる。 */
+    theme:    { step:'見た目を変える', sel:'#set-theme',
                 text:'ライト・ダーク・セピアを切り替えます。夜はダークが目に楽です。' },
     settings_btn:{ step:'設定はここ', sel:'#btn-settings',
                 text:'設定はこの歯車から。バックアップ、自作データの取り込み、' +

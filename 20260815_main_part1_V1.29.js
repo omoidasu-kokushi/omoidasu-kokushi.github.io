@@ -913,8 +913,10 @@
 
     if (!total) { return ''; }
     var left = Math.max(0, total - done);
-    return left ? ('残り ' + left + unit + ' ／ ' + total + unit + '')
-                : ('達成（' + total + unit + '）');
+    /* 「残り 60問／60問」だけでは、何に対する残りなのかが読み取れない
+       （実際に分からないと言われた）。何のための数字かを先に書く。 */
+    return left ? ('次のレベルまで　残り ' + left + unit + ' ／ ' + total + unit)
+                : ('このレベルは達成（' + total + unit + '）');
   }
 
   /* Level 2 のマイルストーンは4段あるが、4つ同時に見せると
@@ -2564,6 +2566,9 @@
   function bindGlobalEvents() {
     /* --- ヘッダー --- */
     on($('#btn-back'), 'click', function () { goBack(); });
+    /* テーマの切替はヘッダーから外し、設定 4. に一本化した（V1.43）。
+       束ねは残す：設定画面の中にも同じ id のボタンを置く余地があるため、
+       $() が null を返しても on() は何もしない。 */
     on($('#btn-theme'), 'click', function () { cycleTheme(); });
     /* V1.41：どの画面からでも1タップでホームへ。
        「戻る」は1段ずつしか戻れないので、深く潜ったときに
