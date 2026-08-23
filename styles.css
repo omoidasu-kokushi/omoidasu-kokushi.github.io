@@ -1989,11 +1989,14 @@ body.is-knock #knock-timer{ z-index:58; }
   font-size:var(--fs-md); font-weight:800; color:var(--text-sub);
   line-height:1.5;
 }
+/* V1.49：「解答」の2文字では、正解なのか自分が選んだ肢なのか読めない。
+   文言を「あなたの答え」に変え、読める大きさにする。 */
 .cx-pick{
-  flex:0 0 auto; align-self:center;
-  font-size:.62rem; font-weight:800; letter-spacing:.02em;
-  padding:1px 6px; border-radius:var(--r-pill);
-  background:var(--surface-3); color:var(--text-mute);
+  flex:0 0 auto; align-self:center; white-space:nowrap;
+  font-size:.72rem; font-weight:800; letter-spacing:.02em;
+  padding:2px 8px; border-radius:var(--r-pill);
+  background:var(--surface-3); color:var(--text-sub);
+  border:1px solid var(--border-2);
 }
 .cx-star{
   margin-left:auto; flex:0 0 auto; align-self:flex-start;
@@ -3855,6 +3858,16 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 /* 「まだありません」ではなく「書いてみる」。
    空欄は欠陥ではなく、書く場所であることを見た目でも示す。 */
 .cx-write{
+  /* V1.49：実機で「自分の言葉で書く」が縦1列に潰れていた。
+     原因は、このボタンが cx-memo-btn（各肢の小さな ✎ アイコン）と
+     クラスを兼ねていて、
+       .cx-star, .cx-memo-btn{ height:30px; width:32px; }
+     の寸法をそのまま受けていたこと。32px の箱に9文字を入れれば縦に潰れる。
+     クラスを兼ねているのは、クリックを委譲で拾うため。
+     だから寸法だけをここで打ち消す。あわせて折り返しも止める。 */
+  width:auto; height:auto;
+  overflow-wrap:normal; word-break:keep-all;
+  flex:0 0 auto; white-space:nowrap;
   display:inline-flex; align-items:center; gap:4px;
   margin-left:4px; padding:2px 9px; border-radius:var(--r-pill);
   background:var(--surface-2); border:1px dashed var(--border-2);
