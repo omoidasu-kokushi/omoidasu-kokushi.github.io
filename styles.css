@@ -3796,3 +3796,85 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   .hdr-btn-text{ display:none; }
   .hdr-btn{ padding:0 8px; }
 }
+
+
+/* ==========================================================================
+   56. 正誤の見え方（V1.44・53を上書き）
+   誤答の面をやめる。3肢ぶん並ぶので、薄くても赤が画面を占める。
+   強い色は【正解の緑だけ】にして、探す対象を1つに絞る。
+   ========================================================================== */
+.cx.is-wrong,
+.cx.is-picked.is-wrong{
+  background:none;
+  border-left-color:color-mix(in srgb, var(--c-hard) 62%, var(--surface));
+}
+.cx.is-correct,
+.cx.is-picked.is-correct{
+  background:color-mix(in srgb, var(--c-easy) 17%, var(--surface));
+}
+
+/* 評価ボタンの枠は主張を弱める。
+   色そのものは残す：枠から色を抜くと、赤緑の見分けが弱い人には
+   「難しい」と「易しい」が完全に同じ見た目になる。 */
+.eval-btn.eval-hard.is-active{
+  border-color:color-mix(in srgb, var(--c-hard) 55%, var(--surface));
+  box-shadow:none;
+}
+.eval-btn.eval-normal.is-active{
+  border-color:color-mix(in srgb, var(--c-normal) 55%, var(--surface));
+  box-shadow:none;
+}
+.eval-btn.eval-easy.is-active{
+  border-color:color-mix(in srgb, var(--c-easy) 55%, var(--surface));
+  box-shadow:none;
+}
+.eval-btn.eval-master.is-active{
+  border-color:color-mix(in srgb, var(--c-master) 55%, var(--surface));
+  box-shadow:none;
+}
+/* 枠を弱めたぶん、選択中は文字を太くして手がかりを二重にする
+   （色だけに頼らない）。 */
+.eval-btn.is-active b{ font-weight:900; }
+.eval-btn.is-active{ border-width:2px; }
+
+/* ==========================================================================
+   57. 選択肢ごとの解説を畳む（V1.44）
+   ========================================================================== */
+.cx-exp{ margin-top:4px; }
+.cx-exp > summary{
+  display:inline-flex; align-items:center; gap:4px;
+  padding:3px 10px; border-radius:var(--r-pill);
+  background:var(--surface-3); border:1px solid var(--border);
+  color:var(--text-sub); font-size:var(--fs-xs); font-weight:700;
+  cursor:pointer; list-style:none;
+}
+.cx-exp > summary::-webkit-details-marker{ display:none; }
+.cx-exp[open] > summary{ background:var(--accent-soft); color:var(--accent); }
+.cx-exp .explanation-body{ margin-top:5px; font-size:var(--fs-sm); line-height:1.7; }
+
+/* 「まだありません」ではなく「書いてみる」。
+   空欄は欠陥ではなく、書く場所であることを見た目でも示す。 */
+.cx-write{
+  display:inline-flex; align-items:center; gap:4px;
+  margin-left:4px; padding:2px 9px; border-radius:var(--r-pill);
+  background:var(--surface-2); border:1px dashed var(--border-2);
+  color:var(--text-mute); font-size:var(--fs-xs); font-weight:700;
+}
+.cx-write:active{ background:var(--accent-soft); color:var(--accent); }
+
+/* ==========================================================================
+   58. ヘッダー（V1.44）
+   同期を外して枠が空いたので、ホーム・設定の文字は狭い画面でも残す。
+   「何のボタンか」が読めることを、アイコンの美しさより優先する。
+   ========================================================================== */
+.pomo-toggle{ display:inline-flex; align-items:center; gap:5px; }
+.pomo-toggle-text{ font-size:.66rem; font-weight:800; letter-spacing:.02em; }
+
+@media (max-width: 460px){
+  #btn-home .hdr-btn-text,
+  #btn-settings .hdr-btn-text{ display:inline; }
+  .hdr-btn{ padding:0 9px; }
+}
+@media (max-width: 360px){
+  .pomo-toggle-text{ display:none; }
+}

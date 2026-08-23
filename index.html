@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.42">
+<link rel="stylesheet" href="./styles.css?v=1.44">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,17 +45,17 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.42",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.44",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.42",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.44",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.42",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.44",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.29.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.30.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.27.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.28.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.42",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.44",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -266,20 +266,21 @@
         <!-- 1タップでON/OFF。「ノッてる」と思った瞬間に止められるようにするための専用ボタン。
              チップ（時間表示）とは別の当たり判定にして、残り時間を見るだけのタップで
              OFFになる事故を防ぐ。 -->
+        <!-- V1.44：記号だけだと何のONなのか分からない。文字を添える。 -->
         <button type="button" id="pomodoro-toggle" class="pomo-toggle"
-                aria-pressed="true" aria-label="ポモドーロをOFFにする" hidden>ON</button>
+                aria-pressed="true" aria-label="ポモドーロをOFFにする" hidden>
+          <span class="pomo-toggle-state">ON</span>
+          <span class="pomo-toggle-text">⏲タイマー</span>
+        </button>
         <!-- V1.30：記号だけでは何のボタンか分からなかったので、
              枠を付けて文字を添える。押せることは枠と影で示す（決まり4-13）。 -->
-        <!-- V1.41：同期をヘッダーへ。設定の奥にあると、未同期が溜まっても
-             気づけない。未同期の件数はここに出す。 -->
-        <button type="button" id="btn-hdr-sync" class="hdr-btn" aria-label="同期する">
-          <span class="ico-cloud" aria-hidden="true"></span><span class="hdr-btn-text" id="hdr-sync-text">同期</span>
-          <span class="hdr-badge" id="hdr-sync-badge" hidden>0</span>
-        </button>
         <!-- 設定はホームのツール一覧から出してここへ。毎日押すものではないが
              どの画面からでも要るので、常設のヘッダーが置き場所として正しい。 -->
         <button type="button" id="btn-settings" class="hdr-btn" aria-label="設定">
           <span class="ico-gear" aria-hidden="true"></span><span class="hdr-btn-text">設定</span>
+          <!-- 同期をヘッダーから外したので、未同期の件数はここに出す。
+               どこにも出さないと、溜まっていることに気づけない。 -->
+          <span class="hdr-badge" id="hdr-sync-badge" hidden>0</span>
         </button>
       </div>
     </div>
@@ -392,7 +393,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260823_Omoidasu_V1.43</p>
+        <p class="build-stamp">20260823_Omoidasu_V1.44</p>
       </div>
     </section>
 
@@ -772,11 +773,15 @@
           <!-- V1.30：試験日。ここから復習間隔の上限と、直前10日の出題順が決まる。
                日界と同じ「時間の設定」なので、章を増やさずここへ置く。 -->
           <div class="set-row set-static set-stack">
-            <span class="set-row-body"><b>国家試験の日</b>
-              <small>入れると、試験日までに必ず復習が一巡するよう間隔に上限がかかります</small></span>
+            <span class="set-row-body"><b>受験する年</b>
+              <small>入れると、試験までに必ず復習が一巡するよう間隔に上限がかかります</small></span>
+            <!-- V1.44：日付ではなく年だけを選ぶ。
+                 この値は「残り日数の上限」にしか使わないので、日付の精度は要らない。
+                 逆に日付を出すと、実際の試験日（2月の日曜）とずれたときに嘘になる。 -->
             <div class="exam-row">
-              <input type="date" id="set-exam-date" class="set-select exam-date">
-              <button type="button" class="btn-ghost btn-sm" id="btn-exam-clear">消す</button>
+              <select id="set-exam-year" class="set-select exam-date">
+                <option value="">選ばない</option>
+              </select>
             </div>
             <p class="set-note" id="exam-note">まだ入っていません。</p>
           </div>
@@ -942,6 +947,21 @@
 
         <section class="set-block">
           <h3 class="set-head">7. 出題と表示のカスタマイズ</h3>
+
+          <!-- V1.44：選択肢ごとの解説をいつ見せるか。
+               既定は「ボタンで出せる」。全体解説を読んで自分の言葉で書く、
+               という使い方を邪魔しない範囲で、詰まったときには開ける。
+               ※ここは【表示の切り替え】であって、データは消さない。 -->
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>選択肢ごとの解説</b>
+              <small>全体解説を読んで、自分の言葉で書くのがいちばん頭に残ります</small></span>
+            <div class="seg-group" id="set-explain-mode" role="group" aria-label="選択肢ごとの解説">
+              <button type="button" class="seg-btn" data-explain="hidden">常に隠す</button>
+              <button type="button" class="seg-btn is-active" data-explain="button">ボタンで出す</button>
+              <button type="button" class="seg-btn" data-explain="open">最初から出す</button>
+            </div>
+            <p class="set-note" id="explain-mode-note"></p>
+          </div>
           <button type="button" class="set-row" id="btn-oneq">
             <span class="set-row-body"><b>一問一答の出しかた</b><small id="oneq-state">期日の選択肢が1本のときだけ一問一答</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
@@ -1077,7 +1097,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp">20260815_NurseExamApp_V1.38 / cache v1.26.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260823_Omoidasu_V1.44 / cache v1.34.0</p>
         </section>
       </div>
     </section>
@@ -1440,11 +1460,11 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.42"></script>
-<script src="./storage.js?v=1.42"></script>
-<script src="./scheduler.js?v=1.42"></script>
-<script src="./20260815_main_part1_V1.29.js"></script>
-<script src="./drive.js?v=1.42"></script>
-<script src="./20260815_main_part2_V1.27.js"></script>
+<script src="./questions.js?v=1.44"></script>
+<script src="./storage.js?v=1.44"></script>
+<script src="./scheduler.js?v=1.44"></script>
+<script src="./20260815_main_part1_V1.30.js"></script>
+<script src="./drive.js?v=1.44"></script>
+<script src="./20260815_main_part2_V1.28.js"></script>
 </body>
 </html>
