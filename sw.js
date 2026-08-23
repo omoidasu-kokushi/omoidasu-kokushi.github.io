@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v1.44.0';
+const CACHE_NAME = 'v1.46.0';
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,14 +25,14 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=1.55',
-  './questions.js?v=1.55',
-  './storage.js?v=1.55',
-  './scheduler.js?v=1.55',
-  './drive.js?v=1.55',
-  './license.js?v=1.55',
-  './20260815_main_part1_V1.34.js',
-  './20260815_main_part2_V1.37.js',
+  './styles.css?v=1.57',
+  './questions.js?v=1.57',
+  './storage.js?v=1.57',
+  './scheduler.js?v=1.57',
+  './drive.js?v=1.57',
+  './license.js?v=1.57',
+  './20260815_main_part1_V1.35.js',
+  './20260815_main_part2_V1.38.js',
   './about.html',
   './privacy.html',
   './terms.html',

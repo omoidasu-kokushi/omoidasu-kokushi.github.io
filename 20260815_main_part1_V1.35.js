@@ -1,9 +1,20 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.34.js
+ * 20260815_main_part1_V1.35.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.35 (1) 出題プール分離（V1.56）：力試しカードに
+ *            【予想問題 ◯問が待機中】を出す。模試用に取り込んだ問題は
+ *            ランダムにも単元学習にも出ないので、どこにも出さないと
+ *            「取り込んだのに消えた」と読まれる。
+ *        (2) ◀戻るでホームへ帰るときに refreshHome() を呼ぶ。
+ *            ホームへ来る経路は3つあるのに、数え直していたのは2つだけで、
+ *            戻るで帰ると「解いたのにバッジが減らない」が起きていた。
+ *        (3) UIツアーのスタブ（runUiTour）を撤去。後半で実装ごと消した。
+ *  V1.35 (旧) 力試しカードに【予想問題 ◯問が待機中】を出す。
+ *            模試用に取り込んだ問題はランダムにも単元学習にも出ないので、
+ *            どこにも出さないと「取り込んだのに消えた」と読まれる。
  *  V1.34 (1) 取り消せない操作の共通確認（confirmAction）。
  *            個別にモーダルを増やす方式だと、増やし忘れた操作だけが
  *            素通りする。実際「すべて元の文に戻す」「この図を消す」が
@@ -731,7 +742,18 @@
   function goBack() {
     var prev = state.screenStack.pop() || 'home';
     if (state.screen === 'quiz') { endSession(); }
-    return go(prev, { replace: true });
+    return go(prev, { replace: true }).then(function (r) {
+      /* --- ◀戻る でホームへ帰るときは数字を取り直す（V1.56） ---
+         ホームへ来る経路は3つあるのに、数え直していたのは
+         「ホームボタン」と「起動」の2つだけだった。
+         ◀戻るで帰ると、いま解いた分が復習バッジにも
+         レベルにも反映されないまま古い数字が残る。
+         「解いたのに減らない」は不具合として報告される見え方になる。
+
+         描画は待たせない。失敗しても戻る操作そのものは通す。 */
+      if (prev === 'home' && state.booted) { refreshHome().catch(noop); }
+      return r;
+    });
   }
 
   function setHeaderCrumb(question) {
@@ -849,7 +871,15 @@
       setText('#random-badge', randomBadgeText(h));
       var unlockFill = $('#unlock-mini-fill');
       if (unlockFill) { unlockFill.style.width = h.unlock_pct + '%'; }
-      setText('#exam-tag', '解放 ' + h.unlock_pct + '%');
+      /* --- 待機中の予想問題を出す（V1.56） ---
+         模試用に取り込んだ問題は、ランダムにも単元学習にも出ない。
+         どこにも表示しないと「取り込んだのに消えた」と読まれる。
+         解放率より、待っている問題数のほうが情報として強いので、
+         待機中があるときはそちらを出す。 */
+      var lockedQ = Number(h.mock_locked_questions || 0);
+      setText('#exam-tag', lockedQ > 0
+        ? ('予想問題 ' + lockedQ + '問が待機中')
+        : ('解放 ' + h.unlock_pct + '%'));
 
       /* --- ビジュアルテーマ --- */
       applyVisualTheme(h.visual_theme);
@@ -3176,11 +3206,10 @@
     /* --- オンボーディング（第8章） ---
        startOnboarding() : Promise<void>              即時体験型チュートリアル
        showCoachMark(targetSel, text, opts) : Promise<void>
-       runUiTour() : Promise<void>
-       resumeCheckpoint() : Promise<void>             中断からの復帰 */
+       resumeCheckpoint() : Promise<void>             中断からの復帰
+       （V1.56：runUiTour は撤去。その場ガイドへ置き換え済み） */
     startOnboarding  : pending('オンボーディング'),
     showCoachMark    : pending('ガイド吹き出し'),
-    runUiTour        : pending('UIツアー'),
     resumeCheckpoint : pending('チュートリアル復帰')
   };
 

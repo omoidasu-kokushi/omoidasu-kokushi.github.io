@@ -19,8 +19,8 @@ idx = open(os.path.join(APP, "index.html"), encoding="utf-8").read()
 sw = open(os.path.join(APP, "sw.js"), encoding="utf-8").read()
 
 _c = re.search(r"CACHE_NAME = 'v(\d+)\.(\d+)\.(\d+)'", sw)
-ok("sw CACHE_NAME が v1.44.0 以降",
-   bool(_c) and tuple(int(x) for x in _c.groups()) >= (1, 44, 0),
+ok("sw CACHE_NAME が v1.46.0 以降",
+   bool(_c) and tuple(int(x) for x in _c.groups()) >= (1, 46, 0),
    _c.group(0) if _c else "not found")
 ok("日付入力は残っていない", 'id="set-exam-date"' not in idx)
 ok("年のプルダウンがある", 'id="set-exam-year"' in idx)
@@ -28,13 +28,13 @@ ok("解説の3段階がある", 'id="set-explain-mode"' in idx
    and idx.count('data-explain=') == 3)
 ok("設定の版表示が最新（古い刻印が残っていない）",
    "NurseExamApp_V1.38" not in idx and 'id="build-stamp-settings"' in idx)
-ok("版の刻印が2箇所とも V1.55", idx.count("Omoidasu_V1.55") >= 2)
+ok("版の刻印が2箇所とも V1.57", idx.count("Omoidasu_V1.57") >= 2)
 
 # 資産の版が index と sw で一致（V1.42で入れた決まり）
 _idxq = dict(re.findall(r'"\./([^"?]+)\?v=([^"]+)"', idx))
 _swq = dict(re.findall(r"'\./([^'?]+)\?v=([^']+)'", sw))
 for f in ["styles.css", "questions.js", "storage.js", "scheduler.js", "drive.js", "license.js"]:
-    ok("%s の版が index と sw で一致" % f, _idxq.get(f) == _swq.get(f) and _idxq.get(f) == "1.55",
+    ok("%s の版が index と sw で一致" % f, _idxq.get(f) == _swq.get(f) and _idxq.get(f) == "1.57",
        "idx=%s sw=%s" % (_idxq.get(f), _swq.get(f)))
 
 

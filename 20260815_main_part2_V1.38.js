@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.37.js
+ * 20260815_main_part2_V1.38.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,19 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.38 (1) 復元（入れ替え）に確認を挟んだ。取り込み欄に同じファイルを
+ *            貼ると足し合わせになり、**同じファイルなのに入口で結果が
+ *            正反対**になっていた。入れ替え側にだけ確認を置く。
+ *        (2) 取り込み欄がバックアップを受け取ったときは、
+ *            「足し合わせました」と明示する。同じ見出しだと、
+ *            利用者は問題を足したつもりのままになる。
+ *        (3) UIツアー（TOUR_STEPS / runUiTour / promptRandom10）を撤去。
+ *            その場ガイドへ置き換え済みで、呼び出し元が1つも無かった。
+ *        (4) 模試だけが予想問題（pool:'mock'）を拾う（includeMock）。
+ *            「模試モードかどうか」で判定しない。exam 以外の経路が
+ *            増えるたびに漏れるので、拾う側が明示する形にした。
+ *        (2) 取り込み結果にプールの内訳を出す。黙っていると、
+ *            ランダムに予想問題が出てきて初めて誤りに気づくことになる。
  *  V1.37 (1) 「すべて元の文に戻す」「この音を消す」に確認を挟んだ。
  *            前半の confirmAction を通す。個別モーダルは増やさない。
  *  V1.36 (1) 模試の分類を【最後に見てからの距離】へ作り直した。
@@ -1521,9 +1534,16 @@
   }
 
   function launchExam(examId, size, style) {
+    /* --- 模試だけが予想問題を拾える（V1.56） ---
+       'mock' プールの問題は、ランダムにも単元学習にも復習にも出ない。
+       ここで初めて出会わせる。一度出会えば台帳に履歴が付き、
+       以降は普通の問題として復習にも出るようになる。
+
+       いじわる模試（弱点120問）は【すでに解いた弱点を狙う】モードなので、
+       初見の予想問題を混ぜる意味がない。ここだけ拾わない。 */
     var opts = (examId === 'mock_weak')
       ? { mode: 'exam', count: size, applyGuard: false, preferFrequent: true }   /* 弱点順で抽出 */
-      : { mode: 'exam', count: size, applyGuard: false, shuffle: true };
+      : { mode: 'exam', count: size, applyGuard: false, shuffle: true, includeMock: true };
     var extra = examStyleOpts(style, examId);
     Object.keys(extra).forEach(function (k) { opts[k] = extra[k]; });
 
@@ -1533,7 +1553,7 @@
       if (style === 'final' && q.questions.length < size) {
         toast('S・Aランクだけでは ' + size + '問に届かないので、他のランクも混ぜます', 4200);
         return K.buildQueue({ mode: 'exam', count: size, applyGuard: false,
-                              shuffle: true, preferKnown: true })
+                              shuffle: true, preferKnown: true, includeMock: true })
           .then(function (q2) { return finishLaunch(examId, q2, style); });
       }
       return finishLaunch(examId, q, style);
@@ -1735,10 +1755,32 @@
       return S.importText(text);
     }).then(function (rep) {
       var lines = [];
+      /* バックアップJSONを貼ると、取り込みではなく【復元（足し合わせ）】が走る。
+         同じ見出しを出すと、利用者は問題を足したつもりでいる（V1.56）。 */
+      if (rep.source === 'backup') {
+        lines.push('<b>バックアップとして読み取り、いまの中身に足し合わせました</b>');
+        lines.push('問題 ' + rep.questions + ' 問 ／ 選択肢 ' + rep.atoms + ' 件 ／ 学習の記録 ' +
+                   rep.progress_log + ' 件');
+        lines.push('<small>入れ替え（いまの中身を消してから戻す）をしたい場合は、' +
+                   '設定の［バックアップから復元］を使ってください。</small>');
+        setHtml('#import-report', lines.join('<br>'));
+        var box2 = $('#import-report');
+        if (box2) { box2.hidden = false; box2.classList.remove('is-error'); }
+        return K.refreshAll({ recomputeWeakness: true })
+          .then(function () { return M.refreshHome(); })
+          .then(function () { return rep; });
+      }
       lines.push('<b>' + (rep.ok ? '取り込みが完了しました' : '取り込めた行がありませんでした') + '</b>');
       lines.push('読み込み ' + rep.total_lines + ' 行 ／ 新規 ' + rep.imported + ' 問 ／ 更新 ' +
                  rep.updated + ' 問 ／ 選択肢 ' + rep.atoms + ' 件');
 
+      /* プールの内訳（V1.56）。模試用が混ざっていたら必ず出す。
+         黙っていると、ランダムに予想問題が出てきて初めて気づくことになる。 */
+      if (rep.pool_mock) {
+        lines.push('<b>本体 ' + (rep.pool_main || 0) + ' 問 ／ 模試用 ' + rep.pool_mock + ' 問</b>');
+        lines.push('<small>模試用の問題は、ランダム・単元学習・復習には出ません。' +
+                   '力試しモードで初めて出題され、そのあと復習に加わります。</small>');
+      }
       if (rep.skipped) {
         lines.push('<b>スキップ ' + rep.skipped + ' 行</b>（うち正解判定の不一致 ' + rep.mismatch + ' 行）');
       }
@@ -1796,11 +1838,31 @@
         var payload = null;
         try { payload = JSON.parse(String(fr.result)); }
         catch (e) { toast('JSONとして読み取れませんでした', 4000); return; }
-        S.restoreBackup(payload, 'replace').then(function (rep) {
-          toast('復元しました：問題 ' + rep.questions + ' 問 ／ 選択肢 ' + rep.atoms + ' 件', 4000);
-          return K.refreshAll({ recomputeWeakness: true });
-        }).then(function () { return M.refreshHome(); })
-          .catch(function (e) { toast('復元に失敗しました：' + e.message, 5000); });
+        /* --- 復元は「入れ替え」なので必ず確認する（V1.56） ---
+           このボタンは今の中身を**全部消してから**書き戻す。
+           取り込み欄に同じファイルを貼ると 'merge'（足し合わせ）になり、
+           **同じファイルなのに入口で結果が正反対**になる。
+           入れ替えのほうが取り返しがつかないので、こちらだけ確認を挟む。
+
+           何問入っているかを先に出す。ファイル名では中身が分からず、
+           古いバックアップを選んでも気づけない。 */
+        var n = (payload.stores && payload.stores.questions) ? payload.stores.questions.length : 0;
+        var na = (payload.stores && payload.stores.atoms) ? payload.stores.atoms.length : 0;
+        var when = payload.exported_at ? new Date(payload.exported_at).toLocaleString('ja-JP') : '不明';
+        M.confirmAction({
+          title: 'いまの中身を入れ替えますか',
+          body: 'このファイルには 問題 ' + n + '問 ／ 選択肢 ' + na + '件 が入っています'
+              + '（書き出し：' + when + '）。'
+              + 'いまの学習記録・メモ・図は、すべてこのファイルの中身に置き換わります。'
+              + '足し合わせではありません。元には戻せません。',
+          ok: '入れ替える'
+        }).then(function (yes) {
+          if (!yes) { return null; }
+          return S.restoreBackup(payload, 'replace').then(function (rep) {
+            toast('復元しました：問題 ' + rep.questions + ' 問 ／ 選択肢 ' + rep.atoms + ' 件', 4000);
+            return K.refreshAll({ recomputeWeakness: true });
+          }).then(function () { return M.refreshHome(); });
+        }).catch(function (e) { toast('復元に失敗しました：' + e.message, 5000); });
       };
       fr.readAsText(f);
     });
@@ -3794,63 +3856,25 @@
     if (layer) { layer.hidden = true; }
   }
 
-  /* 10問完了 → ダッシュボードが伸びるアニメーションとともにホームへ、
-     そのままUI各部をフォーカス表示して回る */
-  var TOUR_STEPS = [
-    { sel: '#card-review',  text: 'ここが「本日の復習」。赤いバッジの数だけ、復習の期日が来ています。' },
-    { sel: '.level-strip',  text: 'これがあなたの学習レベル。数字は下がらないので、安心して進めます。' },
-    { sel: '#scan-meter',   text: '「分析精度」は、あなたの弱点をどれだけ正確につかめているかの指標です。' },
-    { sel: '#card-knock',   text: '苦手な概念だけを5分・10分で集中演習できます。' },
-    { sel: '.tool-list',    text: '検索・★ノート・単元別学習・ダッシュボードはここから。' }
-  ];
+  /* --- 撤去：UIツアー（V1.56） ---
+     TOUR_STEPS / runUiTour() / promptRandom10() を消した。約90行。
 
-  function runUiTour() {
-    st.onboard.phase = 'tour';
-    var i = 0;
+     消した理由は「使っていないから」ではなく、**置き換え済みだから**。
+     オンボーディングは「まとめて20問＋ツアーで回る」構成をやめ、
+     3問だけ解かせて、あとは動線に沿ってその場ガイド（tip）を
+     1件ずつ出す構成になっている。ツアーはその時に役目を終えていたが、
+     コードだけが残り、**呼び出し元が1つも無いまま90行が居座っていた**。
 
-    return K.refreshAll({ recomputeWeakness: false })
-      .then(function () { return M.refreshHome(); })
-      .then(function () { return M.go('home', { replace: true }); })
-      .then(function () {
-        var bar = $('#level-bar-fill');
-        if (bar) { bar.style.transition = 'width 1.1s cubic-bezier(.22,.61,.36,1)'; }
-        return step();
-      });
+     §6-5：UIを撤去したら、それを更新していた関数の呼び出し元も一緒に消える。
+     残すと、次に読む人が「どこから呼ばれているのか」を必ず探す。
 
-    function step() {
-      if (i >= TOUR_STEPS.length) { return promptRandom10(); }
-      var s2 = TOUR_STEPS[i++];
-      var el = $(s2.sel);
-      if (!el) { return step(); }
-      if (el.scrollIntoView) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-      return new Promise(function (resolve) {
-        global.setTimeout(function () {
-          showCoachMark(s2.sel, s2.text, { nextLabel: i >= TOUR_STEPS.length ? '完了' : '次へ' });
-          st.onboard.next = function () { resolve(step()); };
-        }, 340);
-      });
-    }
-  }
+     meta の ui_tour_done は残す。同期規則（META_OR_KEYS）に載っており、
+     消すと端末間で片方だけキーが無い状態になる。値は
+     「ツアーを出さない」を意味するので、いまの挙動と矛盾しない。
 
-  /* ランダムモードへバウンドフォーカスを当てて、あと10問へ誘導する */
-  function promptRandom10() {
-    return M.refreshHome().then(function () {
-      var el = $('#card-random');
-      if (el && el.scrollIntoView) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
-      return new Promise(function (resolve) {
-        global.setTimeout(function () {
-          showCoachMark('#card-random',
-            '【初回限定】ランダムモードであと10問解くと、分析精度が33%に大幅アップします！',
-            { bounce: true, nextLabel: '10問はじめる' });
-          st.onboard.next = function () {
-            hideCoachMark();
-            st.onboard.phase = 'random10';
-            resolve(M.startSession({ mode: 'random', count: 10, applyGuard: false, shuffle: true }));
-          };
-        }, 340);
-      });
-    });
-  }
+     ガイドを見直したくなったら、ツアー方式に戻すのではなく
+     TIPS（その場ガイド）に足すこと。動線の途中で1件ずつ出すほうが、
+     §4-8「その場・その時・1つずつ」に合う。 */
 
   function finishOnboarding() {
     st.onboard.active = false;
@@ -3975,7 +3999,7 @@
     customAlarmUrl: customAlarmUrl,  refreshAlarmFileNote: refreshAlarmFileNote,
     saveAlarmFile: saveAlarmFile,    deleteAlarmFile: deleteAlarmFile,
     startOnboarding: startOnboarding,    showCoachMark: showCoachMark,
-    runUiTour: runUiTour,                resumeCheckpoint: resumeCheckpoint,
+    resumeCheckpoint: resumeCheckpoint,
     /* 後半で追加した処理 */
     resetByMedium: resetByMedium,        endBreak: endBreak,
     hideCoachMark: hideCoachMark,        notify: notify,

@@ -910,7 +910,10 @@
           unlearned: 0, max_priority: 0, sum_priority: 0,
           min_due: null, min_urgency: 99,
           /* 直前10日モード用（V1.30）。必修かどうかと、手応えの目安。 */
-          hissu: isHissu(a.unit), mastered: 0, last_seen: 0
+          hissu: isHissu(a.unit), mastered: 0, last_seen: 0,
+          /* 出題プール（V1.56）。アトムに非正規化してある。
+             古いレコードには無いので 'main' に倒す（黙って模試送りにしない）。 */
+          pool: a.pool || 'main'
         };
         order.push(a.q_id);
       }
@@ -1178,6 +1181,18 @@
           cands.forEach(function (c) {
             c.solved = (c.unlearned === 0);          /* 全部の肢を解いた */
             c.unseen = !c.solved;
+            /* --- 模試待ちの予想問題（V1.56） ---
+               まだ一度も出会っていない 'mock' の問題。
+               ランダム・単元学習・復習には出さず、模試で初めてぶつける。
+
+               「出会ったか」を別項目で持たず、台帳から導いている
+               （1肢でも解いていれば unlearned < atoms.length）。
+               項目を増やすと同期規則と引き継ぎ列挙の両方に足す必要が出て、
+               どちらかを忘れた瞬間に消える。導けるものは持たない。
+
+               ＝一度模試に出た予想問題は、この行が false になり、
+                 以降は普通の問題として復習にも出る。 */
+            c.mock_locked = (c.pool === 'mock') && (c.unlearned === c.atoms.length);
             /* 「離れた」の判定は2本立て。どちらか片方で足りる。
                ① 最終解答から14日以上（実時間で忘れている）
                ② 全肢が30日段以上（＝アプリ自身が「当分見なくていい」と判断した）
@@ -1209,6 +1224,16 @@
           if (mode === 'conquer') {
             cands = cands.filter(function (c) { return c.max_priority > 0; });
           }
+          /* --- 模試待ちの予想問題を外す（V1.56） ---
+             既定では外す。模試だけが includeMock を立てて拾いに行く。
+             ここを「模試モードかどうか」で判定しないのは、
+             検索からの即時演習・弱点ノック・オンボーディングなど
+             mode が exam でない経路が増えるたびに漏れるため。
+             拾う側が明示する形にしておく。 */
+          if (!options.includeMock) {
+            cands = cands.filter(function (c) { return !c.mock_locked; });
+          }
+
           /* --- 無料枠を使い切ったときの絞り込み（V1.53） ---
              ここは「ライセンスがあるか」を知らない。呼び出し側が判断して
              solvedOnly を渡す。出題の理屈と売り方の理屈を混ぜると、
@@ -1259,6 +1284,15 @@
                 want[k] = Math.round(count * (options.mix[k] || 0));
                 bucket[k] = shuffle(pool.filter(function (c) { return !!c[k]; }), options.seed);
                 used[k] = 0;
+              });
+              /* --- 初見枠は予想問題から先に使う（V1.56） ---
+                 模試の初見枠に過去問を使ってしまうと、
+                 【本体プールの過去問が、模試で先に消費される】。
+                 過去問は毎日の学習で計画的に消化するものなので、
+                 模試が横から食うと学習計画が崩れる。
+                 予想問題はそのために用意してあるので、先にこちらを使う。 */
+              bucket.unseen.sort(function (a, b) {
+                return (b.pool === 'mock' ? 1 : 0) - (a.pool === 'mock' ? 1 : 0);
               });
               var taken = [];
               ORDER.forEach(function (k) {
@@ -1382,6 +1416,12 @@
      「未学習」と「理解率0%」が混同されるのを構造的に防ぐ。 */
   function recomputeConceptScores() {
     return S.getAllAtoms().then(function (atoms) {
+      /* 模試待ちは概念の問題数にも数えない（V1.56）。
+         理解率そのものは評価済みアトムだけの平均なので影響を受けないが、
+         atom_count が実際に解ける数と食い違うと、
+         「20問あるはずの概念でノックを始めたら10問しか出ない」になる。 */
+      var mockLocked = splitMockPool(atoms).locked;
+      atoms = atoms.filter(function (a) { return !mockLocked[a.atom_id]; });
       var acc = {};
 
       function bucket(tag) {
@@ -1532,11 +1572,21 @@
       var totalAnswered = r[1] || 0;
       var scan = r[2];
 
-      var totalAtoms = atoms.length;
+      /* --- 模試待ちの予想問題は、レベルの分母から外す（V1.56） ---
+         Level 3 は「未解答アトムを0にする」。ランダムにも単元学習にも
+         出ない問題を分母に入れると、**Level 3 が永久に達成できない**。
+         Level 4・5 も同じ理由で外す。
+         模試に出た時点で分母へ入ってくるので、あとから増えるが、
+         不退転（max_pct）が後戻りを防ぐ（§2-3）。 */
+      var mockLocked = splitMockPool(atoms).locked;
+
+      var totalAtoms = 0;
       var unlearned = 0, hardOrNormal = 0, mastered = 0, evaluated = 0;
       var qSeen = {}, uniqueQ = 0;
 
       atoms.forEach(function (a) {
+        if (mockLocked[a.atom_id]) { return; }
+        totalAtoms++;
         if (!a.answer_count) { unlearned++; }
         else if (!qSeen[a.q_id]) { qSeen[a.q_id] = 1; uniqueQ++; }
 
@@ -1651,30 +1701,73 @@
 
   /* 解禁条件に渡す統計を組み立てて Storage.evaluateUnlocks に委譲する。
      ハイウォーターマークと永久フラグの保持は storage.js 側の責務。 */
+  /* --- 模試待ちの予想問題を数える（V1.56） ---
+     全アトムを1度だけ走査して、
+       ・まだ一度も出会っていない 'mock' の問題数とアトム数
+       ・そのアトムの集合
+     を返す。解禁の分母・レベル・分析精度・無料枠の全部がこれを引く。
+
+     数え方を1箇所に閉じ込めるのは、
+     【分母から外し忘れた画面だけが、永久に100%に届かない】から。
+     模試待ちの問題は解けないので、分母に入れると絶対に埋まらない。 */
+  function splitMockPool(atoms) {
+    var byQ = {}, order = [];
+    (atoms || []).forEach(function (a) {
+      var id = a.q_id;
+      if (!byQ[id]) { byQ[id] = { pool: a.pool || 'main', touched: false, atoms: [] }; order.push(id); }
+      var g = byQ[id];
+      /* プールは問題単位。アトムごとにばらつくことは無いが、
+         1つでも 'mock' なら 'mock' 扱いにしておく（安全側）。 */
+      if ((a.pool || 'main') === 'mock') { g.pool = 'mock'; }
+      if (a.answer_count > 0) { g.touched = true; }
+      g.atoms.push(a);
+    });
+    var lockedAtoms = {}, nAtoms = 0, nQuestions = 0;
+    order.forEach(function (id) {
+      var g = byQ[id];
+      if (g.pool !== 'mock' || g.touched) { return; }
+      nQuestions++;
+      g.atoms.forEach(function (a) { lockedAtoms[a.atom_id] = 1; nAtoms++; });
+    });
+    return { locked: lockedAtoms, locked_atoms: nAtoms, locked_questions: nQuestions };
+  }
+
   function refreshUnlocks() {
     return Promise.all([S.getAllAtoms(), S.countQuestions(), S.getMeta('full_mock_pass_streak', 0)])
       .then(function (r) {
         var atoms = r[0], totalQ = r[1], streak = r[2] || 0;
-        var total = atoms.length;
-        var answered = 0, normalPlus = 0;
+
+        /* 模試待ちの予想問題は分母から外す（V1.56）。
+           入れたままだと、解けない問題が分母に居座り、
+           【模試の解禁条件が永久に満たせない】。 */
+        var mock = splitMockPool(atoms);
+        var total = 0, answered = 0, normalPlus = 0;
 
         atoms.forEach(function (a) {
+          if (mock.locked[a.atom_id]) { return; }
+          total++;
           if (a.answer_count > 0) { answered++; }
           if (a.last_eval === EVAL.NORMAL || a.last_eval === EVAL.EASY || a.last_eval === EVAL.MASTER) {
             normalPlus++;
           }
         });
 
+        var mainQ = Math.max(0, totalQ - mock.locked_questions);
+
         return S.evaluateUnlocks({
-          totalQuestions      : totalQ,
+          totalQuestions      : mainQ,
           uniqueAnsweredRatio : total > 0 ? (answered / total) : 0,
           normalPlusRatio     : total > 0 ? (normalPlus / total) : 0,
           fullMockPassStreak  : streak
         }).then(function (results) {
           return {
             unlocks: results,
+            mock: mock,
             stats: {
-              total_questions: totalQ,
+              total_questions: mainQ,
+              total_questions_all: totalQ,
+              mock_locked_questions: mock.locked_questions,
+              mock_locked_atoms: mock.locked_atoms,
               total_atoms: total,
               answered_atoms: answered,
               normal_plus_atoms: normalPlus,
@@ -1719,6 +1812,16 @@
         : !!meta.prefer_frequent;
 
       return S.getAllAtoms().then(function (atoms) {
+        if (!atoms.length) { return { level: level, metric: metric, rows: [], empty: true }; }
+
+        /* --- 模試待ちの予想問題は分析にも入れない（V1.56） ---
+           定着率の分母は「範囲内の全アトム」だが、
+           **解く手段が無い問題を分母に入れると、その中項目は
+           どれだけ勉強しても100%にならない**。
+           グラフが永久に赤いままになり、弱点の見分けが効かなくなる。
+           模試に出た時点で分母へ入ってくる。 */
+        var mockLocked = splitMockPool(atoms).locked;
+        atoms = atoms.filter(function (a) { return !mockLocked[a.atom_id]; });
         if (!atoms.length) { return { level: level, metric: metric, rows: [], empty: true }; }
 
         var ids = atoms.map(function (a) { return a.atom_id; });
@@ -1996,10 +2099,21 @@
       var totalQ = r[5];
       var meta = r[6];
 
+      /* --- 模試待ちの予想問題を、利用者から見える数から外す（V1.56） ---
+         ランダムにも単元学習にも出ない問題を「残り◯問」に数えると、
+         毎日やっても減らない数が居座り、終わりが来ない。
+         refreshUnlocks が全アトムを1度走査したときの結果を借りる
+         （ここでもう一度全件を読むと、起動が二重に重くなる）。 */
+      var mock = (unlocks && unlocks.mock)
+        ? unlocks.mock : { locked: {}, locked_atoms: 0, locked_questions: 0 };
+      var unlearnedMain = Math.max(0, unlearned - mock.locked_atoms);
+      var totalMain = Math.max(0, totalQ - mock.locked_questions);
+
       /* 未学習アトムを問題単位に畳む。ランダムモードは未学習アトムを
          1つでも含む問題を出すので、利用者から見た「残り」はこの数。 */
       var seenQ = {}, unlearnedQ = 0;
       (r[7] || []).forEach(function (a) {
+        if (mock.locked[a.atom_id]) { return; }      /* 模試待ちは残数に数えない */
         if (!seenQ[a.q_id]) { seenQ[a.q_id] = 1; unlearnedQ++; }
       });
 
@@ -2015,7 +2129,7 @@
          いまの数で見ると、全初期化や問題の追加で数が戻り、
          いちど使った無料枠が復活してしまう。
          §2-3 の不退転（max_pct）と同じ考え方。 */
-      var solvedNow  = Math.max(0, totalQ - unlearnedQ);
+      var solvedNow  = Math.max(0, totalMain - unlearnedQ);
       var solvedEver = Math.max(Number(meta.solved_ever || 0), solvedNow);
       if (solvedEver !== Number(meta.solved_ever || 0)) {
         S.setMeta('solved_ever', solvedEver).catch(function () {});
@@ -2026,7 +2140,9 @@
         solved_questions: solvedNow,
         solved_ever: solvedEver,
         /* 逆算プランナー（V1.50）。ホーム最上部に1行で出す。 */
-        plan: buildPlan(meta, dueCount, unlearned, boundary2, nowMs()),
+        /* プランナーの分母も本体プールだけ。模試待ちを入れると
+           「今日はあと◯問」がやっても減らない数になる（V1.56）。 */
+        plan: buildPlan(meta, dueCount, unlearnedMain, boundary2, nowMs()),
         /* App Badging API には必ず整数を渡す（文字列を渡すと型エラーで落ちる） */
         badge_value: Math.min(dueCount, 99),
         badge_text: dueCount > 99 ? '99+' : String(dueCount),
@@ -2034,12 +2150,17 @@
         scan: scan,
         unlocks: unlocks.unlocks,
         unlock_pct: unlockPct,
-        unlearned_atoms: unlearned,
+        unlearned_atoms: unlearnedMain,
+        /* 模試待ちを含む生の数。取り込み結果の内訳に使う。 */
+        unlearned_atoms_all: unlearned,
+        mock_locked_questions: mock.locked_questions,
+        mock_locked_atoms: mock.locked_atoms,
         /* 「あと何問で読破か」はアトム数ではなく問題数で数える。
            ランダムモードは未学習アトムを1つでも含む問題を出すので、
            利用者から見た残数はこちらが正しい。 */
         unlearned_questions: unlearnedQ,
-        total_questions: totalQ,
+        total_questions: totalMain,
+        total_questions_all: totalQ,
         prefer_frequent: !!meta.prefer_frequent,
         visual_theme: level.visual_theme,
         random_qty_unlocked: !!meta.random_qty_unlocked,

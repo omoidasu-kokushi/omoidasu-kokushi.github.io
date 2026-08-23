@@ -522,11 +522,38 @@
 
   /* 数値metaにハイウォーターマーク（Math.max）を適用して保存する。
      問題追加やデータ入れ替えでパーセンテージが後戻りするのを防ぐ。 */
+  /* --- 高水位の引き上げ（V1.56で原子的にした） ---
+     以前は getMeta →（別トランザクションで）setMeta の2段だった。
+     **タブを2つ開いていると、これで数字が後戻りする。**
+
+       タブA：50 を読む          タブB：50 を読む
+       タブA：60 を書く
+       タブB：55 を書く   ← 60 が 55 に戻る
+
+     不退転（§2-3）は「絶対に後戻りしない」ことが仕様なので、
+     ごく稀でも起きてはいけない。読みと書きを1つの readwrite
+     トランザクションに入れる。IndexedDB は同じストアに対する
+     readwrite トランザクションを接続をまたいで直列化するので、
+     これで2つのタブが割り込めなくなる。 */
   function raiseMeta(key, candidate) {
-    return getMeta(key, 0).then(function (cur) {
-      var next = Math.max(isNum(cur) ? cur : 0, isNum(candidate) ? candidate : 0);
-      if (next === cur) { return cur; }
-      return setMeta(key, next);
+    var cand = isNum(candidate) ? candidate : 0;
+    var ts = nowMs();
+    return write([STORE.META], function (st) {
+      return req2promise(st[STORE.META].get(key)).then(function (row) {
+        var cur = (row && isNum(row.value)) ? row.value : 0;
+        if (cand <= cur) { return cur; }
+        st[STORE.META].put({ key: key, value: cand, updated_at: ts });
+        st[STORE.META].put({ key: 'updated_at', value: ts, updated_at: ts });
+        return cand;
+      });
+    }).then(function (next) {
+      /* 手元の写しも合わせる。合わせないと、書いた直後の読み出しが
+         古い値を返し、同じ画面の中で数字が食い違う。 */
+      if (_metaCache) {
+        if (!isNum(_metaCache[key]) || next > _metaCache[key]) { _metaCache[key] = next; }
+        _metaCache.updated_at = ts;
+      }
+      return next;
     });
   }
 
@@ -1123,6 +1150,9 @@
       drive_image_id     : null,
       /* 13列目。一問一答へ切り出してよいか。既定は false（安全側）。 */
       is_splittable      : isSplittable,
+      /* 出題プール（V1.56）。TSVには列が無いので既定は 'main'。
+         予想問題をTSVで入れる場合はJSONを使うこと。 */
+      pool               : 'main',
       user_memo          : null,      /* 利用者が上書きした解説（Markdown-lite） */
       memo_updated_at    : null,
       num_code           : numCode,
@@ -1139,6 +1169,23 @@
   /* ======================================================================
    * 5. インポート
    * ====================================================================== */
+
+  /* --- 出題プール（V1.56） ---
+     'main' … ランダム・単元学習・復習に出る本体プール（過去問）
+     'mock' … 模試で初めて出会わせる予備プール（自作の予想問題）
+
+     なぜ source の有無で代用しないか：
+     source は既に画面表示の意味を持っている（空なら「AI予想問題」と出す）。
+     1つの項目に2つの意味を持たせると、後で必ず片方が壊れる（§1-3 と同じ系統）。
+
+     なぜ「解放済み」を別項目で持たないか：
+     模試で一度出会えば、その問題のアトムに解答履歴が付く。
+     つまり【解放済みかどうかは台帳から導ける】。
+     項目を増やすと、同期規則にも引き継ぎ列挙にも足す必要が出て、
+     どちらかを忘れた瞬間に消える（§1-3）。導けるものは持たない。 */
+  function normalizePool(v) {
+    return (String(v || '').trim().toLowerCase() === 'mock') ? 'mock' : 'main';
+  }
 
   /* アトムを IndexedDB レコードへ展開する（進捗フィールドを初期化して付与） */
   function toAtomRecord(atom, q, prev) {
@@ -1175,6 +1222,10 @@
       sub_item       : q.sub_item,
       rank           : q.rank,
       num_code       : q.num_code,
+      /* 出題プール（V1.56）。出題側は問題ではなくアトムから候補を組むので、
+         ここに落としておかないと、候補を畳んだ時点でプールが分からない。
+         rank や medium と同じ理由の非正規化（§1-5）。 */
+      pool           : q.pool || 'main',
       updated_at     : nowMs()
     };
 
@@ -1400,6 +1451,7 @@
         ok: true, source: 'json', started_at: nowMs(),
         total_lines: list.length, parsed: 0, imported: 0, updated: 0,
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
+        pool_main: 0, pool_mock: 0,
         errors: [], warnings: [], messages: []
       };
 
@@ -1445,6 +1497,9 @@
            従来は undefined のまま入り、出題側の判定が不定だった。 */
         qq.select_count  = isNum(q.select_count) ? q.select_count : countCorrectAtoms(q.atoms);
         qq.is_starred  = !!q.is_starred;
+        /* 出題プール（V1.56）。書いていなければ 'main'。
+           既存のデータを取り込み直しても、黙って模試送りにはならない。 */
+        qq.pool        = normalizePool(q.pool);
         qq.atom_count  = q.atoms.length;
         qq.verify_status = q.verify_status || 'json';
         qq.created_at  = q.created_at || nowMs();
@@ -1464,6 +1519,12 @@
         });
 
         report.parsed++;
+        /* 取り込み結果にプールの内訳を出す（V1.56）。
+           出さないと「模試用のつもりが本体へ入っていた」に気づけない。
+           気づけるのは、模試を受けたときか、ランダムに予想問題が
+           出てきたとき＝手遅れになってから。 */
+        if (qq.pool === 'mock') { report.pool_mock = (report.pool_mock || 0) + 1; }
+        else { report.pool_main = (report.pool_main || 0) + 1; }
         payload.push({ ok: true, question: qq, atoms: atoms, warnings: [] });
       });
 
@@ -1514,7 +1575,10 @@
                 if (prevQ.drive_image_id !== undefined) { q.drive_image_id = prevQ.drive_image_id; }
                 /* is_splittable は引き継がない。13列目に書いた値がそのまま正で、
                    作問側で直したものが取り込みで反映されないと直せなくなる。
-                   ここは「利用者が画面で作った値」ではなくデータそのもの。 */
+                   ここは「利用者が画面で作った値」ではなくデータそのもの。
+                   pool も同じ理由で引き継がない。
+                   「模試で出したから main へ昇格」は台帳から導いており、
+                   レコードには書いていないので、取り込み直しても失われない。 */
               } else {
                 report.imported++;
               }
@@ -1856,6 +1920,20 @@
   /* 3階層ツリーの未学習バッジ用：スコープごとの未学習アトム数を一括集計する */
   function countUnlearnedByScope() {
     return getAll(STORE.ATOMS, '_unlearned', IDBKeyRange.only(1)).then(function (list) {
+      /* --- 模試待ちの予想問題はバッジに数えない（V1.56） ---
+         ツリーの赤バッジは「ここに未学習が◯件ある」という催促。
+         ランダムにも単元学習にも出ない問題を数えると、
+         **その単元を全部やっても消えないバッジ**が残り続け、
+         催促として機能しなくなる。
+
+         ここは索引で未学習アトムだけを引いているので、問題単位に
+         畳んで「解放済みか」を見ることができない。アトム単位で
+         「'mock' かつ未解答」を落とす近似にしている。
+         模試は問題の全肢に解答させるので、部分的に解放された
+         問題は実際には発生しない（＝この近似は実運用では厳密）。 */
+      list = list.filter(function (a) {
+        return !((a.pool || 'main') === 'mock' && !a.answer_count);
+      });
       var out = { unit: {}, major: {}, medium: {}, sub_item: {}, total: list.length };
       list.forEach(function (a) {
         out.unit[a.unit]         = (out.unit[a.unit] || 0) + 1;
