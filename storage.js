@@ -56,6 +56,18 @@
    *            取り除かれない。つまり2台目を使い始めた最初の同期で必ず起きる。
    *            同じ処理の restoreBackup 側は最初から 'log_id' で正しかった。
    *            片方だけ間違っている＝写し間違い。実機で再現を確認済み。
+   *  V1.49 (1) メモを消すと墓標まで消えていた。memo_updated_at に null を
+   *            入れていたため「一度も書いていない」と区別が付かず、
+   *            同期のたびに向こうの本文が書き戻されていた（2台目すら不要）。
+   *            消した時刻を必ず残す。
+   *        (2) 設定（試験日・テーマ等）の新旧を比べるための時刻を分けた。
+   *            従来は meta の updated_at を使っていたが、これは同期の
+   *            後始末（drive_last_sync 等）でも打ち直されるため、
+   *            ローカルが常に新しくなり、相手の設定が永久に届かなかった。
+   *            同期対象の設定キーが変わったときだけ settings_updated_at を打つ。
+   *            対象キーの一覧は drive.js が持ち、起動時に渡してくる（二重管理を避ける）。
+   *        (3) 進捗の全消しに墓標（progress_reset_at）を残すようにした。
+   *            墓標が無いと、次の同期で向こうの台帳から全部よみがえる。
    */
 
   /* ======================================================================
@@ -445,14 +457,43 @@
     });
   }
 
+  /* --- 同期対象の「設定」キー（V1.49） ---
+     ここが変わったときだけ settings_updated_at を打つ。
+     meta の updated_at は同期の後始末（drive_last_sync など）でも動くので、
+     設定の新旧を比べる物差しには使えない。使うと【ローカルが常に新しい】に
+     なり、相手の設定が永久に届かない。
+     一覧は drive.js が持っている。ここで写しを作ると二重管理になるので、
+     起動時に渡してもらう。渡されなければ何も打たない（同期しないだけで害はない）。 */
+  var _syncedSettingKeys = {};
+
+  function setSyncedSettingKeys(list) {
+    _syncedSettingKeys = {};
+    (list || []).forEach(function (k) { _syncedSettingKeys[k] = 1; });
+    return Object.keys(_syncedSettingKeys).length;
+  }
+
+  function touchesSettings(keys) {
+    var i;
+    for (i = 0; i < keys.length; i++) {
+      if (_syncedSettingKeys[keys[i]]) { return true; }
+    }
+    return false;
+  }
+
   function setMeta(key, value) {
+    var ts = nowMs();
+    var bumpSettings = touchesSettings([key]);
     return write([STORE.META], function (s) {
-      s[STORE.META].put({ key: key, value: value, updated_at: nowMs() });
-      s[STORE.META].put({ key: 'updated_at', value: nowMs(), updated_at: nowMs() });
+      s[STORE.META].put({ key: key, value: value, updated_at: ts });
+      s[STORE.META].put({ key: 'updated_at', value: ts, updated_at: ts });
+      if (bumpSettings) {
+        s[STORE.META].put({ key: 'settings_updated_at', value: ts, updated_at: ts });
+      }
     }).then(function () {
       if (_metaCache) {
         _metaCache[key] = value;
-        _metaCache.updated_at = nowMs();
+        _metaCache.updated_at = ts;
+        if (bumpSettings) { _metaCache.settings_updated_at = ts; }
       }
       return value;
     });
@@ -460,15 +501,20 @@
 
   function setMetaBulk(obj) {
     var ts = nowMs();
+    var bumpSettings = touchesSettings(Object.keys(obj));
     return write([STORE.META], function (s) {
       Object.keys(obj).forEach(function (k) {
         s[STORE.META].put({ key: k, value: obj[k], updated_at: ts });
       });
       s[STORE.META].put({ key: 'updated_at', value: ts, updated_at: ts });
+      if (bumpSettings) {
+        s[STORE.META].put({ key: 'settings_updated_at', value: ts, updated_at: ts });
+      }
     }).then(function () {
       if (_metaCache) {
         Object.keys(obj).forEach(function (k) { _metaCache[k] = obj[k]; });
         _metaCache.updated_at = ts;
+        if (bumpSettings) { _metaCache.settings_updated_at = ts; }
       }
       return obj;
     });
@@ -1524,7 +1570,10 @@
      空文字を渡すと書き換えを取り消し、元の解説へ戻す。 */
   function setMemo(kind, id, text) {
     var body = (text == null) ? '' : String(text).trim();
-    var patch = { user_memo: body || null, memo_updated_at: body ? nowMs() : null };
+    /* V1.49：消したときも時刻を残す。null にすると「一度も書いていない」と
+       区別が付かなくなり、同期のたびに向こうの本文が書き戻される
+       （＝消しても消しても戻ってくる）。消したことも1つの出来事として記録する。 */
+    var patch = { user_memo: body || null, memo_updated_at: nowMs() };
     return (kind === 'question') ? updateQuestion(id, patch) : updateAtom(id, patch);
   }
 
@@ -2777,7 +2826,12 @@
           tutorial_answered: 0,
           tutorial_finished: false,
           onboarding_done: false,
-          onboarding_step: 0
+          onboarding_step: 0,
+          /* V1.49：消した時刻を残す。これが無いと、次の同期で向こうの台帳から
+             全部よみがえる。利用者が明示的に実行した破壊的操作が、
+             無言で取り消されるのが一番まずい。
+             この時刻以前の記録は、合体のときに落とす（drive.js）。 */
+          progress_reset_at: nowMs()
         });
       }).then(function () {
         return { ok: true, backup_filename: saved.filename };
@@ -2873,6 +2927,7 @@
     countUserFiles     : countUserFiles,
     shrinkImage        : shrinkImage,
     USER_IMG_MAX_EDGE  : USER_IMG_MAX_EDGE,
+    setSyncedSettingKeys : setSyncedSettingKeys,
     judgeSplittable    : judgeSplittable,
     crossCheckJsonQuestion : crossCheckJsonQuestion,
     autoMarkSplittable : autoMarkSplittable,

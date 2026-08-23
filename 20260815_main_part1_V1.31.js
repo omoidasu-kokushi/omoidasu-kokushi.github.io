@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.23.js
+ * 20260815_main_part1_V1.31.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
@@ -1661,7 +1661,7 @@
              '<div class="cx-line">' +
              '<span class="cx-num">' + circled(a.original_num) + '</span>' +
              '<span class="cx-text">' + escapeHtml(a.text) + '</span>' +
-             (picked ? '<span class="cx-pick">解答</span>' : '') +
+             (picked ? '<span class="cx-pick">あなたの答え</span>' : '') +
              '<button type="button" class="cx-memo-btn" aria-label="この選択肢の解説を書き換える">✏</button>' +
              '<button type="button" class="cx-star" aria-pressed="' + (a.is_starred ? 'true' : 'false') +
              '" aria-label="この選択肢に★を付ける">' + (a.is_starred ? '★' : '☆') + '</button>' +
@@ -2792,8 +2792,23 @@
     on(doc, 'visibilitychange', function () {
       if (doc.visibilityState === 'visible' && state.booted && state.screen === 'home') {
         refreshHome().catch(noop);
+        return;
       }
+      /* 隠れる直前に上げる（V1.49）。
+         自動同期はホームへ来た8秒後にしか走らないので、
+         「学習を終える→ホーム→すぐ閉じる」がまるごと未同期だった。
+         ここが最後の機会になる。await はしない（できない）。 */
+      if (doc.visibilityState === 'hidden' && state.booted) { syncOnHide(); }
     });
+    /* visibilitychange が来ない環境のための二重の網（§4-14 と同じ考え方）。 */
+    on(global, 'pagehide', function () { if (state.booted) { syncOnHide(); } });
+  }
+
+  /* 画面を閉じる直前の同期。後半モジュールが持っているので、無ければ何もしない。 */
+  function syncOnHide() {
+    var H2 = global.Half2Impl;
+    if (!H2 || !H2.syncOnHide) { return; }
+    try { H2.syncOnHide(); } catch (e) { /* 閉じる途中なので黙って諦める */ }
   }
 
   /* ホーム画面などの data-action を1箇所で捌く。

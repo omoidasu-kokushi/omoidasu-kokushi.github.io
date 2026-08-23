@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.30.js
+ * 20260815_main_part2_V1.31.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,9 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.31 (1) 画面を閉じる直前は、どの画面からでも同期するようにした。
+ *            従来はホーム/設定のとき以外は runAutoSync が即 return していたため、
+ *            「学習を終える→ホーム→8秒待たずに閉じる」がまるごと未同期だった。
  *  V1.30 (1) 同期に失敗したとき、その理由を設定画面に出すようにした。
  *            V1.48 で drive.js が失敗を握りつぶすのをやめたが、自動同期は
  *            画面に何も出さないため、直しただけでは利用者に届かない。
@@ -2348,7 +2351,11 @@
   }
 
   function runAutoSync(reason) {
-    if (autoSyncBusy || !autoSyncSafeNow()) { return Promise.resolve(null); }
+    if (autoSyncBusy) { return Promise.resolve(null); }
+    /* 閉じる直前（reason==='hide'）だけは画面を問わない。
+       ここを逃すと、学習を終えてすぐ閉じる人の記録が一度も上がらない。
+       解答の途中で閉じても、そこまでの記録は上げてよい。 */
+    if (reason !== 'hide' && !autoSyncSafeNow()) { return Promise.resolve(null); }
     autoSyncBusy = true;
     return D.autoSync().then(function (rep) {
       autoSyncBusy = false;
@@ -3552,6 +3559,7 @@
     setExplainMode: setExplainMode,      refreshExplainMode: refreshExplainMode,      saveDriveClientId: saveDriveClientId,
     driveLogin: driveLogin,          driveLogout: driveLogout,
     runAutoSync: runAutoSync,        scheduleAutoSync: scheduleAutoSync,
+    syncOnHide      : function () { return runAutoSync('hide'); },
     driveSyncFromSplash: driveSyncFromSplash,
     autoSyncSafeNow: autoSyncSafeNow, initPwaInstall: initPwaInstall,
     pwaInstall: pwaInstall,          pwaHow: pwaHow,

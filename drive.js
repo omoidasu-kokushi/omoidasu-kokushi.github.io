@@ -554,8 +554,12 @@
          向こうの目次に残った image_file_id を根拠に取りに行ってしまう
          ＝【消した図が次の同期でよみがえる】。 */
       return qs.filter(function (q) {
+        /* メモを消した問題も目次に載せる（V1.49）。載せないと目次から消え、
+           向こうに残った本文を根拠に書き戻してしまう
+           ＝【消したメモが次の同期でよみがえる】。図と同じ壊れ方。 */
         return byQ[q.q_id] || q.user_image_deleted_at ||
-               (q.user_memo && String(q.user_memo).trim());
+               (q.user_memo && String(q.user_memo).trim()) ||
+               Number(q.memo_updated_at || 0) > 0;
       }).map(function (q) {
         var f = byQ[q.q_id];
         var del = f ? 0 : Number(q.user_image_deleted_at || 0);
@@ -751,12 +755,16 @@
         var s3 = Promise.resolve();
         merged.items.forEach(function (it) {
           var mine = localByKey[keyOf(it)];
-          if (!it.memo) { return; }
-          if (mine && String(mine.memo || '') === String(it.memo)) { return; }
+          /* V1.49：空（＝向こうで消された）も反映する。
+             以前は `if (!it.memo) return;` で空を素通りさせていたため、
+             消したメモが手元に残り続けた。 */
+          if (String((mine && mine.memo) || '') === String(it.memo || '')) { return; }
+          /* 手元のほうが新しいなら触らない。合体で負けた側だけを書き戻す。 */
+          if (mine && Number(mine.updated_at || 0) >= Number(it.updated_at || 0)) { return; }
           s3 = s3.then(function () {
             return S.getQuestion(it.q_id).then(function (q) {
               if (!q) { return null; }
-              q.user_memo = it.memo;
+              q.user_memo = it.memo || null;
               q.memo_updated_at = it.updated_at || nowMs();
               report.memo_updated++;
               return S.putQuestionShallow(q);
@@ -830,7 +838,10 @@
     'unlock_pct_mock_30', 'unlock_pct_mock_60',
     'unlock_pct_mock_120', 'unlock_pct_mock_weak',
     'full_mock_pass_streak',
-    'tutorial_answered', 'pomodoro_session_count'
+    'tutorial_answered', 'pomodoro_session_count',
+    /* V1.49：進捗を全消しした時刻。新しい方（＝あとで消した方）が勝つ。
+       この時刻以前の記録は合体のときに落とす。 */
+    'progress_reset_at'
   ];
 
   /* 片方でtrueになったら永久にtrue。模試の解禁とオンボーディングの通過。
@@ -854,6 +865,11 @@
     'notify_enabled', 'badge_enabled', 'verdict_popup_enabled',
     'text_overrides'
   ];
+
+  /* V1.49：設定キーの一覧は【ここが持ち主】。
+     storage.js は、この一覧に入っているキーが変わったときだけ
+     settings_updated_at を打つ。写しを作らず、起動時に渡す。 */
+  if (S && S.setSyncedSettingKeys) { S.setSyncedSettingKeys(META_NEWER_KEYS); }
 
   /* 【意図的に同期しない】
        drive_*                  端末ごとのID。混ぜると別アカウントを指す。
@@ -902,6 +918,9 @@
         return {
           schema: PROGRESS_SCHEMA,
           updated_at: nowMs(),
+          /* 設定の新旧はこちらで比べる。updated_at は同期の後始末でも
+             打ち直されるので、物差しにならない（V1.49）。 */
+          settings_at: Number(m.settings_updated_at || 0),
           /* V1.48：log_id は端末ごとの連番で、他の端末では意味を持たない。
              送ると、別端末の別の解答に同じ番号が付いた状態で戻ってきて、
              書き戻しのときに主キーが衝突する。端末の外へ出さない。
@@ -934,7 +953,7 @@
   }
 
   function emptyProgress() {
-    return { schema: PROGRESS_SCHEMA, updated_at: 0, logs: [], meta: {},
+    return { schema: PROGRESS_SCHEMA, updated_at: 0, settings_at: 0, logs: [], meta: {},
              stars_atom: [], stars_question: [], starred_atoms: [] };
   }
 
@@ -1079,12 +1098,26 @@
       var mine = pair[0], theirs = pair[1];
       var K = global.Scheduler;
       report.logs_before = mine.logs.length;
+      /* 進捗を全消しした時刻より前の記録は、合体のときに落とす（V1.49）。
+         落とさないと、向こうの台帳から全部よみがえり、
+         利用者が実行した「全部消す」が無言で取り消される。
+         新しい方の墓標を採るので、どちらの端末で消しても効く。 */
+      var cut = Math.max(Number((mine.meta || {}).progress_reset_at || 0),
+                         Number((theirs.meta || {}).progress_reset_at || 0));
       var merged = K.mergeLogs(mine.logs, theirs.logs);
+      if (cut > 0) {
+        merged = merged.filter(function (l) { return Number(l.answered_at || 0) > cut; });
+      }
       report.logs_after = merged.length;
       report.added = merged.length - mine.logs.length;
+      report.dropped_by_reset = cut > 0 ? 1 : 0;
 
+      /* 設定の新旧は settings_at で比べる。updated_at を使うと、
+         同期の後始末で打ち直されたローカルが常に勝ち、
+         相手の設定が永久に届かない（V1.48まで）。 */
+      var settingsAt = Math.max(Number(mine.settings_at || 0), Number(theirs.settings_at || 0));
       var meta = mergeMeta(mine.meta || {}, theirs.meta || {},
-                           mine.updated_at || 0, theirs.updated_at || 0);
+                           Number(mine.settings_at || 0), Number(theirs.settings_at || 0));
       var starsA = mergeStars(normalizeStars(mine), normalizeStars(theirs));
       var starsQ = mergeStars(mine.stars_question || [], theirs.stars_question || []);
       report.stars_atom = starsA.filter(function (r) { return r.on; }).length;
@@ -1100,10 +1133,15 @@
         Object.keys(meta).forEach(function (k) {
           seq = seq.then(function () { return S.setMeta(k, meta[k]); });
         });
-        return seq;
+        /* 合わせ終わった時点の「設定の時刻」を揃える。
+           ここを揃えないと、書き戻しの setMeta が settings_updated_at を
+           今の時刻に押し上げ、次の同期でまたローカルが勝ってしまう。 */
+        return seq.then(function () {
+          return S.setMeta('settings_updated_at', settingsAt);
+        });
       }).then(function () {
         return writeProgress({
-          logs: merged, meta: meta,
+          logs: merged, meta: meta, settings_at: settingsAt,
           stars_atom: starsA, stars_question: starsQ,
           starred_atoms: starsA.filter(function (r) { return r.on; })
                                .map(function (r) { return r.id; })

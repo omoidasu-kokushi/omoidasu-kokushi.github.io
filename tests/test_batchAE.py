@@ -167,6 +167,83 @@ def runtime_checks():
         ok("成功したら未同期の印は消える", r["ok"] is True and r["pending"] == 0, json.dumps(r))
         ok("成功したら前回の失敗の理由も消える", r["lastError"] is None, json.dumps(r, ensure_ascii=False))
 
+        # ---------- 6. メモを消したら、同期しても戻ってこない ----------
+        r = pg.evaluate("""async () => {
+          const S = window.Storage, D = window.Drive;
+          const qs = await S.getAllQuestions();
+          const qid = qs[0].q_id;
+          await S.setMemo('question', qid, 'ここに書いたメモ');
+          await D.signInAndSync(function () {});
+          await S.setMemo('question', qid, '');            // 消す
+          const afterDelete = (await S.getQuestion(qid)).user_memo;
+          const stampAfterDelete = (await S.getQuestion(qid)).memo_updated_at;
+          await D.signInAndSync(function () {});         // 同期しても戻らないこと
+          const q = await S.getQuestion(qid);
+          return { afterDelete, stampAfterDelete,
+                   afterSync: q.user_memo, stamp: q.memo_updated_at };
+        }""")
+        ok("メモを消した時刻が残る（墓標が消えない）",
+           bool(r["stampAfterDelete"]) and r["stampAfterDelete"] > 0, json.dumps(r, ensure_ascii=False))
+        ok("同期してもメモが復活しない",
+           not r["afterSync"], json.dumps(r, ensure_ascii=False))
+
+        # ---------- 7. 設定が相手から届く ----------
+        r = pg.evaluate("""async () => {
+          const S = window.Storage, D = window.Drive;
+          // 相手のほうが後に設定を変えた、という状況を作る
+          await S.setMeta('exam_date', '2027-02-14');
+          await D.signInAndSync(function () {});
+          const mineAt = (await S.loadMeta()).settings_updated_at;
+          // 向こうのファイルを直接書き換える（別端末が後で変えたことにする）
+          const before = (await S.loadMeta()).exam_date;
+          const payload = await D.readProgress();
+          return { mineAt, before, hasSettingsAt: payload && 'settings_at' in payload,
+                   settingsAt: payload && payload.settings_at };
+        }""")
+        ok("設定の時刻がドライブ側にも載っている",
+           r["hasSettingsAt"] is True, json.dumps(r, ensure_ascii=False))
+        ok("設定の時刻は同期の後始末で押し上げられない",
+           r["settingsAt"] == r["mineAt"], json.dumps(r, ensure_ascii=False))
+
+        # ---------- 8. 進捗を全消ししたら、同期しても戻ってこない ----------
+        r = pg.evaluate("""async () => {
+          const S = window.Storage, D = window.Drive, K = window.Scheduler;
+          const atoms = await S.getAllAtoms();
+          await S.replaceAllLogs([
+            { atom_id: atoms[0].atom_id, answered_at: Date.now() - 60000,
+              eval: 'hard', is_correct: false, schedule_updated: true, interval_code: '10m' }
+          ]);
+          await D.signInAndSync(function () {});          // 向こうへ上げる
+          const meta0 = await S.loadMeta();
+          // 全消し（バックアップの自動ダウンロードは止める）
+          const origDl = S.downloadBackup;
+          S.downloadBackup = function () { return Promise.resolve({ filename: '', downloaded: false }); };
+          try { await S.resetProgressAll(); } finally { S.downloadBackup = origDl; }
+          const m = await S.loadMeta();
+          const afterReset = (await S.getAllLogs()).length;
+          await D.signInAndSync(function () {});          // ここで戻ってきてはいけない
+          return { resetAt: m.progress_reset_at || 0, afterReset,
+                   afterSync: (await S.getAllLogs()).length };
+        }""")
+        ok("全消しの時刻が墓標として残る", r["resetAt"] > 0, json.dumps(r))
+        ok("消した直後は0件", r["afterReset"] == 0, json.dumps(r))
+        ok("同期しても消した記録が戻ってこない", r["afterSync"] == 0, json.dumps(r))
+
+        # ---------- 9. 閉じる直前は画面を問わず同期する ----------
+        ok("閉じる直前の同期の入口がある",
+           pg.evaluate("typeof window.Half2Impl.syncOnHide === 'function'"))
+        r = pg.evaluate("""async () => {
+          const S = window.Storage, M = window.Main, H = window.Half2Impl;
+          await S.clearDirty(); await S.bumpDirty(2);
+          M.state.screen = 'quiz';                        // ホーム以外にいる
+          await H.syncOnHide();
+          await new Promise(r => setTimeout(r, 900));
+          const n = await window.Drive.pendingCount();
+          M.state.screen = 'home';
+          return { pending: n };
+        }""")
+        ok("解答画面からでも上がる（未同期が残らない）", r["pending"] == 0, json.dumps(r))
+
         ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))
         br.close()
 
