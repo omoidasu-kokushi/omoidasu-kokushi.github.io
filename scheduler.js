@@ -1191,7 +1191,24 @@
             var pool = g.list;
             var picked;
 
-            if (options.shuffle) {
+            if (options.shuffle && isNum(options.knownRatio)) {
+              /* --- 既出と初見を指定の比率で混ぜる（V1.51） ---
+                 模試の全問を初見にすると、本番より難しくなる。
+                 本番で「知識としてまったく初めて」が出るのは一部で、
+                 大半は習った範囲を別の角度から問われる。
+                 既出＝全部の肢を一度は解いた問題。初見＝未学習の肢を含む問題。
+                 足りない側は、もう片方から埋める（数を減らさない）。 */
+              var ratio = Math.max(0, Math.min(1, options.knownRatio));
+              var wantK = Math.round(count * ratio);
+              var kPool = shuffle(pool.filter(function (c) { return c.unlearned === 0; }), options.seed);
+              var fPool = shuffle(pool.filter(function (c) { return c.unlearned > 0; }), options.seed);
+              var takeK = kPool.slice(0, wantK);
+              var takeF = fPool.slice(0, count - takeK.length);
+              if (takeK.length + takeF.length < count) {
+                takeK = takeK.concat(kPool.slice(takeK.length, takeK.length + (count - takeK.length - takeF.length)));
+              }
+              picked = shuffle(takeK.concat(takeF), options.seed).slice(0, count);
+            } else if (options.shuffle) {
               var un, rest;
               if (options.preferKnown) {
                 /* --- 直前モード（V1.50） ---

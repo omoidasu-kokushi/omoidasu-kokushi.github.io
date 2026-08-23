@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.50">
+<link rel="stylesheet" href="./styles.css?v=1.51">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,17 +45,17 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.50",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.51",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.50",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.51",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.50",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.51",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.32.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.32.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.33.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.50",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.51",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -402,7 +402,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260823_Omoidasu_V1.50</p>
+        <p class="build-stamp">20260823_Omoidasu_V1.51</p>
       </div>
     </section>
 
@@ -1082,6 +1082,17 @@
             </div>
             <div class="import-report" id="import-report" hidden></div>
           </div>
+          <!-- V1.51：iOS は App Badging も Web Push も実質使えない。
+               アプリが通知するのをやめて、OSのカレンダーに任せる。 -->
+          <button type="button" class="set-row" id="btn-ics">
+            <span class="set-row-body"><b>復習の予定をカレンダーに入れる</b><small>2週間ぶんを書き出します。iPhoneでも通知が届くようになります</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+          <!-- V1.51：実習中の病院ではスマホを出せない。紙が唯一の持ち出し手段。 -->
+          <button type="button" class="set-row" id="btn-note-print">
+            <span class="set-row-body"><b>間違いノートを印刷する</b><small>★と「難しい」だけを集めて、A4/A5/B4/B5 で出せます</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
           <button type="button" class="set-row" id="btn-backup">
             <span class="set-row-body"><b>バックアップを書き出す</b><small>JSONファイルとして保存します</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
@@ -1106,7 +1117,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260823_Omoidasu_V1.50 / cache v1.39.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260823_Omoidasu_V1.51 / cache v1.40.0</p>
         </section>
       </div>
     </section>
@@ -1338,6 +1349,52 @@
     </div>
   </div>
 
+  <!-- 印刷専用の紙面（V1.51）。画面には出さない。 -->
+  <div id="print-sheet" aria-hidden="true"></div>
+
+  <!-- 間違いノート（V1.51）
+       白衣に入れたいならA5、カバンで持ち歩けるならA4と、置かれた状況で最適が変わる。
+       既定はA4。家庭用プリンタはA5給紙に対応していないことが多く、
+       A5を既定にすると「選べるのに印刷できない」になりやすい。 -->
+  <div class="modal-card" id="modal-note" hidden>
+    <h3 class="modal-title">間違いノートを印刷</h3>
+    <div class="modal-body">
+      <label class="note-row"><span>集めるもの</span>
+        <select id="note-kind">
+          <option value="both">★と「難しい」</option>
+          <option value="star">★だけ</option>
+          <option value="hard">「難しい」だけ</option>
+        </select>
+      </label>
+      <label class="note-row"><span>用紙</span>
+        <select id="note-paper">
+          <option value="A4">A4（カバンで持ち歩く／半分に折るとA5）</option>
+          <option value="A5">A5（白衣のポケットに入る）</option>
+          <option value="B5">B5</option>
+          <option value="B4">B4</option>
+        </select>
+      </label>
+      <label class="note-row"><span>段組み</span>
+        <select id="note-cols">
+          <option value="1">1段</option>
+          <option value="2">2段（枚数が減ります）</option>
+        </select>
+      </label>
+      <label class="note-row"><span>解説</span>
+        <select id="note-explain">
+          <option value="all">問題のすぐ下に出す</option>
+          <option value="back">最後にまとめる（紙のまま自己テストできます）</option>
+          <option value="none">入れない</option>
+        </select>
+      </label>
+      <p class="note-hint">ブラウザの印刷画面が開きます。「PDFとして保存」を選べばPDFになります。</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+      <button type="button" class="btn-primary" id="note-go">印刷画面を開く</button>
+    </div>
+  </div>
+
   <!-- 模試の受け方（V1.50）
        本番モード＝実力測定／直前モード＝成功体験。
        合格基準はどちらも本番と同じ。変えるのは【出題】だけにする。
@@ -1491,11 +1548,11 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.50"></script>
-<script src="./storage.js?v=1.50"></script>
-<script src="./scheduler.js?v=1.50"></script>
+<script src="./questions.js?v=1.51"></script>
+<script src="./storage.js?v=1.51"></script>
+<script src="./scheduler.js?v=1.51"></script>
 <script src="./20260815_main_part1_V1.32.js"></script>
-<script src="./drive.js?v=1.50"></script>
-<script src="./20260815_main_part2_V1.32.js"></script>
+<script src="./drive.js?v=1.51"></script>
+<script src="./20260815_main_part2_V1.33.js"></script>
 </body>
 </html>

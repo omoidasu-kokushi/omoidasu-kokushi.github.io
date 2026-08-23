@@ -3929,3 +3929,53 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   display:block; margin-top:3px;
   font-size:var(--fs-xs); color:var(--text-mute); line-height:1.6;
 }
+
+/* ==========================================================================
+   60. 間違いノート（印刷／PDF）（V1.51）
+   画面には一切出さない。印刷のときだけ紙面に差し替える。
+   ========================================================================== */
+#print-sheet{ display:none; }
+.note-row{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:10px; margin-bottom:10px; font-size:var(--fs-sm); color:var(--text-sub);
+}
+.note-row select{
+  flex:1 1 auto; max-width:64%;
+  padding:7px 8px; border-radius:var(--r-sm);
+  border:1px solid var(--border); background:var(--surface); color:var(--text);
+  font-size:var(--fs-sm);
+}
+.note-hint{ font-size:var(--fs-xs); color:var(--text-mute); line-height:1.6; margin:6px 0 0; }
+
+@media print{
+  /* 画面のものは全部消す。紙に出るのは #print-sheet だけ。 */
+  body > *{ display:none !important; }
+  body{ background:#fff !important; }
+  #print-sheet{
+    display:block !important;
+    color:#000; background:#fff;
+    font-size:10.5pt; line-height:1.55;
+  }
+  #print-sheet[data-cols="2"]{ column-count:2; column-gap:8mm; }
+  .pn-title{ font-size:14pt; margin:0 0 2mm; }
+  .pn-meta{ font-size:9pt; color:#444; margin:0 0 4mm; }
+  /* 1問が途中で切れると、紙で見返すときに一番困る。 */
+  .pn-item{ break-inside:avoid; page-break-inside:avoid;
+            margin-bottom:5mm; padding-bottom:3mm; border-bottom:1px solid #bbb; }
+  .pn-head{ font-size:8.5pt; color:#555; margin-bottom:1mm; }
+  .pn-why{ display:inline-block; border:1px solid #000; border-radius:2mm;
+           padding:0 1.5mm; margin-right:2mm; font-weight:700; }
+  .pn-code{ margin-right:2mm; }
+  .pn-stem{ font-weight:700; margin-bottom:1.5mm; }
+  .pn-atoms{ list-style:none; padding:0; margin:0 0 2mm; }
+  .pn-atom{ margin-bottom:.6mm; }
+  .pn-atom.is-correct .pn-text{ font-weight:700; }
+  .pn-num{ margin-right:1.5mm; }
+  .pn-mark{ margin-right:1mm; }
+  .pn-exp{ font-size:9pt; color:#222; }
+  .pn-exp ul{ margin:1mm 0 0; padding-left:5mm; }
+  .pn-memo{ margin-top:1mm; padding-left:2mm; border-left:2px solid #888; }
+  /* 「最後にまとめる」を選んだときは、解説だけを後ろへ送る。
+     表で問題、裏で答え合わせ、が紙のままできる。 */
+  .pn-back{ break-before:always; page-break-before:always; }
+}

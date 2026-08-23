@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.32.js
+ * 20260815_main_part2_V1.33.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,14 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.33 (1) 模試の出題を「既出＋初見」の混合にした。
+ *            本番モード6割／直前モード8割を既出から出す。
+ *            全問を初見にすると本番より難しくなるため。
+ *        (2) 復習の予定をカレンダー（.ics）へ書き出せるようにした。
+ *            iOS は App Badging も Web Push も実質使えないので、
+ *            「アプリが通知する」のをやめて OS のカレンダーに任せる。
+ *        (3) ★と「難しい」だけを集めた紙面を印刷／PDF保存できるようにした。
+ *            実習中の病院ではスマホを出せないため、紙が唯一の持ち出し手段になる。
  *  V1.32 (1) 模試に「本番モード／直前モード」を足した。
  *            直前モードは S/A ランク中心・一度解けた問題を先に出す。
  *            ただし【合格基準は本番と同じまま】変えない。
@@ -1080,6 +1088,243 @@
     });
   }
 
+  /* ======================================================================
+   * 復習の予定をカレンダーへ（V1.51）
+   *
+   * 【なぜ要るか】
+   *   iOS は navigator.setAppBadge に対応していない。Web Push も
+   *   16.4以降かつホーム画面に追加した場合だけで、しかもサーバーが要る。
+   *   つまり iPhone では「復習が溜まったこと」に気づく方法が
+   *   アプリを開くまで存在しない。
+   *   そこで【アプリが通知するのをやめて、OSのカレンダーに任せる】。
+   *   .ics はただのテキストなので、サーバーも通信も要らない。
+   *
+   * 【割り切り】
+   *   書き出した時点の予定を写すだけなので、学習が進むとずれる。
+   *   完全な同期は諦めて、設定画面に「前回の書き出し」を出して
+   *   週1回の書き出しを促す。
+   * ====================================================================== */
+  var ICS_DAYS_AHEAD = 14;      /* これ以上先は、どうせ予定が変わる */
+
+  function icsEscape(s) {
+    return String(s == null ? '' : s)
+      .replace(/\\/g, '\\\\').replace(/;/g, '\\;')
+      .replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+  }
+
+  function icsStamp(d) {
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getUTCFullYear() + p(d.getUTCMonth() + 1) + p(d.getUTCDate()) + 'T' +
+           p(d.getUTCHours()) + p(d.getUTCMinutes()) + '00Z';
+  }
+
+  function icsDay(d) {
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate());
+  }
+
+  /* 期日ごとに1件。同じ日の分はまとめる（1日に20件も並べない）。 */
+  function buildIcs(byDay, plan, hour) {
+    var out = ['BEGIN:VCALENDAR', 'VERSION:2.0',
+               'PRODID:-//Omoidasu//Review Plan//JA', 'CALSCALE:GREGORIAN'];
+    var now = new Date();
+    Object.keys(byDay).sort().forEach(function (key, i) {
+      var d = byDay[key];
+      var n = d.count;
+      var title = 'オモイダス：復習 ' + n + '問';
+      var desc = '期日を迎えた選択肢が ' + n + " 件あります。";
+      if (plan && plan.has_exam && plan.pace === 'ok') {
+        desc += '\n新しい問題の目安は1日 ' + plan.need_new + ' 問です。';
+      }
+      var start = new Date(d.date.getFullYear(), d.date.getMonth(), d.date.getDate(), hour, 0, 0);
+      var end   = new Date(start.getTime() + 30 * 60000);
+      out.push('BEGIN:VEVENT');
+      out.push('UID:omoidasu-' + icsDay(d.date) + '-' + i + '@omoidasu');
+      out.push('DTSTAMP:' + icsStamp(now));
+      out.push('DTSTART:' + icsDay(start) + 'T' + String(hour).padStart(2, '0') + '0000');
+      out.push('DTEND:' + icsDay(end) + 'T' + String(end.getHours()).padStart(2, '0') + '3000');
+      out.push('SUMMARY:' + icsEscape(title));
+      out.push('DESCRIPTION:' + icsEscape(desc));
+      /* 15分前に鳴らす。これが iOS で唯一まともに届く「通知」になる。 */
+      out.push('BEGIN:VALARM', 'TRIGGER:-PT15M', 'ACTION:DISPLAY',
+               'DESCRIPTION:' + icsEscape(title), 'END:VALARM');
+      out.push('END:VEVENT');
+    });
+    out.push('END:VCALENDAR');
+    return out.join('\r\n');
+  }
+
+  function downloadText(filename, text, mime) {
+    if (typeof Blob === 'undefined' || typeof global.URL === 'undefined') { return false; }
+    var blob = new Blob([text], { type: mime || 'text/plain;charset=utf-8' });
+    var url = global.URL.createObjectURL(blob);
+    var a = global.document.createElement('a');
+    a.href = url; a.download = filename; a.style.display = 'none';
+    global.document.body.appendChild(a);
+    a.click();
+    global.setTimeout(function () {
+      global.document.body.removeChild(a);
+      global.URL.revokeObjectURL(url);
+    }, 1500);
+    return true;
+  }
+
+  function exportReviewCalendar() {
+    return Promise.all([S.getAllAtoms(), S.loadMeta(), K.getHomeState()]).then(function (r) {
+      var atoms = r[0], meta = r[1], home = r[2];
+      var hour = isNum(meta.day_boundary_hour) ? Math.max(6, meta.day_boundary_hour + 3) : 7;
+      var now = Date.now();
+      var limit = now + ICS_DAYS_AHEAD * 86400000;
+      var byDay = {};
+      atoms.forEach(function (a) {
+        if (!isNum(a.due_date)) { return; }
+        /* 期日を過ぎた分は「今日」にまとめる。過去の日付で予定を作らない。 */
+        var t = Math.max(a.due_date, now);
+        if (t > limit) { return; }
+        var d = new Date(t);
+        var key = icsDay(d);
+        if (!byDay[key]) { byDay[key] = { date: d, count: 0 }; }
+        byDay[key].count++;
+      });
+      if (!Object.keys(byDay).length) {
+        toast('これから2週間に復習の予定がありません', 3600);
+        return { events: 0 };
+      }
+      var text = buildIcs(byDay, home.plan, hour);
+      var ok2 = downloadText('omoidasu_review.ics', text, 'text/calendar;charset=utf-8');
+      return S.setMeta('ics_exported_at', Date.now()).then(function () {
+        if (ok2) { toast('カレンダーに追加してください（' + Object.keys(byDay).length + '日ぶん）', 4600); }
+        return { events: Object.keys(byDay).length, text: text };
+      });
+    });
+  }
+
+  /* ======================================================================
+   * 間違いノート（印刷／PDF）（V1.51）
+   *
+   * 【なぜ紙なのか】
+   *   実習中の病院ではスマホを出せない。実習は数週間から数ヶ月あり、
+   *   その間このアプリは開けない。紙なら白衣のポケットに入る。
+   *   ここは他のアプリが埋めていない穴。
+   *
+   * 【なぜ用紙を選ばせるのか】
+   *   白衣に入れたいならA5、カバンで持ち歩けるならA4と、
+   *   置かれた状況で最適が変わる。既定はA4＋中折り。
+   *   家庭用プリンタはA5給紙に対応していないことが多く、
+   *   A5指定は「選べるのに印刷できない」になりやすいため。
+   * ====================================================================== */
+  var PAPER = { A4: 'A4', A5: 'A5', B4: 'B4', B5: 'JIS-B5' };
+
+  function collectNoteItems(kind) {
+    return Promise.all([S.getStarredNote(), S.getAllAtoms()]).then(function (r) {
+      var starred = r[0] || [], atoms = r[1] || [];
+      var hardByQ = {};
+      atoms.forEach(function (a) {
+        if (a.last_eval !== 'hard') { return; }
+        if (!hardByQ[a.q_id]) { hardByQ[a.q_id] = []; }
+        hardByQ[a.q_id].push(a.atom_id);
+      });
+      var map = {};
+      if (kind !== 'hard') {
+        starred.forEach(function (x) {
+          map[x.question.q_id] = { question: x.question, marks: x.marked_atoms.slice(), why: '★' };
+        });
+      }
+      if (kind !== 'star') {
+        var ids = Object.keys(hardByQ).filter(function (id) { return !map[id]; });
+        if (!ids.length) { return Object.keys(map).map(function (k) { return map[k]; }); }
+        return S.getQuestionsFull(ids).then(function (full) {
+          full.forEach(function (q) {
+            map[q.q_id] = { question: q, marks: hardByQ[q.q_id], why: '難' };
+          });
+          Object.keys(map).forEach(function (k) {
+            if (hardByQ[k] && map[k].why === '★') { map[k].why = '★難'; }
+          });
+          return Object.keys(map).map(function (k) { return map[k]; });
+        });
+      }
+      return Object.keys(map).map(function (k) { return map[k]; });
+    });
+  }
+
+  function noteItemHtml(item, opts) {
+    var q = item.question;
+    var marks = {};
+    (item.marks || []).forEach(function (id) { marks[id] = 1; });
+    var head = '<div class="pn-head"><span class="pn-why">' + item.why + '</span>' +
+               '<span class="pn-code">' + (q.num_code || '') + '</span>' +
+               '<span class="pn-path">' + [q.unit, q.major, q.medium].filter(Boolean).join(' ＞ ') + '</span></div>';
+    var stem = '<div class="pn-stem">' + (q.stem || '') + '</div>';
+    var list = (q.atoms || []).map(function (a) {
+      var mark = a.is_correct ? '●' : '○';
+      var star = marks[a.atom_id] ? '<span class="pn-mark">▲</span>' : '';
+      return '<li class="pn-atom' + (a.is_correct ? ' is-correct' : '') + '">' +
+             '<span class="pn-num">' + mark + '</span>' + star +
+             '<span class="pn-text">' + (a.text || '') + '</span></li>';
+    }).join('');
+    var body = '';
+    if (opts.explain !== 'none') {
+      var exp = (q.atoms || []).filter(function (a) { return a.explanation; })
+        .map(function (a) {
+          return '<li><b>' + (a.is_correct ? '○' : '×') + '</b> ' + a.explanation + '</li>';
+        }).join('');
+      body = '<div class="pn-exp' + (opts.explain === 'back' ? ' pn-back' : '') + '">' +
+             (q.overall_explanation ? '<p>' + q.overall_explanation.replace(/<[^>]+>/g, ' ') + '</p>' : '') +
+             (exp ? '<ul>' + exp + '</ul>' : '') +
+             (q.user_memo ? '<p class="pn-memo">✎ ' + q.user_memo + '</p>' : '') +
+             '</div>';
+    }
+    return '<article class="pn-item">' + head + stem + '<ul class="pn-atoms">' + list + '</ul>' + body + '</article>';
+  }
+
+  function buildPrintSheet(cfg) {
+    return collectNoteItems(cfg.kind).then(function (items) {
+      if (!items.length) {
+        toast('★も「難しい」もまだありません', 3600);
+        return { count: 0 };
+      }
+      var sheet = $('#print-sheet');
+      if (!sheet) { return { count: 0 }; }
+      var style = $('#print-page-style');
+      if (!style) {
+        style = global.document.createElement('style');
+        style.id = 'print-page-style';
+        global.document.head.appendChild(style);
+      }
+      /* @page の size は CSS変数では指定できないので、都度書き換える。 */
+      style.textContent = '@page{ size:' + (PAPER[cfg.paper] || 'A4') + '; margin:12mm 10mm; }';
+      sheet.setAttribute('data-cols', cfg.cols === '2' ? '2' : '1');
+      sheet.innerHTML =
+        '<h1 class="pn-title">オモイダス　間違いノート</h1>' +
+        '<p class="pn-meta">' + items.length + '問　／　' +
+        (cfg.kind === 'star' ? '★のみ' : cfg.kind === 'hard' ? '「難しい」のみ' : '★と「難しい」') +
+        '　／　' + (PAPER[cfg.paper] || 'A4') + '</p>' +
+        items.map(function (it) { return noteItemHtml(it, cfg); }).join('');
+      return { count: items.length };
+    });
+  }
+
+  function runPrintNote() {
+    var cfg = {
+      kind:  ($('#note-kind') || {}).value || 'both',
+      paper: ($('#note-paper') || {}).value || 'A4',
+      cols:  ($('#note-cols') || {}).value || '1',
+      explain: ($('#note-explain') || {}).value || 'all'
+    };
+    return buildPrintSheet(cfg).then(function (r) {
+      if (!r.count) { return r; }
+      closeModals();
+      global.document.body.classList.add('is-printing');
+      global.setTimeout(function () {
+        try { global.print(); } catch (e) { /* 印刷できない環境では何もしない */ }
+        global.setTimeout(function () {
+          global.document.body.classList.remove('is-printing');
+        }, 800);
+      }, 120);
+      return r;
+    });
+  }
+
   function openStarredNote() {
     return M.go('starred').then(function () { return renderStarredNote(st.starred.filter); })
       .then(function (r) {
@@ -1184,10 +1429,20 @@
      'real'  … 本番モード。全ランク・本番と同じ配分。実力を測る
      'final' … 直前モード。S/A中心・一度解けた問題から。成功体験のため
      どちらも【合格基準は本番と同じ】。変えるのは出題だけ。 */
+  /* --- 既出と初見の混ぜ方（V1.51） ---
+     本番の出題は「まったく初めての知識」ばかりではない。
+     大半は習った範囲を別の角度から問われる。全問を初見にすると、
+     模試のほうが本番より難しくなる。
+       本番モード … 既出6割／初見4割（本番の手ごたえに寄せる）
+       直前モード … 既出8割／初見2割（成功体験が目的なので厚くする）
+     ここでいう「既出」は、このアプリで全部の肢を一度は解いた問題のこと。 */
+  var EXAM_KNOWN_RATIO = { real: 0.6, final: 0.8 };
+
   function examStyleOpts(style, examId) {
     if (examId === 'mock_weak') { return {}; }        /* いじわる模試は弱点順のまま */
-    if (style !== 'final') { return {}; }
-    return { ranks: ['S', 'A'], preferKnown: true };
+    var ratio = EXAM_KNOWN_RATIO[style === 'final' ? 'final' : 'real'];
+    if (style !== 'final') { return { knownRatio: ratio }; }
+    return { ranks: ['S', 'A'], preferKnown: true, knownRatio: ratio };
   }
 
   function askExamStyle(examId) {
@@ -3560,6 +3815,9 @@
     openAllClearedSheet: openAllClearedSheet,
     openStarredNote: openStarredNote,    renderStarredNote: renderStarredNote,
     openExamList: openExamList,          startExam: startExam,
+    exportReviewCalendar: exportReviewCalendar,
+    buildIcs: buildIcs,                  buildPrintSheet: buildPrintSheet,
+    collectNoteItems: collectNoteItems,
     gradeExam: gradeExam,                showExamResult: showExamResult,
     openSettings: openSettings,          runImport: runImport,
     runBackup: runBackup,                runRestore: runRestore,
@@ -3881,6 +4139,9 @@
     on($('#btn-contact-copy'),  'click', function () { copyContact(); });
     on($('#btn-contact-close'), 'click', function () { hide('#modal-contact'); });
     on($('#btn-drive-save-id'), 'click', function () { saveDriveClientId(); });
+    on($('#btn-ics'),          'click', function () { exportReviewCalendar(); });
+    on($('#btn-note-print'),   'click', function () { openModal('#modal-note'); });
+    on($('#note-go'),          'click', function () { runPrintNote(); });
     on($('#btn-pwa-install'),   'click', function () { pwaInstall(); });
     on($('#btn-pwa-how'),       'click', function () { pwaHow(); });
     on($('#btn-drive-logout'),  'click', function () { driveLogout(); });
