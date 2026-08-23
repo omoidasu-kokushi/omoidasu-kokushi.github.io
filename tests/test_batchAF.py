@@ -147,12 +147,14 @@ def runtime_checks():
           } finally {
             S.getUnlockState = origUnlock; K.shouldWarnBeforeExam = origWarn; K.buildQueue = origQ;
           }
-          return { ranks: seen && seen.ranks, preferKnown: seen && !!seen.preferKnown,
+          return { ranks: seen && seen.ranks, mix: seen && seen.mix,
                    style: window.Half2Impl.st && window.Half2Impl.st.exam
                           && window.Half2Impl.st.exam.style };
         }""")
-        ok("直前モードを選ぶと S/A ＋ 既習優先で組まれる",
-           r["ranks"] == ["S", "A"] and r["preferKnown"] is True, json.dumps(r))
+        # V1.52：preferKnown（2分類）は mix（3分類）に置き換わった。
+        ok("直前モードを選ぶと S/A ＋ 既習寄りの配分で組まれる",
+           r["ranks"] == ["S", "A"] and r["mix"] is not None
+           and r["mix"]["solved"] > r["mix"]["novel"], json.dumps(r))
 
         ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))
         br.close()

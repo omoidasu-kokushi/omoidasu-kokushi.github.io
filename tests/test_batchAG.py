@@ -50,7 +50,15 @@ def runtime_checks():
           const S = window.Storage, K = window.Scheduler;
           // 一部の問題だけ「全肢を解いた」状態にする
           const qs = await S.getAllQuestions();
-          const target = qs.slice(0, 40);
+          /* 中項目ごとに【1問だけ】解いた状態にする。
+             まとめて先頭40問を解くと、その中項目が丸ごと解答済みになり、
+             「同じ中項目の別の問題」＝familiar が構造的に作れない。 */
+          const byMed = {};
+          qs.forEach(q => { (byMed[q.medium || ''] = byMed[q.medium || ''] || []).push(q); });
+          const target = Object.keys(byMed)
+            .filter(m => byMed[m].length >= 2)
+            .slice(0, 40)
+            .map(m => byMed[m][0]);
           const patches = {}, logs = [];
           const t0 = Date.now() - 86400000;
           for (const q of target) {
@@ -69,22 +77,36 @@ def runtime_checks():
           await S.replaceAllLogs(logs);
           await S.updateAtomsBulk(patches);
           const known = new Set(target.map(q => q.q_id));
-          const pick = async (ratio) => {
+          const learnedSubs = new Set(target.map(q => q.medium).filter(Boolean));
+          const pick = async (mix) => {
             const q = await K.buildQueue({ mode:'exam', count:20, applyGuard:false,
-                                           shuffle:true, knownRatio:ratio });
-            const n = q.questions.filter(x => known.has(x.q_id)).length;
-            return { total: q.questions.length, known: n };
+                                           shuffle:true, mix });
+            let solved = 0, familiar = 0, novel = 0;
+            for (const x of q.questions) {
+              if (known.has(x.q_id)) { solved++; }
+              else if (learnedSubs.has(x.medium)) { familiar++; }
+              else { novel++; }
+            }
+            return { total: q.questions.length, solved, familiar, novel };
           };
-          return { r6: await pick(0.6), r8: await pick(0.8), r0: await pick(0) };
+          return {
+            real:  await pick({ solved:0.25, familiar:0.60, novel:0.15 }),
+            final: await pick({ solved:0.55, familiar:0.45, novel:0.00 }),
+            zero:  await pick({ solved:0,    familiar:0,    novel:1.00 })
+          };
         }""")
-        ok("既出6割の指定で、既出が半分以上入る",
-           r["r6"]["known"] >= r["r6"]["total"] * 0.5, json.dumps(r["r6"]))
-        ok("既出8割のほうが既出が多い（または同じ）",
-           r["r8"]["known"] >= r["r6"]["known"], json.dumps(r))
-        ok("0を指定すると既出はほぼ入らない",
-           r["r0"]["known"] <= r["r0"]["total"] * 0.25, json.dumps(r["r0"]))
+        ok("本番モードは「解いた問題」を出しすぎない（測定を汚さない）",
+           r["real"]["solved"] <= r["real"]["total"] * 0.4, json.dumps(r["real"]))
+        ok("直前モードのほうが「解いた問題」が多い",
+           r["final"]["solved"] >= r["real"]["solved"], json.dumps(r))
+        ok("直前モードは未習の範囲をぶつけない",
+           r["final"]["novel"] <= r["final"]["total"] * 0.2, json.dumps(r["final"]))
+        ok("未習だけを指定すれば未習が中心になる",
+           r["zero"]["novel"] >= r["zero"]["total"] * 0.5, json.dumps(r["zero"]))
         ok("どの比率でも問題数は減らない",
-           r["r6"]["total"] == 20 and r["r8"]["total"] == 20, json.dumps(r))
+           r["real"]["total"] == 20 and r["final"]["total"] == 20, json.dumps(r))
+        ok("本番モードの主成分は「知識は既習・問題は初見」",
+           r["real"]["familiar"] >= r["real"]["solved"], json.dumps(r["real"]))
 
         # ---------- カレンダー書き出し ----------
         r = pg.evaluate("""async () => {

@@ -1148,7 +1148,31 @@
             weakMap[a.atom_id] = computeWeaknessFromLogs(logMap[a.atom_id] || [], a);
           });
 
+          /* --- 「知識として既習か」を中項目で見る（V1.52） ---
+             問題そのものを解いたかどうかと、その知識を学んだかどうかは別。
+             本番で問われるのは【文字は初見だが知識は既習】がほとんどで、
+             この区別が無いと模試の難しさを本番に寄せられない。
+
+             単位に小項目ではなく中項目を使う理由は2つ。
+             ① いまのデータは349小項目に453問＝1小項目あたり1.3問しかなく、
+                小項目で見ると「解いた＝その小項目の全部」になり、区別として働かない。
+             ② 学習は中項目のまとまりで進む。「人口静態・人口動態」を一通りやった人にとって、
+                その中の別の問題は【知識としては既習】に近い。 */
           var cands = foldAtomsToCandidates(atoms, weakMap, preferFrequent);
+
+          /* 学習済みの中項目を、畳んだあとの候補から拾う。
+             アトムのレコードは中項目を持っていないので、ここで作る
+             （持っていない項目を参照しても静かに空になるだけで、
+               気づけないまま familiar が常にゼロになる）。 */
+          var learnedScope = {};
+          cands.forEach(function (c) {
+            if (c.medium && c.unlearned < c.atoms.length) { learnedScope[c.medium] = 1; }
+          });
+
+          cands.forEach(function (c) {
+            c.solved   = (c.unlearned === 0);                     /* 全部の肢を解いた */
+            c.familiar = !c.solved && !!learnedScope[c.medium];   /* 知識は既習・問題は初見 */
+          });
 
           /* options.newOnly は「ランダムモードを初見だけにする」ための入口。
              mode を 'new' に変えてしまうと割り込み許可判定やトピックガードの
@@ -1191,23 +1215,42 @@
             var pool = g.list;
             var picked;
 
-            if (options.shuffle && isNum(options.knownRatio)) {
-              /* --- 既出と初見を指定の比率で混ぜる（V1.51） ---
-                 模試の全問を初見にすると、本番より難しくなる。
-                 本番で「知識としてまったく初めて」が出るのは一部で、
-                 大半は習った範囲を別の角度から問われる。
-                 既出＝全部の肢を一度は解いた問題。初見＝未学習の肢を含む問題。
-                 足りない側は、もう片方から埋める（数を減らさない）。 */
-              var ratio = Math.max(0, Math.min(1, options.knownRatio));
-              var wantK = Math.round(count * ratio);
-              var kPool = shuffle(pool.filter(function (c) { return c.unlearned === 0; }), options.seed);
-              var fPool = shuffle(pool.filter(function (c) { return c.unlearned > 0; }), options.seed);
-              var takeK = kPool.slice(0, wantK);
-              var takeF = fPool.slice(0, count - takeK.length);
-              if (takeK.length + takeF.length < count) {
-                takeK = takeK.concat(kPool.slice(takeK.length, takeK.length + (count - takeK.length - takeF.length)));
-              }
-              picked = shuffle(takeK.concat(takeF), options.seed).slice(0, count);
+            if (options.shuffle && options.mix) {
+              /* --- 3つに分けて混ぜる（V1.52。V1.51の2分類を置き換え） ---
+                 V1.51 は「解いた／解いていない」の2分類だった。
+                 これでは本番に寄せられない。本番で出るのは
+                 【文字は初見だが知識は既習】がほとんどだからで、
+                 2分類ではそこを表せない。
+
+                   solved   … 全部の肢を解いた問題。記憶で解けてしまう
+                   familiar … 同じ小項目を学習済みだが、この問題は初見（本番に最も近い）
+                   novel    … その小項目をまだ学んでいない（本番より難しい）
+
+                 足りない分は familiar → solved → novel の順で埋める。
+                 本番に近い側を優先して埋め、数は減らさない。 */
+              var want = {
+                solved:   Math.round(count * (options.mix.solved   || 0)),
+                familiar: Math.round(count * (options.mix.familiar || 0)),
+                novel:    Math.round(count * (options.mix.novel    || 0))
+              };
+              var bucket = {
+                solved:   shuffle(pool.filter(function (c) { return c.solved; }), options.seed),
+                familiar: shuffle(pool.filter(function (c) { return c.familiar; }), options.seed),
+                novel:    shuffle(pool.filter(function (c) { return !c.solved && !c.familiar; }), options.seed)
+              };
+              var taken = [], used = { solved: 0, familiar: 0, novel: 0 };
+              ['familiar', 'solved', 'novel'].forEach(function (k) {
+                var n = Math.min(want[k], bucket[k].length);
+                taken = taken.concat(bucket[k].slice(0, n));
+                used[k] = n;
+              });
+              ['familiar', 'solved', 'novel'].forEach(function (k) {
+                if (taken.length >= count) { return; }
+                var more = bucket[k].slice(used[k], used[k] + (count - taken.length));
+                taken = taken.concat(more);
+                used[k] += more.length;
+              });
+              picked = shuffle(taken, options.seed).slice(0, count);
             } else if (options.shuffle) {
               var un, rest;
               if (options.preferKnown) {
