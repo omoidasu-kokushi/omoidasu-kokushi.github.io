@@ -2,5 +2,9 @@
 tests/shot_*.png
 tests/__pycache__/
 __pycache__/
+
 # 一度きりの改修スクリプト（適用済みなので残さない）
 patch*.py
+
+# 作問の元データ（公開する必要がない・容量が大きい）
+*_TSV_Template_V1.0?.txt
