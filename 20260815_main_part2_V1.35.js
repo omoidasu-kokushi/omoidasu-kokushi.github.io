@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.34.js
+ * 20260815_main_part2_V1.35.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,11 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.35 (1) 設定にライセンス欄。残数の数え方は scheduler の solved_ever
+ *            ただ1つに寄せた。2箇所で数えると必ずホームと設定でずれる。
+ *        (2) 鍵が通らない理由を3つに分けて出す（形が違う／端末が非対応／
+ *            署名が合わない）。「無効です」だけだと貼り間違いなのか
+ *            鍵違いなのか判別できず、そのまま問い合わせになる。
  *  V1.34 (1) 模試の混合を3分類へ作り直した（V1.33の2分類を置き換え）。
  *            「解いた／解いていない」では本番に寄せられない。
  *            本番で出るのは【文字は初見だが知識は既習】がほとんどで、
@@ -1665,6 +1670,7 @@
       refreshExamNote().catch(noop);
       refreshExplainMode();
       refreshDrive().catch(noop);
+      refreshLicense();
       /* 押した瞬間に窓を開けるよう、ここで先に用意しておく。 */
       D.prepare().catch(noop);
       var pos = M.userImagePos();
@@ -2422,6 +2428,65 @@
     var p = function (n) { return String(n).padStart(2, '0'); };
     return '最後の同期：' + d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) +
            ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* --- ライセンス欄（V1.53） ---
+     数え方は scheduler の solved_ever ただ1つ。ここで数え直さない
+     （数え方が2箇所に分かれると、ホームと設定で違う数が出る）。 */
+  function refreshLicense() {
+    var L = global.NurseLicense;
+    var block = $('#lic-block');
+    if (!block) { return; }
+    if (!L) { block.hidden = true; return; }      /* 読めていない環境では出さない */
+
+    var h = M.state.homeState || {};
+    var g = L.gate(h.solved_ever);
+    var input = $('#lic-input-wrap'), paid = $('#lic-paid-wrap'), bar = $('#lic-bar');
+    if (g.paid) {
+      var pl = L.payload() || {};
+      setText('#lic-state', '購入済み');
+      setText('#lic-note', pl.n ? ('登録：' + pl.n) : '全ての問題が開いています');
+      if (input) { input.hidden = true; }
+      if (paid)  { paid.hidden = false; }
+      if (bar)   { bar.hidden = true; }
+    } else {
+      setText('#lic-state', g.locked ? 'お試し（上限に到達）' : 'お試し中');
+      setText('#lic-note', g.locked
+        ? '新しい問題は止まっています。復習はこのまま続けられます。'
+        : 'あと ' + g.left + '問（' + g.used + ' / ' + g.limit + '問）');
+      if (input) { input.hidden = false; }
+      if (paid)  { paid.hidden = true; }
+      if (bar) {
+        bar.hidden = false;
+        var f = $('#lic-bar-fill');
+        if (f) { f.style.width = Math.min(100, Math.round(g.used / g.limit * 100)) + '%'; }
+      }
+    }
+    setText('#lic-msg', '');
+  }
+
+  function applyLicense() {
+    var L = global.NurseLicense;
+    var box = $('#lic-key');
+    if (!L || !box) { return Promise.resolve(null); }
+    var v = box.value;
+    if (!v || !v.trim()) { setText('#lic-msg', '鍵を貼り付けてください'); return Promise.resolve(null); }
+    return L.activate(v).then(function (r) {
+      if (r.ok) {
+        box.value = '';
+        toast('ありがとうございます。全ての問題が開きました');
+        refreshLicense();
+        M.refreshFreeGate();
+        return M.refreshHome ? M.refreshHome() : null;
+      }
+      /* 失敗の理由を分けて出す。「無効です」だけだと、
+         貼り間違いなのか鍵が違うのか分からず問い合わせになる。 */
+      setText('#lic-msg',
+        r.reason === 'format'   ? '鍵の形が違います。OMOI1. から始まる全体を貼り付けてください。' :
+        r.reason === 'nocrypto' ? 'この端末では鍵の確認ができません（古いブラウザの可能性）。' :
+                                  'この鍵は確認できませんでした。購入時に届いたものか確かめてください。');
+      return null;
+    });
   }
 
   function refreshDrive() {
@@ -4121,6 +4186,19 @@
     on($('#btn-reset-all'), 'click', function () { openModal('#modal-reset'); });
     on($('#reset-go'), 'click', function () { closeModals(); runResetAll(); });
     on($('#btn-contact'), 'click', function () { openContact(); });
+    /* V1.53：ライセンス */
+    on($('#lic-apply'), 'click', function () { applyLicense().catch(noop); });
+    on($('#lic-buy'), 'click', function () { global.open(M.BUY_URL, '_blank', 'noopener'); });
+    on($('#lic-remove'), 'click', function () {
+      var L = global.NurseLicense;
+      if (!L) { return; }
+      L.deactivate().then(function () {
+        toast('この端末から鍵を外しました');
+        refreshLicense();
+        M.refreshFreeGate();
+      }).catch(noop);
+    });
+
     on($('#set-onboarding'), 'click', function () {
       resetTips()
         .then(function () { return showWelcome(); })

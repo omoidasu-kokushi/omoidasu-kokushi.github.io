@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.52">
+<link rel="stylesheet" href="./styles.css?v=1.53">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,18 +45,20 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.52",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.53",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.52",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.53",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.52",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.53",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.32.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.33.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.34.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.35.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.52",                     label: "ドライブ同期（自作の図とメモの預け先）",
-      check: function () { return !!(window.Drive && window.Drive.SCOPE); } }
+    { file: "./drive.js?v=1.53",                     label: "ドライブ同期（自作の図とメモの預け先）",
+      check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
+    { file: "./license.js?v=1.53",                   label: "ライセンス（買い切りの鍵の照合）",
+      check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
   window.__BOOT_REQUIRED = REQUIRED;
@@ -323,6 +325,15 @@
           <span class="plan-sub" id="home-plan-sub"></span>
         </p>
 
+        <!-- V1.53：無料枠の残り。プランナーと同じ「1行」の作法に揃える。
+             §4-12 でホーム最上部には情報を足さないと決めているので、
+             ここ（復習カードの真上）以外には置かない。
+             購入済みなら hidden のまま出さない。 -->
+        <p class="free-gate" id="free-gate" hidden>
+          <span id="free-gate-text"></span>
+          <button type="button" class="free-gate-btn" id="free-gate-btn">くわしく</button>
+        </p>
+
         <!-- 主動線：本日の復習 -->
         <!-- 「主動線」の肩書きと説明文は置かない。
              タイトルと右上の件数だけで用が足りる。 -->
@@ -402,7 +413,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260823_Omoidasu_V1.52</p>
+        <p class="build-stamp">20260823_Omoidasu_V1.53</p>
       </div>
     </section>
 
@@ -759,6 +770,30 @@
     <section id="screen-settings" class="screen" data-screen="settings">
       <div class="screen-scroll">
         <h2 class="sc-title">設定</h2>
+
+        <!-- V1.53：買い切りライセンス。番号を振らないのは、
+             ここが「設定の1つ」ではなく状態表示だから。 -->
+        <section class="set-block lic-block" id="lic-block">
+          <h3 class="set-head">ライセンス</h3>
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b id="lic-state">確認中…</b>
+              <small id="lic-note"></small></span>
+            <div id="lic-bar" class="lic-bar"><span id="lic-bar-fill"></span></div>
+            <div id="lic-input-wrap" class="lic-input-wrap">
+              <textarea id="lic-key" class="lic-key" rows="3"
+                placeholder="購入時に届いた鍵を貼り付け（OMOI1. で始まる長い文字列）"></textarea>
+              <div class="lic-btns">
+                <button type="button" class="btn-primary" id="lic-apply">鍵を入れる</button>
+                <button type="button" class="btn-ghost" id="lic-buy">購入ページを開く</button>
+              </div>
+              <p class="set-note" id="lic-msg"></p>
+            </div>
+            <div id="lic-paid-wrap" class="lic-paid-wrap" hidden>
+              <button type="button" class="btn-ghost" id="lic-remove">この端末から鍵を外す</button>
+            </div>
+          </div>
+          <p class="set-note">鍵は1人分です。ドライブ同期を入れていれば、もう一方の端末にも自動で渡ります。</p>
+        </section>
 
         <section class="set-block">
           <h3 class="set-head">1. ガイド</h3>
@@ -1117,7 +1152,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260823_Omoidasu_V1.52 / cache v1.41.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260823_Omoidasu_V1.53 / cache v1.42.0</p>
         </section>
       </div>
     </section>
@@ -1417,6 +1452,29 @@
     </div>
   </div>
 
+  <!-- V1.53：無料枠を使い切ったときの案内。
+       「買え」ではなく「復習は続けられる」を先に言う。
+       止まったのは初見の問題だけで、学習記録は人質に取っていない。 -->
+  <div class="modal-card" id="modal-buy" hidden>
+    <h3 class="modal-title">無料でお試しいただける範囲を解き終えました</h3>
+    <div class="modal-body">
+      <p><b id="buy-count">200問</b>を解き終えました。ここから先の新しい問題は、
+        買い切りの鍵を入れると全部開きます。</p>
+      <p class="buy-keep">これまでに解いた問題の<b>復習は、鍵が無くてもこのまま続けられます</b>。
+        記録が消えることはありません。</p>
+      <ul class="buy-list">
+        <li>一度きりの支払い。月額はありません</li>
+        <li>試験日まで、追加の問題も含めて全部使えます</li>
+        <li>鍵は1人分。同期していれば、スマホとPCの両方で使えます</li>
+      </ul>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>あとで</button>
+      <button type="button" class="btn-primary" id="buy-open">購入ページを見る</button>
+      <button type="button" class="btn-ghost" id="buy-have">鍵を持っている</button>
+    </div>
+  </div>
+
   <!-- 模試ソフト警告 -->
   <div class="modal-card" id="modal-exam-warn" hidden>
     <h3 class="modal-title">今の状態でも挑戦できるよ！</h3>
@@ -1548,11 +1606,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.52"></script>
-<script src="./storage.js?v=1.52"></script>
-<script src="./scheduler.js?v=1.52"></script>
-<script src="./20260815_main_part1_V1.32.js"></script>
-<script src="./drive.js?v=1.52"></script>
-<script src="./20260815_main_part2_V1.34.js"></script>
+<script src="./questions.js?v=1.53"></script>
+<script src="./storage.js?v=1.53"></script>
+<script src="./scheduler.js?v=1.53"></script>
+<script src="./20260815_main_part1_V1.33.js"></script>
+<script src="./drive.js?v=1.53"></script>
+<script src="./license.js?v=1.53"></script>
+<script src="./20260815_main_part2_V1.35.js"></script>
 </body>
 </html>

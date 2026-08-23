@@ -1,9 +1,17 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.32.js
+ * 20260815_main_part1_V1.33.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.33 (1) 買い切りライセンス（アプリ V1.53）。無料枠は 200問。
+ *            止めるのは【初見の問題】だけで、復習は鍵が無くても続く。
+ *            解いた記録を人質に取らないことを前提にした。取れば
+ *            使えるが、その瞬間にこのアプリは信用を失う。
+ *        (2) 鍵の照合は refreshHome より前に置く。あとに置くと、
+ *            起動直後の1回だけ「使い切りました」が出て次の描画で消える。
+ *        (3) 購入ページのURLは BUY_URL 1箇所だけに持つ。文面へ散らすと
+ *            販売先を移したときに死んだリンクが残る。
  *  V1.23 (1) 押せるものすべてに立体感（面＋影）を出し、押した瞬間に
  *            1px沈む動きを付けた。押せるかどうかを影の有無だけで
  *            読めるようにするため、押せないレベル欄は影なしのまま据え置く。
@@ -216,6 +224,10 @@
 
   var S = global.Storage;
   var K = global.Scheduler;
+
+  /* V1.53：購入ページ。販売先を変えたら【ここだけ】直す。
+     文面の中にURLを散らすと、移転のたびに死にリンクが残る。 */
+  var BUY_URL = 'https://omoidasu-kokushi.github.io/about.html#buy';
   var doc = global.document;
 
   var APP_BUILD = '20260815_NurseExamApp_V1.00';
@@ -403,6 +415,14 @@
       })
       .then(function (meta) {
         state.meta = meta;
+        /* V1.53：鍵の照合は refreshHome より前。あとにすると、
+           起動直後の1回だけ「無料枠を使い切りました」が出て、
+           次の描画で消える、という一瞬の嘘が出る。
+           照合に失敗しても学習は止めない（未購入として扱うだけ）。 */
+        return (global.NurseLicense ? global.NurseLicense.load().catch(noop)
+                                    : Promise.resolve(null));
+      })
+      .then(function () {
         return refreshHome();
       })
       .then(function () {
@@ -763,6 +783,28 @@
     box.hidden = false;
   }
 
+  /* いまの無料枠の状態。ライセンスが読めていない環境（license.js が
+     欠けている等）では【購入済みと同じ扱い】にする。
+     売り物の都合でアプリが使えなくなるのは、いちばんまずい壊れ方。 */
+  function licGate(h) {
+    var L = global.NurseLicense;
+    if (!L) { return { paid: true, locked: false, left: null, limit: null, used: 0 }; }
+    return L.gate(h && h.solved_ever);
+  }
+  function isLocked() { return !!licGate(state.homeState).locked; }
+
+  function renderFreeGate(h) {
+    var g = licGate(h);
+    var row = $('#free-gate');
+    if (!row) { return; }
+    if (g.paid) { row.hidden = true; return; }
+    row.hidden = false;
+    row.setAttribute('data-tone', g.locked ? 'locked' : (g.left <= 30 ? 'near' : 'ok'));
+    setText('#free-gate-text', g.locked
+      ? '無料でお試しいただける ' + g.limit + '問を解き終えました。復習はこのまま続けられます。'
+      : 'お試し中：あと ' + g.left + '問（' + g.used + ' / ' + g.limit + '問）');
+  }
+
   function refreshHome() {
     return K.getHomeState().then(function (h) {
       state.homeState = h;
@@ -782,6 +824,9 @@
 
       /* --- 逆算プランナー（V1.50） --- */
       renderPlan(h.plan);
+
+      /* --- 無料枠（V1.53） --- */
+      renderFreeGate(h);
 
       /* --- レベル ＆ 不退転パーセンテージ --- */
       setHtml('#level-chip', numHtml('Level ' + h.level.level));
@@ -1038,8 +1083,14 @@
     opts = opts || {};
     var mode = opts.mode || 'random';
 
+    /* V1.53：無料枠を使い切ったら、初見の問題だけを止める。
+       復習（mode:'review'）は buildQueue の別経路なので、ここを通らない。
+       ＝お金を払わなくても、解いたぶんの復習は最後まで続けられる。 */
+    if (isLocked() && mode !== 'review') { opts.solvedOnly = true; }
+
     return K.buildQueue(opts).then(function (q) {
       if (!q.questions.length) {
+        if (q.locked) { return openBuyDialog(); }
         toast(q.reason || '出題できる問題がありません');
         return null;
       }
@@ -2641,6 +2692,16 @@
     layer.hidden = false;
   }
 
+  /* V1.53：購入案内。買わせる画面ではなく【止まったのは初見だけ】を
+     伝える画面。ここで復習まで止まっていると誤解されると、
+     いちばん大事な使い方（毎日の復習）ごと離脱される。 */
+  function openBuyDialog() {
+    var L = global.NurseLicense;
+    setText('#buy-count', (L ? L.FREE_LIMIT : 200) + '問');
+    openModal('#modal-buy');
+    return null;
+  }
+
   function closeModals() {
     var layer = $('#modal-layer');
     if (layer) { layer.hidden = true; }
@@ -2669,6 +2730,18 @@
       refreshHome().catch(noop);
     });
     on($('#btn-settings'), 'click', function () { Half2.openSettings(); });
+    /* V1.53：無料枠まわり。案内は1箇所（openBuyDialog）に集める。 */
+    on($('#free-gate-btn'), 'click', function () { openBuyDialog(); });
+    on($('#buy-open'), 'click', function () {
+      closeModals();
+      global.open(BUY_URL, '_blank', 'noopener');
+    });
+    on($('#buy-have'), 'click', function () {
+      closeModals();
+      Half2.openSettings().then(function () {
+        var t = $('#lic-key'); if (t) { t.focus(); }
+      }).catch(noop);
+    });
 
     /* --- 自作の図解画像 --- */
     on($('#btn-userimg-pick'), 'click', function () { pickUserImage(); });
@@ -3128,6 +3201,11 @@
 
     /* 共通部品（後半から使う） */
     openModal     : openModal,
+    /* V1.53：ライセンス。後半（設定画面）から呼ぶ。 */
+    openBuyDialog : openBuyDialog,
+    licGate       : licGate,
+    refreshFreeGate: function () { renderFreeGate(state.homeState); },
+    BUY_URL       : BUY_URL,
     closeModals   : closeModals,
     toast         : toast,
     fireConfetti  : fireConfetti,

@@ -839,6 +839,8 @@
     'unlock_pct_mock_120', 'unlock_pct_mock_weak',
     'full_mock_pass_streak',
     'tutorial_answered', 'pomodoro_session_count',
+    /* V1.53：解いた問題数の到達点。無料枠の物差し。大きい方を採る。 */
+    'solved_ever',
     /* V1.49：進捗を全消しした時刻。新しい方（＝あとで消した方）が勝つ。
        この時刻以前の記録は合体のときに落とす。 */
     'progress_reset_at'
@@ -854,6 +856,11 @@
 
   /* 集合の足し算。分析スキャン精度の分子。 */
   var META_UNION_KEYS = ['scan_answered_qids'];
+
+  /* V1.53：ライセンスは【持っている側】が勝つ。
+     設定の新旧で決めると、買っていない端末で日界を変えただけで
+     鍵が消えることになる。片方にあれば残す。 */
+  var META_KEEP_KEYS = ['license_key'];
 
   /* 新しい方を採る。設定・見た目。
      V1.39：oneq_threshold / oneq_always_multi は実在しないキーだった
@@ -913,7 +920,7 @@
                         S.getAllQuestions()])
       .then(function (r) {
         var meta = {}, m = r[1] || {};
-        META_MAX_KEYS.concat(META_OR_KEYS, META_UNION_KEYS, META_NEWER_KEYS)
+        META_MAX_KEYS.concat(META_OR_KEYS, META_UNION_KEYS, META_NEWER_KEYS, META_KEEP_KEYS)
           .forEach(function (k) { if (m[k] !== undefined) { meta[k] = m[k]; } });
         return {
           schema: PROGRESS_SCHEMA,
@@ -1015,6 +1022,11 @@
         });
         out[k] = list;
       }
+    }
+    for (i = 0; i < META_KEEP_KEYS.length; i++) {
+      k = META_KEEP_KEYS[i];
+      var kv = localMeta[k] || remoteMeta[k];
+      if (kv) { out[k] = kv; }
     }
     var newer = (remoteAt > localAt) ? remoteMeta : localMeta;
     var older = (remoteAt > localAt) ? localMeta : remoteMeta;

@@ -3979,3 +3979,76 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
      表で問題、裏で答え合わせ、が紙のままできる。 */
   .pn-back{ break-before:always; page-break-before:always; }
 }
+
+/* =====================================================================
+ * §61 ライセンス・無料枠（V1.53）
+ *
+ * 作法：赤・警告色は使わない。無料枠は「失敗」ではなく「途中」なので、
+ * 早期復習の青（§4-1）と紛れないよう、どちらでもない砂色にする。
+ * ===================================================================== */
+
+/* --- ホームの1行。プランナー（.plan-line）と同じ骨格に揃える --- */
+.free-gate{
+  display:flex; align-items:center; gap:8px;
+  margin:0 0 10px; padding:8px 12px;
+  border-radius:10px;
+  font-size:.82rem; line-height:1.45;
+  background:var(--surface-2); color:var(--text-sub);
+  border:1px solid var(--border-2);
+}
+.free-gate > span{ flex:1 1 auto; }
+.free-gate[data-tone="near"]{
+  background:color-mix(in srgb, #c8912a 12%, var(--surface-2));
+  border-color:color-mix(in srgb, #c8912a 40%, var(--border-2));
+  color:var(--text-main);
+}
+.free-gate[data-tone="locked"]{
+  background:color-mix(in srgb, #c8912a 20%, var(--surface-2));
+  border-color:color-mix(in srgb, #c8912a 60%, var(--border-2));
+  color:var(--text-main); font-weight:600;
+}
+/* §4-13：押せるものは立体。この行の中で押せるのはこのボタンだけ。 */
+.free-gate-btn{
+  flex:0 0 auto; white-space:nowrap;
+  padding:4px 12px; border-radius:999px;
+  font-size:.78rem; font-weight:700;
+  color:var(--text-main);
+  background:var(--surface-1);
+  border:1px solid var(--border-1);
+  box-shadow:0 1px 0 var(--border-1);
+  cursor:pointer;
+}
+.free-gate-btn:active{ transform:translateY(1px); box-shadow:none; }
+
+/* --- 設定のライセンス欄 --- */
+.lic-bar{
+  width:100%; height:6px; margin:8px 0 4px;
+  border-radius:999px; background:var(--surface-2); overflow:hidden;
+}
+.lic-bar > span{
+  display:block; height:100%; width:0;
+  background:#c8912a; transition:width .3s ease-out;
+}
+.lic-key{
+  width:100%; box-sizing:border-box;
+  margin-top:6px; padding:8px 10px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:.78rem; line-height:1.4;
+  /* 鍵は長い1語。折り返さないと1行に潰れて読めない（V1.49a の教訓）。 */
+  overflow-wrap:anywhere; word-break:break-all;
+  color:var(--text-main); background:var(--surface-1);
+  border:1px solid var(--border-1); border-radius:8px;
+  resize:vertical;
+}
+.lic-btns{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.lic-paid-wrap{ margin-top:8px; }
+
+/* --- 購入案内モーダル --- */
+.buy-keep{
+  margin-top:10px; padding:8px 10px;
+  border-radius:8px;
+  background:var(--surface-2); color:var(--text-main);
+  font-size:.86rem;
+}
+.buy-list{ margin:10px 0 0; padding-left:1.2em; font-size:.84rem; color:var(--text-sub); }
+.buy-list li{ margin-bottom:4px; }

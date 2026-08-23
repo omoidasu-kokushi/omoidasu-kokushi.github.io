@@ -1193,6 +1193,16 @@
           if (mode === 'conquer') {
             cands = cands.filter(function (c) { return c.max_priority > 0; });
           }
+          /* --- 無料枠を使い切ったときの絞り込み（V1.53） ---
+             ここは「ライセンスがあるか」を知らない。呼び出し側が判断して
+             solvedOnly を渡す。出題の理屈と売り方の理屈を混ぜると、
+             売り方を変えるたびに出題が壊れる。
+             残すのは【全部の肢に一度は答えた問題】だけ。
+             買わない人でも、それまでに解いたぶんの復習は最後まで続けられる。
+             ここで復習まで止めると、利用者の学習記録を人質に取ることになる。 */
+          if (options.solvedOnly) {
+            cands = cands.filter(function (c) { return c.unlearned === 0; });
+          }
           /* --- ランクで絞る（V1.50・直前モード用） ---
              本番の出題も基本問題が中心なので、S/A に寄せても
              「本番よりずっと易しい」にはならない。C を外すのが主な効果。 */
@@ -1202,7 +1212,14 @@
             cands = cands.filter(function (c) { return okRank[String(c.rank || 'B').toUpperCase()]; });
           }
           if (!cands.length) {
-            return { mode: mode, questions: [], reason: '条件に合う問題が残っていません', guard: null };
+            return {
+              mode: mode, questions: [],
+              reason: options.solvedOnly
+                ? '無料でお試しいただける範囲を解き終えました'
+                : '条件に合う問題が残っていません',
+              locked: !!options.solvedOnly,
+              guard: null
+            };
           }
 
           /* 概念別弱点ノックは、トピックガードを一時無効化して集中出題する */
@@ -1988,8 +2005,21 @@
 
       var boundary2 = isNum(meta.day_boundary_hour) ? meta.day_boundary_hour : 4;
 
+      /* --- 解いた問題数の到達点（V1.53・無料枠の物差し） ---
+         いま解けている数ではなく【これまでに到達した最大】で持つ。
+         いまの数で見ると、全初期化や問題の追加で数が戻り、
+         いちど使った無料枠が復活してしまう。
+         §2-3 の不退転（max_pct）と同じ考え方。 */
+      var solvedNow  = Math.max(0, totalQ - unlearnedQ);
+      var solvedEver = Math.max(Number(meta.solved_ever || 0), solvedNow);
+      if (solvedEver !== Number(meta.solved_ever || 0)) {
+        S.setMeta('solved_ever', solvedEver).catch(function () {});
+      }
+
       return {
         due_count: dueCount,
+        solved_questions: solvedNow,
+        solved_ever: solvedEver,
         /* 逆算プランナー（V1.50）。ホーム最上部に1行で出す。 */
         plan: buildPlan(meta, dueCount, unlearned, boundary2, nowMs()),
         /* App Badging API には必ず整数を渡す（文字列を渡すと型エラーで落ちる） */
