@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.31.js
+ * 20260815_main_part2_V1.32.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,10 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.32 (1) 模試に「本番モード／直前モード」を足した。
+ *            直前モードは S/A ランク中心・一度解けた問題を先に出す。
+ *            ただし【合格基準は本番と同じまま】変えない。
+ *            基準まで甘くすると達成感が偽物になり、当日に効かないため。
  *  V1.31 (1) 画面を閉じる直前は、どの画面からでも同期するようにした。
  *            従来はホーム/設定のとき以外は runAutoSync が即 return していたため、
  *            「学習を終える→ホーム→8秒待たずに閉じる」がまるごと未同期だった。
@@ -1176,7 +1180,23 @@
     }).then(function (r) { global.setTimeout(function () { tip('exam'); }, 500); return r; });
   }
 
-  function startExam(examId) {
+  /* --- 模試の受け方（V1.50） ---
+     'real'  … 本番モード。全ランク・本番と同じ配分。実力を測る
+     'final' … 直前モード。S/A中心・一度解けた問題から。成功体験のため
+     どちらも【合格基準は本番と同じ】。変えるのは出題だけ。 */
+  function examStyleOpts(style, examId) {
+    if (examId === 'mock_weak') { return {}; }        /* いじわる模試は弱点順のまま */
+    if (style !== 'final') { return {}; }
+    return { ranks: ['S', 'A'], preferKnown: true };
+  }
+
+  function askExamStyle(examId) {
+    st.exam.pendingStyleId = examId;
+    openModal('#modal-exam-style');
+    return null;
+  }
+
+  function startExam(examId, style) {
     var size = EXAM_SIZE[examId] || 30;
 
     return S.getUnlockState().then(function (states) {
@@ -1194,20 +1214,39 @@
         openModal('#modal-exam-warn');
         return null;
       }
-      return launchExam(examId, size);
+      /* 受け方をまだ選んでいなければ先に聞く（いじわる模試は聞かない）。 */
+      if (!style && examId !== 'mock_weak') { return askExamStyle(examId); }
+      return launchExam(examId, size, style);
     });
   }
 
-  function launchExam(examId, size) {
+  function launchExam(examId, size, style) {
     var opts = (examId === 'mock_weak')
       ? { mode: 'exam', count: size, applyGuard: false, preferFrequent: true }   /* 弱点順で抽出 */
       : { mode: 'exam', count: size, applyGuard: false, shuffle: true };
+    var extra = examStyleOpts(style, examId);
+    Object.keys(extra).forEach(function (k) { opts[k] = extra[k]; });
 
     return K.buildQueue(opts).then(function (q) {
+      /* 直前モードで候補が足りないことがある（S/Aだけでは数が揃わない）。
+         そのときは黙って本番モードに落とさず、断わってから落とす。 */
+      if (style === 'final' && q.questions.length < size) {
+        toast('S・Aランクだけでは ' + size + '問に届かないので、他のランクも混ぜます', 4200);
+        return K.buildQueue({ mode: 'exam', count: size, applyGuard: false,
+                              shuffle: true, preferKnown: true })
+          .then(function (q2) { return finishLaunch(examId, q2, style); });
+      }
+      return finishLaunch(examId, q, style);
+    });
+  }
+
+  function finishLaunch(examId, q, style) {
+    return Promise.resolve().then(function () {
       if (!q.questions.length) { toast('出題できる問題がありません'); return null; }
 
       st.exam = {
-        id: examId, questions: q.questions, answers: [], index: 0,
+        id: examId, style: style || 'real',
+        questions: q.questions, answers: [], index: 0,
         startedAt: Date.now(), size: q.questions.length
       };
 
@@ -3691,8 +3730,23 @@
     });
     on($('#warn-study'), 'click', function () { closeModals(); openRandomSelect(); });
     on($('#warn-go'), 'click', function () {
+      var id = st.exam.pendingId;
       closeModals();
-      launchExam(st.exam.pendingId, EXAM_SIZE[st.exam.pendingId] || 30);
+      /* 警告のあとも受け方は必ず聞く。ここを飛ばすと、
+         警告が出た人だけ本番モード固定になる（V1.50）。 */
+      if (id === 'mock_weak') { launchExam(id, EXAM_SIZE[id] || 30); return; }
+      askExamStyle(id);
+    });
+
+    /* --- 模試の受け方（V1.50） --- */
+    on($('#modal-exam-style'), 'click', function (ev) {
+      var b = ev.target.closest('[data-exam-style]');
+      if (!b) { return; }
+      var id = st.exam.pendingStyleId;
+      var style = b.getAttribute('data-exam-style');
+      closeModals();
+      if (!id) { return; }
+      launchExam(id, EXAM_SIZE[id] || 30, style);
     });
 
     /* --- 概念ノック --- */

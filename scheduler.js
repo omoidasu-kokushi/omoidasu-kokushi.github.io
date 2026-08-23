@@ -1169,6 +1169,14 @@
           if (mode === 'conquer') {
             cands = cands.filter(function (c) { return c.max_priority > 0; });
           }
+          /* --- ランクで絞る（V1.50・直前モード用） ---
+             本番の出題も基本問題が中心なので、S/A に寄せても
+             「本番よりずっと易しい」にはならない。C を外すのが主な効果。 */
+          if (Array.isArray(options.ranks) && options.ranks.length) {
+            var okRank = {};
+            options.ranks.forEach(function (rk) { okRank[String(rk).toUpperCase()] = 1; });
+            cands = cands.filter(function (c) { return okRank[String(c.rank || 'B').toUpperCase()]; });
+          }
           if (!cands.length) {
             return { mode: mode, questions: [], reason: '条件に合う問題が残っていません', guard: null };
           }
@@ -1184,9 +1192,20 @@
             var picked;
 
             if (options.shuffle) {
-              /* 純ランダム指定時も、未学習だけは前方に寄せる */
-              var un = shuffle(pool.filter(function (c) { return c.unlearned > 0; }), options.seed);
-              var rest = shuffle(pool.filter(function (c) { return c.unlearned === 0; }), options.seed);
+              var un, rest;
+              if (options.preferKnown) {
+                /* --- 直前モード（V1.50） ---
+                   目的は実力測定ではなく【成功体験】。
+                   一度でも「易しい／マスター」を付けた肢を含む問題を前に出す。
+                   初見をぶつけない。ただし合格基準は本番と同じまま変えない
+                   （基準まで甘くすると達成感が偽物になり、当日に効かない）。 */
+                un   = shuffle(pool.filter(function (c) { return c.mastered > 0; }), options.seed);
+                rest = shuffle(pool.filter(function (c) { return c.mastered === 0; }), options.seed);
+              } else {
+                /* 純ランダム指定時も、未学習だけは前方に寄せる */
+                un   = shuffle(pool.filter(function (c) { return c.unlearned > 0; }), options.seed);
+                rest = shuffle(pool.filter(function (c) { return c.unlearned === 0; }), options.seed);
+              }
               picked = un.concat(rest).slice(0, count);
             } else {
               /* 直前10日は狙いが変わる。本日の復習は期日順のままで、
@@ -1832,6 +1851,48 @@
    * ====================================================================== */
 
   /* ホーム画面が一度に必要とする数値を、まとめて1回で組み立てる */
+  /* ======================================================================
+   * 逆算プランナー（V1.50）
+   *
+   * 【なぜ要るか】
+   *   学習アプリの離脱理由でいちばん多いのは「今日何をやればいいか分からない」。
+   *   残り日数も未学習の量も既に持っているので、【1つの数字】に落とす。
+   *   判断のコストをゼロにするのが目的で、正確な予測が目的ではない。
+   *
+   * 【0.7 を掛ける理由】
+   *   実習・体調・バイトで解けない日が必ずある。残り日数をそのまま分母にすると
+   *   「毎日必ず解ける」前提の数字になり、1日落とした時点で破綻して見える。
+   *   3割は落ちる前提で組む。
+   * ====================================================================== */
+  var PLAN_SPARE_RATIO = 0.7;
+  var PLAN_MAX_PER_DAY = 120;   /* これを超えたら「間に合わない」と正直に出す */
+
+  function buildPlan(meta, dueCount, unlearnedAtoms, boundaryHour, now) {
+    var due = isNum(dueCount) ? dueCount : 0;
+    var left = Math.max(0, isNum(unlearnedAtoms) ? unlearnedAtoms : 0);
+    var rest = examRemainingDays(meta, now, boundaryHour);
+    if (rest === null) {
+      return { has_exam: false, rest_days: null, usable_days: null,
+               need_new: 0, due: due, today: due, over: 0, pace: 'no-exam' };
+    }
+    if (rest < 0) {
+      return { has_exam: true, rest_days: rest, usable_days: 0,
+               need_new: 0, due: due, today: due, over: 0, pace: 'past' };
+    }
+    /* 試験日当日も1日と数える。0除算は1日に丸める。 */
+    var usable = Math.max(1, Math.floor((rest + 1) * PLAN_SPARE_RATIO));
+    var needNew = Math.ceil(left / usable);
+    var pace = 'ok';
+    if (left === 0) { pace = 'done'; }
+    else if (needNew > PLAN_MAX_PER_DAY) { pace = 'behind'; }
+    return {
+      has_exam: true, rest_days: rest, usable_days: usable,
+      need_new: needNew, due: due, today: needNew + due,
+      over: pace === 'behind' ? (needNew - PLAN_MAX_PER_DAY) : 0,
+      pace: pace
+    };
+  }
+
   function getHomeState() {
     return S.ensureInitialized().then(function () {
       return Promise.all([
@@ -1865,8 +1926,12 @@
         if (u.pct > unlockPct) { unlockPct = u.pct; }
       });
 
+      var boundary2 = isNum(meta.day_boundary_hour) ? meta.day_boundary_hour : 4;
+
       return {
         due_count: dueCount,
+        /* 逆算プランナー（V1.50）。ホーム最上部に1行で出す。 */
+        plan: buildPlan(meta, dueCount, unlearned, boundary2, nowMs()),
         /* App Badging API には必ず整数を渡す（文字列を渡すと型エラーで落ちる） */
         badge_value: Math.min(dueCount, 99),
         badge_text: dueCount > 99 ? '99+' : String(dueCount),
@@ -1951,6 +2016,7 @@
     recomputeWeakness       : recomputeWeakness,
     priorityScore           : priorityScore,
     rankWeight              : rankWeight,
+    buildPlan               : buildPlan,
     setPreferFrequent       : setPreferFrequent,
 
     /* --- 評価の適用 --- */

@@ -3891,3 +3891,41 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 @media (max-width: 360px){
   .pomo-toggle-text{ display:none; }
 }
+
+/* ==========================================================================
+   59. 逆算プランナー ＆ 模試の受け方（V1.50）
+   ========================================================================== */
+/* 数字は1つだけ。2つ以上並べると、また「どれを見ればいいか」に戻る。 */
+.plan-line{
+  margin:0 0 8px; padding:8px 12px;
+  border-radius:var(--r-md);
+  background:var(--surface-2); border:1px solid var(--border-2);
+  display:flex; flex-direction:column; gap:2px;
+}
+.plan-main{ font-size:1.02rem; font-weight:800; color:var(--text); letter-spacing:.01em; }
+.plan-sub{ font-size:var(--fs-xs); color:var(--text-mute); line-height:1.5; }
+.plan-line[data-tone="behind"]{
+  background:color-mix(in srgb, var(--c-hard) 8%, var(--surface));
+  border-color:color-mix(in srgb, var(--c-hard) 34%, transparent);
+}
+.plan-line[data-tone="behind"] .plan-main{ color:var(--c-hard); }
+.plan-line[data-tone="done"]{
+  background:color-mix(in srgb, var(--c-easy) 10%, var(--surface));
+  border-color:color-mix(in srgb, var(--c-easy) 34%, transparent);
+}
+
+/* 受け方の2択。押せることが一目で分かる面を持たせる（決まり4-13）。 */
+.exam-style-lead{ font-size:var(--fs-sm); color:var(--text-sub); margin:0 0 10px; }
+.exam-style{
+  display:block; width:100%; text-align:left;
+  margin-bottom:10px; padding:12px 14px;
+  border-radius:var(--r-md);
+  background:var(--surface); border:1px solid var(--border);
+  box-shadow:var(--shadow-1);
+}
+.exam-style:active{ transform:translateY(1px); box-shadow:none; }
+.exam-style-name{ display:block; font-size:1.02rem; font-weight:800; color:var(--text); }
+.exam-style-desc{
+  display:block; margin-top:3px;
+  font-size:var(--fs-xs); color:var(--text-mute); line-height:1.6;
+}

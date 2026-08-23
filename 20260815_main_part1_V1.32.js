@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.31.js
+ * 20260815_main_part1_V1.32.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
@@ -730,6 +730,39 @@
    * 4. ホーム画面
    * ====================================================================== */
 
+  /* --- 逆算プランナー（V1.50） ---
+     出すのは1行だけ。数字を2つ以上並べると、また「どれを見ればいいか」に戻る。
+     試験日が無いときは何も出さない（設定していない人に余計な行を足さない）。 */
+  function renderPlan(plan) {
+    var box = $('#home-plan');
+    if (!box) { return; }
+    if (!plan || !plan.has_exam) { box.hidden = true; return; }
+
+    var main = '', sub = '', tone = '';
+    if (plan.pace === 'past') {
+      box.hidden = true; return;                     /* 試験が終わった人には出さない */
+    } else if (plan.pace === 'done') {
+      main = '未学習は残っていません';
+      sub  = plan.due > 0 ? ('今日の復習 ' + plan.due + '問') : '今日の復習もありません';
+      tone = 'done';
+    } else {
+      main = '今日はあと ' + plan.today + '問';
+      sub  = '新しい問題 ' + plan.need_new + '問 ＋ 復習 ' + plan.due + '問'
+           + '　（試験まで ' + plan.rest_days + '日）';
+      tone = (plan.pace === 'behind') ? 'behind' : 'ok';
+      if (plan.pace === 'behind') {
+        /* 間に合わない数字を黙って出さない。届かないことを先に言う。 */
+        sub = 'このままでは全部に手が回りません。'
+            + 'ランクの高いものから進めるか、試験日を確認してください。'
+            + '　（試験まで ' + plan.rest_days + '日）';
+      }
+    }
+    setText('#home-plan-main', main);
+    setText('#home-plan-sub', sub);
+    box.setAttribute('data-tone', tone);
+    box.hidden = false;
+  }
+
   function refreshHome() {
     return K.getHomeState().then(function (h) {
       state.homeState = h;
@@ -746,6 +779,9 @@
         }
       }
       /* 説明文（#review-sub）は V1.17 で撤去した。件数は右上のバッジが出す。 */
+
+      /* --- 逆算プランナー（V1.50） --- */
+      renderPlan(h.plan);
 
       /* --- レベル ＆ 不退転パーセンテージ --- */
       setHtml('#level-chip', numHtml('Level ' + h.level.level));
