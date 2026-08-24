@@ -4031,6 +4031,9 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   /* 「最後にまとめる」を選んだときは、解説だけを後ろへ送る。
      表で問題、裏で答え合わせ、が紙のままできる。 */
   .pn-back{ break-before:always; page-break-before:always; }
+  /* V1.66：出典表記。本文より一段小さく・薄く。紙面の主役は問題。 */
+  .pn-credit{ margin-top:6mm; padding-top:2mm; border-top:1px solid #ccc;
+              font-size:7.5pt; color:#777; text-align:right; }
 }
 
 /* =====================================================================

@@ -185,6 +185,16 @@ def runtime_checks():
         ok("選んだ用紙が @page に反映される", "A5" in r["page"], json.dumps(r["page"]))
         ok("段組みの指定が反映される", r["cols"] == "2", json.dumps(r))
         ok("組んだ問題数と紙面の件数が一致する", r["built"] == r["items"], json.dumps(r))
+        # V1.66：出典表記。紙で回覧されたとき、アプリへたどり着く経路になる。
+        r2 = pg.evaluate("""() => {
+          const c = document.querySelector('#print-sheet .pn-credit');
+          return { has: !!c, text: c ? c.textContent : '',
+                   last: c ? c === document.querySelector('#print-sheet').lastElementChild : false };
+        }""")
+        ok("紙面の末尾に出典表記が入る",
+           r2["has"] and "オモイダス" in r2["text"] and "omoidasu-kokushi.github.io" in r2["text"],
+           json.dumps(r2, ensure_ascii=False))
+        ok("出典表記は最後の要素（問題より前に出ない）", r2["last"] is True, json.dumps(r2, ensure_ascii=False))
         ok("画面には出さない（印刷のときだけ）", r["visible"] == "none", json.dumps(r))
 
         ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))

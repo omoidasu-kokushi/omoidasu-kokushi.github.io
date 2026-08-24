@@ -36,8 +36,8 @@ ok("storage.js の版が index と sw で一致",
    _swq.get("storage.js") == _idxq.get("storage.js"),
    "sw=%s idx=%s" % (_swq.get("storage.js"), _idxq.get("storage.js")))
 _c = re.search(r"CACHE_NAME = 'v(\d+)\.(\d+)\.(\d+)'", sw)
-ok("sw CACHE_NAME が v1.54.0 以降",
-   bool(_c) and tuple(int(x) for x in _c.groups()) >= (1, 54, 0),
+ok("sw CACHE_NAME が v1.55.0 以降",
+   bool(_c) and tuple(int(x) for x in _c.groups()) >= (1, 55, 0),
    _c.group(0) if _c else "not found")
 
 
