@@ -2701,13 +2701,26 @@ html[data-theme="dark"] .memo-body strong{
    チップとは別の当たり判定にして、時間を見るだけのタップでOFFになる事故を防ぐ。 */
 .pomo-toggle{
   flex:0 0 auto;
-  width:34px; height:24px;
-  display:grid; place-items:center;
+  /* --- 幅を固定しない（V1.63で修正） ---
+     ここは元々「OFF」の3文字だけが入る 34px 固定だった。
+     V1.44 で中に「⏲タイマー」を足したとき、幅はそのままだったため、
+     **5文字が1文字ずつ縦に折り返して枠から14pxはみ出していた**
+     （実測：中身 12×53px、枠 34×24px）。
+
+     320px幅では下のメディアクエリが文字を隠すので気づけず、
+     **普通のスマホ幅（375〜430px）でだけ崩れていた。**
+
+     中身の量で幅が決まるようにし、折り返しを禁じる。
+     高さは他のヘッダー部品と揃えたいので24pxのまま。 */
+  width:auto; min-width:34px; height:24px;
+  padding:0 7px;
+  display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  white-space:nowrap;
   border-radius:var(--r-sm);
   background:var(--surface-3);
   border:1px solid var(--border);
   color:var(--text-sub);
-  /* 34×24px に「OFF」の3文字が収まる最大サイズ。9.28px。
+  /* 「OFF」の3文字が 34px に収まる最大サイズ。9.28px。
      記号ではなく文字にしたのは、⏸/▶ が端末によって色付き絵文字に化けるため。 */
   font-size:.58rem; font-weight:800; letter-spacing:-.02em; line-height:1;
   transition:background var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
@@ -3880,15 +3893,22 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
    同期を外して枠が空いたので、ホーム・設定の文字は狭い画面でも残す。
    「何のボタンか」が読めることを、アイコンの美しさより優先する。
    ========================================================================== */
-.pomo-toggle{ display:inline-flex; align-items:center; gap:5px; }
-.pomo-toggle-text{ font-size:.66rem; font-weight:800; letter-spacing:.02em; }
+/* V1.63：display と gap は上の .pomo-toggle 本体で決める。
+   ここで上書きすると、幅の指定と離れた場所に組版の指定が散る。 */
+.pomo-toggle-text{
+  font-size:.66rem; font-weight:800; letter-spacing:.02em;
+  white-space:nowrap;                 /* 1文字ずつ折り返させない */
+}
+.pomo-toggle-state{ white-space:nowrap; }
 
 @media (max-width: 460px){
   #btn-home .hdr-btn-text,
   #btn-settings .hdr-btn-text{ display:inline; }
   .hdr-btn{ padding:0 9px; }
 }
-@media (max-width: 360px){
+/* 狭い画面では文字を落として「ON/OFF」だけにする。
+   落としても押せる大きさ（min-width 34px）は保たれる。 */
+@media (max-width: 380px){
   .pomo-toggle-text{ display:none; }
 }
 
@@ -4085,3 +4105,79 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   color:var(--text-main);
   font-size:.86rem;
 }
+
+/* =====================================================================
+ * §63 当たり判定を広げる（V1.63）
+ *
+ * 【なぜ】
+ * 実測すると、押せる部品の高さが 17〜28px のものが並んでいた。
+ * 電車の中で片手・親指で押す前提だと、この高さは外す。
+ *
+ * 【なぜ見た目を大きくしないか】
+ * §2 の寸法は実測で決めた下限で、大きくすると
+ * 「ランダムモード」「テーマ別 弱点ノック」が2行に折り返すなど、
+ * **別のところが壊れる**（V1.44 で実際に起きて戻した）。
+ * だから **見た目は1pxも変えず、透明な当たり判定だけを広げる**。
+ *
+ * 【広げる向きは、実測した隙間で決める】
+ * 一律に上下±9px へ広げたら、隣と重なった（最初の実装で実際に重なった）。
+ * **重なりは、片方の押し間違いを別の押し間違いにすり替えるだけ**で、
+ * 何も良くならない。測った隙間は次のとおり。
+ *
+ *   ★（rv-star）と 拡大（rv-stem-expand）… 縦に並び、隙間 2px
+ *     → ★は上へ、拡大は下へ。互いに向かって広げない
+ *   肢セレクター（sum-dot）… 横に並び、隙間 6px
+ *     → 左右は片側2pxまで。縦は下に評価ボタンがあるので控えめに
+ *   タグ（tag-pill）… 横の隙間 5px。上下は空いている
+ *
+ * **重なっていないことを試験で確かめている**（tests/test_batchAP.py）。
+ * ===================================================================== */
+
+.star-btn,
+.rv-stem-expand,
+.sum-dot,
+.cx-write,
+.tag-pill,
+.help-btn,
+.pomo-toggle{ position:relative; }
+
+.star-btn::after,
+.rv-stem-expand::after,
+.sum-dot::after,
+.cx-write::after,
+.tag-pill::after,
+.help-btn::after,
+.pomo-toggle::after{
+  content:"";
+  position:absolute;
+  left:0; right:0;
+  background:transparent;      /* 見えない。押せるだけ */
+  pointer-events:auto;
+}
+
+/* ★は上へ逃がす。下 2px 先に「拡大」があるので、下へは広げない。 */
+.star-btn::after{ top:-12px; bottom:-1px; }
+
+/* 拡大は下へ逃がす。上 2px 先に★がある。 */
+.rv-stem-expand::after{ top:-1px; bottom:-13px; }
+
+/* 肢セレクターは横に4〜5個並ぶ（隙間6px）。左右は片側2pxまで。
+   下には評価ボタンがある。押し間違えると評価が変わってしまうので、
+   下方向は広げない。上へ厚くする。 */
+.sum-dot::after{ left:-2px; right:-2px; top:-14px; bottom:0; }
+
+/* 「✎ 自分の言葉で書く」は高さ17pxで最も薄い。
+   ただし **下 4px 先に評価ボタンがある**（実測）。
+   下へ広げると評価ボタンを覆い、**押し間違えると評価が変わる**という
+   いちばん高くつく事故になる（最初の実装で実際に覆っていた）。
+   上へだけ逃がす。上にあるのは解説の本文で、押せる部品ではない。 */
+.cx-write::after{ top:-18px; bottom:-1px; }
+
+/* タグは横の隙間5px。左右は触らず、上下だけ厚くする。 */
+.tag-pill::after{ top:-9px; bottom:-9px; }
+
+/* ヘッダーの？は上に余白が無い。下だけ広げる。 */
+.help-btn::after{ top:-4px; bottom:-12px; }
+
+/* タイマーのON/OFFはヘッダー内で単独。上下に広げる。 */
+.pomo-toggle::after{ top:-9px; bottom:-9px; }
