@@ -165,15 +165,22 @@ with sync_playwright() as p:
     }""")
     pg.reload(wait_until="commit")
     pg.wait_for_function("window.__APP_READY === true", timeout=20000)
-    pg.wait_for_timeout(400)
+    # 固定の待ちにしない（V1.62）。機械が混んでいると 400ms では
+    # まだ最初の文言のままで、**関係ない変更のたびに赤くなる**。
+    pg.wait_for_function(
+        "() => (document.getElementById('splash-status').textContent || '').length > 0",
+        timeout=10000)
     r = pg.evaluate("""() => {
       const a = document.getElementById('splash-ask');
       return { askHidden: a.hidden,
                status: document.getElementById('splash-status').textContent };
     }""")
     ok("期限内なら何も聞かない", r["askHidden"] is True, json.dumps(r))
-    ok("同期していることを言葉で見せる",
-       ("同期" in r["status"] or "準備" in r["status"]), json.dumps(r["status"]))
+    # 見たいのは「いま何をしているかが言葉で出ている」こと。
+    # 段階ごとに文言が変わるので、どの段階でも通る語で見る。
+    ok("いま何をしているかを言葉で見せる",
+       any(w in r["status"] for w in ("同期", "準備", "ドライブ", "読み込")),
+       json.dumps(r["status"], ensure_ascii=False))
     pg.wait_for_function(
         "document.getElementById('splash').classList.contains('is-gone')", timeout=10000)
     ok("同期のあと覆いが外れる", True)

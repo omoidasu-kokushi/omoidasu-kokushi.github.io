@@ -1,9 +1,17 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.36.js
+ * 20260815_main_part1_V1.37.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.37 (1) 更新の受け渡しを作り直した（V1.62）。SKIP_WAITING の直後に
+ *            reload していたため、新しい版が主導権を取る前に読み込み直され、
+ *            **古い版のまま案内だけが消えていた**（実測で確認）。
+ *            リロードは controllerchange で行い、時間切れの保険を置く。
+ *        (2) 起動時に待っている版があれば案内し直す。［あとで］を押した人が
+ *            次の更新まで古い版に取り残されていた。
+ *        (3) 出題中と他の覆いが開いている間は案内を保留し、
+ *            片付いてから出す。
  *  V1.36 (1) 保存に失敗したら、覆いを出して手を止めさせる（V1.60）。
  *            トーストだと数秒で消え、**記録が残らなかったことに
  *            気づかないまま解き続ける**ことになる。
@@ -356,7 +364,12 @@
     },
 
     mermaidSeq: 0,
-    swRegistration: null
+    swRegistration: null,
+    /* V1.62：更新の受け渡し。
+       swReloading      … こちらが頼んだリロードかどうか
+       swUpdatePending  … 出題中だったので保留した案内 */
+    swReloading: false,
+    swUpdatePending: false
   };
 
   /* ======================================================================
@@ -453,7 +466,14 @@
         /* スプラッシュを片付けてから起動ダイアログを出す。
            順序を逆にすると、覆いの下でダイアログが開いて
            「押せないボタンがある」状態になる。 */
-        return resolveSplash().then(function () { return showBootDialog(); });
+        return resolveSplash().then(function () { return showBootDialog(); })
+          .then(function (r) {
+            /* 起動のダイアログが片付いたら、保留していた更新の案内を出す。 */
+            if (state.swUpdatePending) {
+              global.setTimeout(function () { offerUpdate(); }, 900);
+            }
+            return r;
+          });
       })
       .then(function () {
         /* 起動直後にバックグラウンドで再集計。描画は待たせない。 */
@@ -553,20 +573,93 @@
     doc.documentElement.setAttribute('data-visual', v || 'challenge');
   }
 
+  /* ======================================================================
+   * 更新の受け渡し（V1.62で作り直した）
+   *
+   * 【それまでの壊れ方】
+   *   ［更新する］を押すと、SKIP_WAITING を送った**直後に reload()** していた。
+   *   新しい Service Worker が有効化して主導権を取るより先にリロードが走るので、
+   *   **古い版のまま読み込み直され、案内だけが消える**。
+   *   実測で確認：押したあとも controller は古い版、waiting は残ったまま。
+   *   利用者は「更新した」と思っているのに、いつまでも古い版を使い続ける。
+   *
+   * 【直し方】
+   *   リロードは controllerchange（主導権が新しい版へ移った合図）で行う。
+   *   合図が来ない環境のために、時間切れの保険も置く（§4-14 と同じ考え方で
+   *   「必ず先へ進める経路」を二重にする）。
+   * ====================================================================== */
+
+  var UPDATE_FALLBACK_MS = 4000;
+
   function registerServiceWorker() {
     if (!global.navigator || !global.navigator.serviceWorker) { return; }
-    global.navigator.serviceWorker.register('./sw.js').then(function (reg) {
+    var swc = global.navigator.serviceWorker;
+
+    /* 主導権が移ったらリロードする。押した本人の画面だけでなく、
+       同じアプリを開いている他のタブもここで揃う。 */
+    swc.addEventListener('controllerchange', function () {
+      if (!state.swReloading) { return; }   /* こちらが頼んだときだけ従う */
+      state.swReloading = false;
+      global.location.reload();
+    });
+
+    swc.register('./sw.js').then(function (reg) {
       state.swRegistration = reg;
+
+      /* すでに待っている版があるなら案内する。
+         これが無いと、［あとで］を押した人や、前回の更新に失敗した人が
+         **次の更新が出るまで古い版に取り残される**。
+
+         ただし起動の途中では出さない（保留にする）。起動直後は
+         スプラッシュや起動ダイアログが順に開くので、ここで開くと
+         **他のダイアログに上書きされて消える**（実際に消えた）。 */
+      if (reg.waiting && swc.controller) { state.swUpdatePending = true; }
+
       reg.addEventListener('updatefound', function () {
         var sw = reg.installing;
         if (!sw) { return; }
         sw.addEventListener('statechange', function () {
-          if (sw.state === 'installed' && global.navigator.serviceWorker.controller) {
-            openModal('#modal-sw-update');
-          }
+          if (sw.state === 'installed' && swc.controller) { offerUpdate(); }
         });
       });
     }).catch(noop);
+  }
+
+  /* 出題中には割り込まない。ホームへ戻ったときに出す。
+     問題を解いている最中に覆いが出ると、
+     ・答えを考えている手が止まる
+     ・その場で更新するとリロードで解答中の1問が消える
+     の2つが同時に起きる。急ぐ更新ではないので、待てばよい。 */
+  function offerUpdate() {
+    if (!canShowUpdateNow()) { state.swUpdatePending = true; return; }
+    state.swUpdatePending = false;
+    openModal('#modal-sw-update');
+  }
+
+  /* いま案内を出してよい場面か。
+       ・出題中でない … 解いている手を止めない。その場で更新すると
+                        リロードで解答中の1問が消える
+       ・覆いが開いていない … 開くと相手を上書きして消してしまう
+                              （openModal は他のカードを畳むため）
+       ・起動が終わっている … 起動の途中はダイアログが順に開く */
+  function canShowUpdateNow() {
+    if (!state.booted) { return false; }
+    if (state.screen === 'quiz') { return false; }
+    var layer = $('#modal-layer');
+    if (layer && !layer.hidden) { return false; }
+    return true;
+  }
+
+  function acceptUpdate() {
+    closeModals();
+    var reg = state.swRegistration;
+    if (!reg || !reg.waiting) { global.location.reload(); return; }
+    state.swReloading = true;
+    reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    /* 合図が来ないまま止まるのがいちばん困る。時間切れで進める。 */
+    global.setTimeout(function () {
+      if (state.swReloading) { state.swReloading = false; global.location.reload(); }
+    }, UPDATE_FALLBACK_MS);
   }
 
   /* 起動時モーダル（2回目以降・第14章①） */
@@ -860,6 +953,12 @@
 
       /* --- 無料枠（V1.53） --- */
       renderFreeGate(h);
+
+      /* 出題中だったので保留していた更新の案内を、ここで出す（V1.62）。
+         ホームは「手が空いている」ことが分かる唯一の場所。 */
+      if (state.swUpdatePending) {
+        global.setTimeout(function () { offerUpdate(); }, 700);
+      }
 
       /* --- レベル ＆ 不退転パーセンテージ --- */
       setHtml('#level-chip', numHtml('Level ' + h.level.level));
@@ -2810,6 +2909,12 @@
     /* 覆いを畳むときは、開いていた確認を必ず「やめる」で解決する。
        解決しないまま閉じると、待っている Promise が永久に残る。 */
     settleConfirm(false);
+    /* 保留していた更新の案内を、ここでも拾う（V1.62）。
+       拾う場所がホームの描画だけだと、起動ダイアログを閉じたあと
+       誰も描画し直さない経路で**保留したまま埋もれる**（実際に埋もれた）。 */
+    if (state.swUpdatePending) {
+      global.setTimeout(function () { offerUpdate(); }, 500);
+    }
     var layer = $('#modal-layer');
     if (layer) { layer.hidden = true; }
     $$('#modal-layer > .modal-card').forEach(function (c) { c.hidden = true; });
@@ -2994,13 +3099,7 @@
     on($('#pomo-break'), 'click', function () { closeModals(); Half2.startBreak(5); });
     on($('#pomo-extend'), 'click', function () { extendPomodoro(); });
     on($('#pomo-off'), 'click', function () { disablePomodoro(); });
-    on($('#sw-reload'), 'click', function () {
-      closeModals();
-      if (state.swRegistration && state.swRegistration.waiting) {
-        state.swRegistration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      }
-      global.location.reload();
-    });
+    on($('#sw-reload'), 'click', function () { acceptUpdate(); });
 
     /* --- キーボード（PC操作の補助） --- */
     /* --- Escape で覆いを畳む（V1.55・§4-14 の二重の経路） ---
@@ -3331,6 +3430,9 @@
 
     /* 共通部品（後半から使う） */
     openModal     : openModal,
+    /* V1.62：更新の受け渡し。テストから出題中の割り込みを確かめる。 */
+    offerUpdate   : offerUpdate,
+    acceptUpdate  : acceptUpdate,
     /* V1.53：ライセンス。後半（設定画面）から呼ぶ。 */
     openBuyDialog : openBuyDialog,
     openSaveErrorDialog : openSaveErrorDialog,
