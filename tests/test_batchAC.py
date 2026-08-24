@@ -28,13 +28,13 @@ ok("解説の3段階がある", 'id="set-explain-mode"' in idx
    and idx.count('data-explain=') == 3)
 ok("設定の版表示が最新（古い刻印が残っていない）",
    "NurseExamApp_V1.38" not in idx and 'id="build-stamp-settings"' in idx)
-ok("版の刻印が2箇所とも V1.68", idx.count("Omoidasu_V1.68") >= 2)
+ok("版の刻印が2箇所とも V1.69", idx.count("Omoidasu_V1.69") >= 2)
 
 # 資産の版が index と sw で一致（V1.42で入れた決まり）
 _idxq = dict(re.findall(r'"\./([^"?]+)\?v=([^"]+)"', idx))
 _swq = dict(re.findall(r"'\./([^'?]+)\?v=([^']+)'", sw))
 for f in ["styles.css", "questions.js", "storage.js", "scheduler.js", "drive.js", "license.js"]:
-    ok("%s の版が index と sw で一致" % f, _idxq.get(f) == _swq.get(f) and _idxq.get(f) == "1.68",
+    ok("%s の版が index と sw で一致" % f, _idxq.get(f) == _swq.get(f) and _idxq.get(f) == "1.69",
        "idx=%s sw=%s" % (_idxq.get(f), _swq.get(f)))
 
 

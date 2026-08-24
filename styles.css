@@ -349,7 +349,7 @@ small{ font-size:var(--fs-xs); }
   display:flex; align-items:center; gap:5px;
   height:28px; padding:0 10px; border-radius:var(--r-pill);
   background:var(--surface-3); border:1px solid var(--border);
-  font-size:var(--fs-xs); font-weight:700; color:var(--text-sub);
+  font-size:min(var(--fs-xs), 14px); font-weight:700; color:var(--text-sub);
 }
 .pomo-dot{
   width:6px; height:6px; border-radius:50%;
@@ -953,11 +953,11 @@ small{ font-size:var(--fs-xs); }
 }
 /* 仕様準拠の組版：頭文字 1.15rem ／ 語尾 0.72rem */
 .eval-btn b{
-  font-size:1.15rem; font-weight:800; line-height:1;
+  font-size:min(1.15rem, 20px); font-weight:800; line-height:1;
   letter-spacing:.01em;
 }
 .eval-btn small{
-  font-size:0.72rem; font-weight:700; line-height:1;
+  font-size:min(0.72rem, 15px); font-weight:700; line-height:1;
   letter-spacing:-.03em; opacity:.86;
 }
 .eval-btn:active{ transform:scale(.955); }
@@ -1817,8 +1817,8 @@ html[data-visual="master"] .level-bar-fill{ background:linear-gradient(90deg, #E
     --fs-base: .9rem;
   }
   .eval-btn{ height:44px; }
-  .eval-btn b{ font-size:1.08rem; }
-  .eval-btn small{ font-size:.66rem; }
+  .eval-btn b{ font-size:min(1.08rem, 20px); }
+  .eval-btn small{ font-size:min(.66rem, 14px); }
   .btn-next{ height:46px; font-size:var(--fs-md); }
   .sub-card{ padding:11px 8px 10px; }
   .sub-title{ font-size:var(--fs-xs); }
@@ -2522,8 +2522,8 @@ html[data-theme="dark"] .memo-body strong{
    送り仮名（0.72rem＝11.52px）より明確に大きい範囲で縮める。
    0.95rem（15.2px）を下限とするのは、「難」が18画あり、
    これ以上小さくすると細部が潰れて可読性が落ちるため。 */
-.eval-btn b{ font-size:.95rem; }
-.eval-btn small{ font-size:.72rem; }
+.eval-btn b{ font-size:min(.95rem, 20px); }
+.eval-btn small{ font-size:min(.72rem, 15px); }
 
 /* 頭文字を縮めたぶん、上下の余白も詰める */
 .eval-btn{ height:34px; }
