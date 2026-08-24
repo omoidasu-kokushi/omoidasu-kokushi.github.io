@@ -12,6 +12,10 @@
  *   onFinish    : 模試・ノック・オンボーディングの独自終了処理
  *
  * 【改版履歴】
+ *  V1.45 (1) 「同期で残せなかったメモ」（V1.72）。競合で負けた文面の控えを
+ *            設定から読める・写せる・片づけられるようにした。従来は
+ *            「両方で直したもの N件（新しい方を採用）」のトーストだけで
+ *            負けた側の文面は永久に消えていた。
  *  V1.44 (1) 取り込みレポートに分類ガードの警告（V1.71）。出題基準に無い
  *            unit/major/medium を件数と実例で表示。NB分類の表記ゆれによる
  *            ツリー分裂を、取り込んだ直後に気づけるようにする。
@@ -1577,6 +1581,95 @@
     });
   }
 
+  /* ======================================================================
+   * 同期で残せなかったメモ（V1.72）
+   * 競合の解決は「新しい方を採用」のまま（§11の設計どおり）。
+   * ここは負けた側の文面の控え置き場：復元はしない（勝った方を黙って
+   * 上書きするのは、消えるより性質が悪い）。読む・写す・片づけるの3つだけ。
+   * ====================================================================== */
+  function conflictEntries() {
+    return S.loadMeta().then(function (mm) {
+      return Array.isArray(mm.sync_conflicts) ? mm.sync_conflicts.slice() : [];
+    });
+  }
+
+  function renderConflictList() {
+    return conflictEntries().then(function (list) {
+      var box = $('#conflict-list');
+      if (!box) { return list; }
+      if (!list.length) {
+        setHtml('#conflict-list', '<p class="set-note">控えはありません。</p>');
+        return list;
+      }
+      var qids = list.map(function (e) { return String(e.key).split('|')[0]; });
+      return S.getQuestionsFull(qids).then(function (qs) {
+        var stemBy = {};
+        (qs || []).forEach(function (q) { stemBy[q.q_id] = q.stem || ''; });
+        setHtml('#conflict-list', list.map(function (e, i) {
+          var qid = String(e.key).split('|')[0];
+          var d = new Date(Number(e.at || 0));
+          var when = d.getFullYear() ? (d.getMonth() + 1) + '/' + d.getDate() : '';
+          return '<div class="conflict-item" data-ci="' + i + '">' +
+            '<p class="conflict-head"><b>' + esc(when) + '</b>　' +
+            esc((stemBy[qid] || qid).slice(0, 36)) + '…</p>' +
+            '<p class="conflict-memo">' + esc(e.memo || '') + '</p>' +
+            '<div class="conflict-actions">' +
+            '<button type="button" class="btn-ghost btn-sm" data-ccopy="' + i + '">文面をコピー</button>' +
+            '<button type="button" class="btn-ghost btn-sm is-danger" data-cdel="' + i + '">片づける</button>' +
+            '</div></div>';
+        }).join(''));
+        return list;
+      });
+    });
+  }
+
+  function openSyncConflicts() {
+    return renderConflictList().then(function () { openModal('#modal-conflicts'); });
+  }
+
+  function conflictCopy(i) {
+    return conflictEntries().then(function (list) {
+      var e = list[i];
+      if (!e) { return; }
+      var t = e.memo || '';
+      var done = function () { toast('メモの文面をコピーしました', 2600); };
+      if (global.navigator.clipboard && global.navigator.clipboard.writeText) {
+        return global.navigator.clipboard.writeText(t).then(done)
+          .catch(function () { toast('コピーできませんでした。長押しで選択してください', 3600); });
+      }
+      toast('コピーできませんでした。長押しで選択してください', 3600);
+    });
+  }
+
+  function conflictDismiss(i) {
+    return M.confirmAction({
+      title: 'この控えを片づけますか？',
+      body: '片づけると、この文面はどこにも残りません。必要な部分は先にコピーしてください。',
+      ok: '片づける'
+    }).then(function (yes) {
+      if (!yes) { return null; }
+      return conflictEntries().then(function (list) {
+        list.splice(i, 1);
+        return S.setMeta('sync_conflicts', list);
+      }).then(function () { return refreshDrive(); })
+        /* 確認の覆いが一覧を畳んでいるので、続けて片づけられるよう開き直す */
+        .then(function () { return openSyncConflicts(); });
+    });
+  }
+
+  function conflictClearAll() {
+    return M.confirmAction({
+      title: 'すべての控えを片づけますか？',
+      body: '片づけると、これらの文面はどこにも残りません。必要な部分は先にコピーしてください。',
+      ok: 'すべて片づける'
+    }).then(function (yes) {
+      if (!yes) { return null; }
+      return S.setMeta('sync_conflicts', []).then(function () {
+        return refreshDrive();
+      }).then(function () { closeModals(); toast('すべて片づけました', 2600); });
+    });
+  }
+
   function openStarredNote() {
     return M.go('starred').then(function () { return renderStarredNote(st.starred.filter); })
       .then(function (r) {
@@ -3095,6 +3188,14 @@
         lastErr = mm.drive_last_error || null;
         if (inp && !inp.value) { inp.value = own || ''; }
         refreshDriveAdvanced(!!own);
+        /* 同期で残せなかったメモ（V1.72）。無いときは行ごと隠す */
+        var scRow = $('#btn-sync-conflicts');
+        var scList = Array.isArray(mm.sync_conflicts) ? mm.sync_conflicts : [];
+        if (scRow) {
+          scRow.hidden = !scList.length;
+          setText('#sync-conflicts-note',
+            scList.length + '件の控えがあります。読んで、必要なら写して、片づけてください');
+        }
         return null;
       }).then(function () {
 
@@ -4463,6 +4564,7 @@
     collectNoteItems: collectNoteItems,
     gradeExam: gradeExam,                showExamResult: showExamResult,
     buildReportSheet: buildReportSheet,  runPrintReport: runPrintReport,
+    renderConflictList: renderConflictList,  openSyncConflicts: openSyncConflicts,
     buildShareCard: buildShareCard,      shareExamResult: shareExamResult,
     openSettings: openSettings,          runImport: runImport,
     runBackup: runBackup,                runRestore: runRestore,
@@ -4815,6 +4917,14 @@
     on($('#btn-ics'),          'click', function () { exportReviewCalendar(); });
     on($('#btn-note-print'),   'click', function () { openModal('#modal-note'); });
     on($('#btn-report-print'), 'click', function () { runPrintReport(); });
+    on($('#btn-sync-conflicts'), 'click', function () { openSyncConflicts(); });
+    on($('#btn-conflicts-clear'), 'click', function () { conflictClearAll(); });
+    on($('#conflict-list'), 'click', function (ev) {
+      var c = ev.target.closest('[data-ccopy]');
+      if (c) { conflictCopy(Number(c.getAttribute('data-ccopy'))); return; }
+      var dl = ev.target.closest('[data-cdel]');
+      if (dl) { conflictDismiss(Number(dl.getAttribute('data-cdel'))); }
+    });
     on($('#note-go'),          'click', function () { runPrintNote(); });
     on($('#btn-pwa-install'),   'click', function () { pwaInstall(); });
     on($('#btn-pwa-how'),       'click', function () { pwaHow(); });

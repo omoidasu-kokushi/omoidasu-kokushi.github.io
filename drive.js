@@ -591,9 +591,16 @@
       if (a === b) { return; }
       if (a > b) {
         out[k] = mine;
-        if (differs(mine, theirs)) { conflicts.push({ kept: 'local', key: k, lost: theirs }); }
+        if (differs(mine, theirs)) {
+          conflicts.push({ kept: 'local', key: k, lost: theirs,
+            /* V1.72：メモが本当に食い違ったときだけ、負けた文面を控える */
+            lost_memo: (String(mine.memo || '') !== String(theirs.memo || ''))
+              ? String(theirs.memo || '') : null });
+        }
       } else if (differs(mine, theirs)) {
-        conflicts.push({ kept: 'remote', key: k, lost: mine });
+        conflicts.push({ kept: 'remote', key: k, lost: mine,
+          lost_memo: (String(mine.memo || '') !== String(theirs.memo || ''))
+            ? String(mine.memo || '') : null });
       }
     });
 
@@ -674,6 +681,30 @@
       var merged = mergeIndex(local, remote);
       report.conflicts = merged.conflicts;
 
+      /* --- 負けたメモの控え（V1.72） ---
+         「新しい方を採用」した瞬間、負けた側の文面はどこにも残らなかった。
+         2台で同じメモを書き換えたとき、片方の推敲が黙って消えるのが
+         いちばんまずい。meta.sync_conflicts（端末ローカル・同期しない・
+         上限20件）へ退避し、設定の「同期で残せなかったメモ」から
+         読める・写せる・片づけられるようにする。 */
+      var lostMemos = merged.conflicts.filter(function (c) {
+        return c.lost_memo && c.lost_memo.trim();
+      });
+      var saveLost = !lostMemos.length ? Promise.resolve() :
+        S.loadMeta().then(function (mm) {
+          var list = Array.isArray(mm.sync_conflicts) ? mm.sync_conflicts.slice() : [];
+          lostMemos.forEach(function (c) {
+            var dup = list.some(function (e) {
+              return e.key === c.key && e.memo === c.lost_memo;
+            });
+            if (!dup) {
+              list.unshift({ at: nowMs(), key: c.key, kept: c.kept, memo: c.lost_memo });
+            }
+          });
+          if (list.length > 20) { list = list.slice(0, 20); }
+          return S.setMeta('sync_conflicts', list);
+        }).catch(function () { /* 控えの保存失敗で同期全体を止めない */ });
+
       var localByKey = {};
       local.forEach(function (it) { localByKey[keyOf(it)] = it; });
 
@@ -694,7 +725,7 @@
         }
       });
 
-      var seq = Promise.resolve();
+      var seq = saveLost;
 
       /* 0) この端末で消した図を、ドライブからも消す。
             ここを飛ばすと、消したのに別端末が拾って戻してくる。 */

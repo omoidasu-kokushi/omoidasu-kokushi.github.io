@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.71">
+<link rel="stylesheet" href="./styles.css?v=1.72">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.71",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.72",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.71",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.72",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.71",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.72",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.44.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.71",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.72",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=1.71",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=1.72",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -420,7 +420,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260824_Omoidasu_V1.71</p>
+        <p class="build-stamp">20260824_Omoidasu_V1.72</p>
       </div>
     </section>
 
@@ -971,6 +971,14 @@
             </div>
           </div>
 
+          <!-- V1.72：同期競合で「新しい方を採用」した際に負けたメモの控え。
+               2台で同じメモを推敲したとき、片方が黙って消えるのが一番まずい。 -->
+          <button type="button" class="set-row" id="btn-sync-conflicts" hidden>
+            <span class="set-row-body"><b>同期で残せなかったメモ</b>
+              <small id="sync-conflicts-note">両方の端末で書き換えたため、採用されなかった文面の控えです</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
+
           <p class="set-note drive-privacy">
             保存先はあなた自身のGoogleドライブです。このアプリの作り手は中身を見られません。
             <a href="./privacy.html" target="_blank" rel="noopener">プライバシーポリシー</a>
@@ -1180,7 +1188,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260824_Omoidasu_V1.71 / cache v1.60.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260824_Omoidasu_V1.72 / cache v1.61.0</p>
         </section>
       </div>
     </section>
@@ -1414,6 +1422,21 @@
 
   <!-- 印刷専用の紙面（V1.51）。画面には出さない。 -->
   <div id="print-sheet" aria-hidden="true"></div>
+
+  <!-- 同期で残せなかったメモ（V1.72） -->
+  <div class="modal-card" id="modal-conflicts" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title">同期で残せなかったメモ</h3>
+    <div class="modal-body">
+      <p class="set-note">2つの端末で同じメモを書き換えたため、新しい方を採用しました。
+        こちらは採用されなかった文面の控えです（この端末にだけ残ります・最大20件）。
+        必要な部分は問題のメモへ貼り直してから片づけてください。</p>
+      <div id="conflict-list"></div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>閉じる</button>
+      <button type="button" class="btn-ghost is-danger" id="btn-conflicts-clear">すべて片づける</button>
+    </div>
+  </div>
 
   <!-- 間違いノート（V1.51）
        白衣に入れたいならA5、カバンで持ち歩けるならA4と、置かれた状況で最適が変わる。
@@ -1667,12 +1690,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.71"></script>
-<script src="./storage.js?v=1.71"></script>
-<script src="./scheduler.js?v=1.71"></script>
+<script src="./questions.js?v=1.72"></script>
+<script src="./storage.js?v=1.72"></script>
+<script src="./scheduler.js?v=1.72"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=1.71"></script>
-<script src="./license.js?v=1.71"></script>
-<script src="./20260815_main_part2_V1.44.js"></script>
+<script src="./drive.js?v=1.72"></script>
+<script src="./license.js?v=1.72"></script>
+<script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

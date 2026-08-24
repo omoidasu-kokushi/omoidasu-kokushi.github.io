@@ -1894,6 +1894,18 @@ html[data-visual="master"] .level-bar-fill{ background:linear-gradient(90deg, #E
   body{ background:#fff; color:#000; }
 }
 
+/* 同期で残せなかったメモ（V1.72） */
+.conflict-item{
+  border:1px solid var(--border); border-radius:var(--r-md);
+  padding:10px 12px; margin-bottom:10px; background:var(--surface-2);
+}
+.conflict-head{ font-size:var(--fs-xs); color:var(--text-sub); margin-bottom:6px; }
+.conflict-memo{
+  font-size:var(--fs-sm); line-height:1.7; white-space:pre-wrap;
+  border-left:3px solid var(--accent); padding-left:10px; margin-bottom:8px;
+}
+.conflict-actions{ display:flex; gap:8px; justify-content:flex-end; }
+
 /* ==========================================================================
    26. 追補：個別ユーティリティ
    ========================================================================== */
