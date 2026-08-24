@@ -230,16 +230,41 @@
     return rest <= EXAM_FINAL_DAYS ? 'final' : 'normal';
   }
 
+  /* --- 期日の絶対上限（V1.61） ---
+     梯子の最長は 180日。それを大きく超える期日は【計算の結果ではなく、
+     端末の時計が狂っていた証拠】。
+
+     実際に起きる：
+       ・「明日の分も今日やりたい」と端末の日付を進めて、あとで戻す
+       ・時計がずれた端末、時差のある場所への移動
+     このとき期日が遠い未来に固定され、**その肢は二度と復習に出てこない**。
+     利用者からは「解いたはずの問題が出てこない」としか見えず、
+     自力では絶対に直せない。
+
+     200日：180日の梯子 ＋ 日界の寄せ ＋ 余裕。
+     これを超えたものは now を起点に引き直す。 */
+  var MAX_HORIZON = 200 * 24 * 60 * 60 * 1000;
+
   function computeDueDate(fromTs, stepIdx, boundaryHour, capMs) {
     var step = STEPS[clamp(stepIdx, 0, STEPS.length - 1)];
+    /* 起点そのものが未来なら、いまに引き戻してから積む。
+       未来の解答時刻は存在しえない（V1.61）。 */
+    var base = isNum(fromTs) ? fromTs : nowMs();
+    var t = nowMs();
+    if (base > t) { base = t; }
     /* 試験日の上限で頭を押さえる。梯子そのものは書き換えない
        （評価の意味と、次にどの段へ上がるかは今までどおり）。 */
     var span = (isNum(capMs) && capMs > 0) ? Math.min(step.ms, capMs) : step.ms;
-    var target = fromTs + span;
+    var target = base + span;
     /* 1日未満に潰れたときは日界へ寄せない。寄せると試験日を追い越す。 */
-    if (span < DAY) { return target; }
+    if (span < DAY) { return capHorizon(target, t); }
     var snapped = S.util.dayStart(target, isNum(boundaryHour) ? boundaryHour : 4);
-    return Math.max(snapped, fromTs + MIN);
+    return capHorizon(Math.max(snapped, base + MIN), t);
+  }
+
+  function capHorizon(due, now) {
+    var t = isNum(now) ? now : nowMs();
+    return (isNum(due) && due > t + MAX_HORIZON) ? (t + MAX_HORIZON) : due;
   }
 
   /* ======================================================================
@@ -372,19 +397,44 @@
     });
     if (!list.length) { return null; }
 
+    /* --- 未来の記録に「いまの状態」を決めさせない（V1.61） ---
+       端末の時計が進んだ状態で解くと、未来の時刻を持つ記録が残る。
+       そのまま最新として扱うと、時計を戻したあとに解き直しても
+       **その記録がいつまでも最新のままで、評価も段も更新されない**。
+       利用者からは「解いても何も変わらない肢」に見える。
+
+       記録そのものは消さない（消すと同期で相手から戻ってくるし、
+       解いた事実は事実）。**いまの状態を決める役から外すだけ**にする。
+       実時間が追いつけば自然に元へ戻る。
+
+       1時間の余裕は、端末どうしのわずかな時計ずれを弾かないため。 */
+    var horizon = nowMs() + 60 * 60 * 1000;
+
     var answers = 0, corrects = 0, lastSched = null, last = null;
     list.forEach(function (l) {
       answers++;
       if (l.is_correct) { corrects++; }
+      if (Number(l.answered_at || 0) > horizon) { return; }   /* 未来の記録は代表にしない */
       last = l;
       if (l.schedule_updated) { lastSched = l; }
     });
+
+    /* 全部が未来だったときは、いちばん古いものを代表に使う。
+       null のまま進むと patch が作れず、状態が空のまま固まる。 */
+    if (!last) {
+      last = list[0];
+      lastSched = null;
+      for (var li = list.length - 1; li >= 0; li--) {
+        if (list[li].schedule_updated) { lastSched = list[li]; break; }
+      }
+    }
 
     var patch = {
       answer_count     : answers,
       correct_count    : corrects,
       last_eval        : last.eval || null,
-      last_answered_at : last.answered_at
+      /* 未来の時刻をそのまま持たせない。持たせると分析や並べ替えが狂う。 */
+      last_answered_at : Math.min(Number(last.answered_at || 0), nowMs())
     };
 
     if (lastSched) {
@@ -2206,6 +2256,29 @@
 
   /* 学習セッションの終わり／データ変更の後に呼ぶ再集計。
      概念理解率・弱点pt・レベル・解禁を一括で更新する。 */
+  /* --- 遠すぎる期日を直す（V1.61） ---
+     時計が狂っていた端末には、すでに壊れた期日が入っている。
+     直さないかぎり、その肢は**永久に復習へ出てこない**。
+     利用者からは「解いたはずの問題が出てこない」としか見えず、
+     自力では絶対に直せないので、こちらで拾う。
+
+     全アトムはすでに読んでいるので、追加の読みはゼロ。
+     直した件数は返す（黙って書き換えると、何が起きたか追えない）。 */
+  function repairFarDueDates(atoms) {
+    var t = nowMs();
+    var limit = t + MAX_HORIZON;
+    var patches = {}, n = 0;
+    (atoms || []).forEach(function (a) {
+      if (!isNum(a.due_date) || a.due_date <= limit) { return; }
+      /* 梯子の段はそのまま。期日だけをいまから引き直す。
+         段まで戻すと、積み上げた定着がまるごと失われる。 */
+      patches[a.atom_id] = { due_date: computeDueDate(t, stepIndexOf(a), 4, null) };
+      n++;
+    });
+    if (!n) { return Promise.resolve(0); }
+    return S.updateAtomsBulk(patches).then(function () { return n; });
+  }
+
   function refreshAll(options) {
     options = options || {};
     /* --- 全アトムの読みを1回にまとめる（V1.58） ---
@@ -2221,6 +2294,11 @@
       return options.recomputeWeakness ? recomputeWeakness(null) : Promise.resolve(null);
     }).then(function () {
       return S.getAllAtoms();
+    }).then(function (atoms) {
+      return repairFarDueDates(atoms).then(function (repaired) {
+        if (repaired) { console.warn('[scheduler] 遠すぎる期日を ' + repaired + ' 件直しました'); }
+        return atoms;
+      });
     }).then(function (atoms) {
       return recomputeConceptScores(atoms).then(function (concepts) {
         return Promise.all([computeLevel(atoms), refreshUnlocks(atoms), getTop3Concepts()])
@@ -2294,6 +2372,10 @@
     logKey                   : logKey,
     rebuildAtomState         : rebuildAtomState,
     applyEvaluation          : applyEvaluation,
+    /* V1.61：時計の狂いで壊れた期日の後始末 */
+    repairFarDueDates        : repairFarDueDates,
+    capHorizon               : capHorizon,
+    MAX_HORIZON              : MAX_HORIZON,
     commitDecision          : commitDecision,
     FORMAT                  : FORMAT,
     pickFormat              : pickFormat,
