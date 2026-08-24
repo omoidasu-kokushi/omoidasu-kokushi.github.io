@@ -12,6 +12,12 @@
  *   onFinish    : 模試・ノック・オンボーディングの独自終了処理
  *
  * 【改版履歴】
+ *  V1.43 (0) 白紙印刷バグ修正。#print-sheet が #modal-layer 内にあり、
+ *            印刷CSSがレイヤーごと消すため、間違いノート印刷は V1.51 以来
+ *            実機で白紙だった。組み立て時に body 直下へ移して解消。
+ *  V1.43 (1) 学習レポート（V1.70）。定着率・弱点・学習量をA4一枚に印刷/PDF。
+ *            戦略レビュー§1-2（学校パイロットの本命）。間違いノートの
+ *            印刷機構を再利用し、実測値だけを載せる（予測値は載せない）。
  *  V1.00 初版
  *  V1.42 (1) 模試結果のシェア画像（V1.67）。端末内Canvasで1080×1080を
  *            生成し、共有シート→だめならPNGダウンロードの2段。通信ゼロ。
@@ -1359,6 +1365,14 @@
       }
       var sheet = $('#print-sheet');
       if (!sheet) { return { count: 0 }; }
+      /* --- 白紙印刷バグの修正（V1.70） ---
+         #print-sheet は index.html 上 #modal-layer の中にあるが、
+         印刷CSSは modal-layer を display:none で消す（2箇所とも）。
+         中にいる限り、紙面は組み上がっていても【必ず白紙で出る】。
+         初回の組み立て時に body 直下へ移して、覆いの生死と縁を切る。 */
+      if (sheet.parentElement !== global.document.body) {
+        global.document.body.appendChild(sheet);
+      }
       var style = $('#print-page-style');
       if (!style) {
         style = global.document.createElement('style');
@@ -1393,6 +1407,160 @@
       explain: ($('#note-explain') || {}).value || 'all'
     };
     return buildPrintSheet(cfg).then(function (r) {
+      if (!r.count) { return r; }
+      closeModals();
+      global.document.body.classList.add('is-printing');
+      global.setTimeout(function () {
+        try { global.print(); } catch (e) { /* 印刷できない環境では何もしない */ }
+        global.setTimeout(function () {
+          global.document.body.classList.remove('is-printing');
+        }, 800);
+      }, 120);
+      return r;
+    });
+  }
+
+  /* ======================================================================
+   * 学習レポート（V1.70）
+   *
+   * 【なぜ作るか】
+   *   戦略レビュー§1-2：学校パイロットの本命。教員が欲しいのは管理画面では
+   *   なく「誰が危ないか」の一覧。サーバーを持たない代わりに、学生が自分で
+   *   レポートを書き出して提出する。自己確認にもそのまま使える。
+   *
+   * 【設計の線引き】
+   *   ・載せるのは実測値だけ（定着率・解答量・苦手の並び）。
+   *     合格可能性の「%」の類は載せない（§2-1と同じ理由：母集団が無い）
+   *   ・間違いノート（V1.51）の印刷機構をそのまま使う。新しい画面を作らない
+   *   ・A4固定・設定なし。提出物は形が揃っていることに価値がある
+   * ====================================================================== */
+
+  function reportRow(cells) {
+    return '<tr>' + cells.map(function (c, i) {
+      return (i === 0 ? '<th>' + c + '</th>' : '<td>' + c + '</td>');
+    }).join('') + '</tr>';
+  }
+
+  function buildReportSheet() {
+    return Promise.all([
+      K.getHomeState(),
+      K.buildDashboard({ level: 'unit' }),
+      K.buildDashboard({ level: 'medium' }),
+      S.getConceptStats(),
+      S.loadMeta()
+    ]).then(function (r) {
+      var home = r[0], byUnit = r[1], byMedium = r[2], concepts = r[3] || [], meta = r[4];
+
+      var answeredTotal = home.solved_questions || 0;
+      if (!answeredTotal) {
+        toast('まだ解答がありません。少し解いてから書き出せます', 3600);
+        return { count: 0 };
+      }
+
+      var sheet = $('#print-sheet');
+      if (!sheet) { return { count: 0 }; }
+      /* --- 白紙印刷バグの修正（V1.70） ---
+         #print-sheet は index.html 上 #modal-layer の中にあるが、
+         印刷CSSは modal-layer を display:none で消す（2箇所とも）。
+         中にいる限り、紙面は組み上がっていても【必ず白紙で出る】。
+         初回の組み立て時に body 直下へ移して、覆いの生死と縁を切る。 */
+      if (sheet.parentElement !== global.document.body) {
+        global.document.body.appendChild(sheet);
+      }
+      var style = $('#print-page-style');
+      if (!style) {
+        style = global.document.createElement('style');
+        style.id = 'print-page-style';
+        global.document.head.appendChild(style);
+      }
+      style.textContent = '@page{ size:A4; margin:14mm 12mm; }';
+      sheet.setAttribute('data-cols', '1');
+
+      var d = new Date();
+      var dateStr = d.getFullYear() + '-' +
+        ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+
+      /* 試験日カウントダウン（設定されているときだけ） */
+      var b = (typeof meta.day_boundary_hour === 'number') ? meta.day_boundary_hour : 4;
+      var rest = K.examRemainingDays ? K.examRemainingDays(meta, Date.now(), b) : null;
+      var examLine = (rest !== null && rest !== undefined && rest >= 0)
+        ? '　／　試験日まで ' + rest + ' 日' : '';
+
+      /* --- 1. 学習量（実測） --- */
+      var vol =
+        '<table class="rp-table">' +
+        reportRow(['学習日数', (meta.open_days_total || 0) + ' 日（連続 ' + (meta.open_streak || 0) + ' 日）']) +
+        reportRow(['解答済みの問題', answeredTotal + ' ／ ' + (home.total_questions || 0) + ' 問']) +
+        reportRow(['分析スキャン精度', ((home.scan && home.scan.pct) || 0) + '%（弱点分析の信頼度）']) +
+        '</table>';
+
+      /* --- 2. 単元ごとの定着率（低い順・実測） ---
+         定着率＝「普通以上」の割合。分母は範囲内の全肢（未学習を含む）。
+         手つかずの単元が100%に見える事故を防ぐ（scheduler と同じ定義）。 */
+      var unitRows = (byUnit.rows || []).map(function (g) {
+        var answered = Math.max(0, (g.total_atoms || 0) - (g.unlearned_atoms || 0));
+        return reportRow([
+          esc(g.label),
+          (g.retention_pct || 0) + '%',
+          answered + ' ／ ' + (g.total_atoms || 0) + ' 肢',
+          (g.hard_atoms || 0) + ' 肢'
+        ]);
+      }).join('');
+      var units =
+        '<table class="rp-table rp-grid">' +
+        '<tr><th>単元（定着率が低い順）</th><th>定着率</th><th>解答済み</th><th>「難しい」</th></tr>' +
+        unitRows + '</table>';
+
+      /* --- 3. 弱点の中項目 TOP5（解答があるものだけ） --- */
+      var weak = (byMedium.rows || []).filter(function (g) {
+        return ((g.total_atoms || 0) - (g.unlearned_atoms || 0)) > 0;
+      }).slice(0, 5);
+      var weakRows = weak.map(function (g) {
+        var crumb = String(g.crumb || '').split(' ＞ ').slice(0, 3).join(' ＞ ');
+        return reportRow([
+          (g.num_code ? esc(g.num_code) + ' ' : '') + esc(crumb || g.label),
+          (g.retention_pct || 0) + '%',
+          (g.hard_atoms || 0) + ' 肢'
+        ]);
+      }).join('');
+      var weakHtml = weak.length
+        ? '<table class="rp-table rp-grid">' +
+          '<tr><th>次に固めるべき中項目（定着率が低い順）</th><th>定着率</th><th>「難しい」</th></tr>' +
+          weakRows + '</table>'
+        : '';
+
+      /* --- 4. 苦手な概念 TOP5（評価済みのタグだけ。null は未学習＝載せない） --- */
+      var weakConcepts = concepts.filter(function (c) {
+        return c.in_master && c.score !== null && c.score !== undefined && (c.atom_count || 0) > 0;
+      }).sort(function (a, bb) { return a.score - bb.score; }).slice(0, 5);
+      var conceptRows = weakConcepts.map(function (c) {
+        return reportRow([esc(c.label), Math.round(c.score) + '%', (c.evaluated_count || 0) + ' 肢']);
+      }).join('');
+      var conceptHtml = weakConcepts.length
+        ? '<table class="rp-table rp-grid">' +
+          '<tr><th>苦手な概念（理解率が低い順）</th><th>理解率</th><th>評価済み</th></tr>' +
+          conceptRows + '</table>'
+        : '';
+
+      sheet.innerHTML =
+        '<h1 class="pn-title">オモイダス　学習レポート</h1>' +
+        '<p class="pn-meta">書き出し日 ' + dateStr + examLine +
+        '　／　氏名：<span class="rp-name"></span></p>' +
+        '<h2 class="rp-sec">学習量</h2>' + vol +
+        '<h2 class="rp-sec">単元ごとの定着率</h2>' + units +
+        (weakHtml ? '<h2 class="rp-sec">弱点の中項目 TOP5</h2>' + weakHtml : '') +
+        (conceptHtml ? '<h2 class="rp-sec">苦手な概念 TOP5</h2>' + conceptHtml : '') +
+        '<p class="rp-note">定着率＝「普通」以上の評価が付いた選択肢の割合（未学習を含む全肢が分母）。' +
+        'すべてこのアプリでの実測値です。</p>' +
+        '<p class="pn-credit">オモイダス — 看護師国家試験 対策アプリ ／ ' +
+        'omoidasu-kokushi.github.io</p>';
+
+      return { count: answeredTotal };
+    });
+  }
+
+  function runPrintReport() {
+    return buildReportSheet().then(function (r) {
       if (!r.count) { return r; }
       closeModals();
       global.document.body.classList.add('is-printing');
@@ -4283,6 +4451,7 @@
     buildIcs: buildIcs,                  buildPrintSheet: buildPrintSheet,
     collectNoteItems: collectNoteItems,
     gradeExam: gradeExam,                showExamResult: showExamResult,
+    buildReportSheet: buildReportSheet,  runPrintReport: runPrintReport,
     buildShareCard: buildShareCard,      shareExamResult: shareExamResult,
     openSettings: openSettings,          runImport: runImport,
     runBackup: runBackup,                runRestore: runRestore,
@@ -4634,6 +4803,7 @@
     on($('#btn-drive-save-id'), 'click', function () { saveDriveClientId(); });
     on($('#btn-ics'),          'click', function () { exportReviewCalendar(); });
     on($('#btn-note-print'),   'click', function () { openModal('#modal-note'); });
+    on($('#btn-report-print'), 'click', function () { runPrintReport(); });
     on($('#note-go'),          'click', function () { runPrintNote(); });
     on($('#btn-pwa-install'),   'click', function () { pwaInstall(); });
     on($('#btn-pwa-how'),       'click', function () { pwaHow(); });

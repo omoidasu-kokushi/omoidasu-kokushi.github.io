@@ -4064,6 +4064,17 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
      表で問題、裏で答え合わせ、が紙のままできる。 */
   .pn-back{ break-before:always; page-break-before:always; }
   /* V1.66：出典表記。本文より一段小さく・薄く。紙面の主役は問題。 */
+  /* --- 学習レポート（V1.70）。pn-* と同じ印刷ブロック内でだけ生きる --- */
+  .rp-sec{ font-size:11pt; margin:5mm 0 2mm; padding-bottom:1mm;
+    border-bottom:1.5px solid #000; }
+  .rp-table{ width:100%; border-collapse:collapse; font-size:9.5pt; }
+  .rp-table th, .rp-table td{
+    border:1px solid #999; padding:1.2mm 2mm; text-align:left;
+    vertical-align:top; }
+  .rp-table th{ background:#eee; font-weight:700; }
+  .rp-grid td{ font-variant-numeric:tabular-nums; }
+  .rp-name{ display:inline-block; min-width:42mm; border-bottom:1px solid #000; }
+  .rp-note{ font-size:8.5pt; color:#444; margin-top:4mm; }
   .pn-credit{ margin-top:6mm; padding-top:2mm; border-top:1px solid #ccc;
               font-size:7.5pt; color:#777; text-align:right; }
 }
