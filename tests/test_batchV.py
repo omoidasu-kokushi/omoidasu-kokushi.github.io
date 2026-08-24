@@ -270,7 +270,11 @@ with sync_playwright() as p:
       await S.toggleAtomStar(aid);
       await S.toggleQuestionStar(qid);
       await D.syncNow();
-      const prog = JSON.parse(M.textOf('progress.json'));
+      /* V1.59：progress.json は gzip で上がる。バイト列を UTF-8 として
+         読むと壊れるので、アプリと同じ入口（blobToText）で戻す。
+         この入口は生JSONもそのまま読めるので、圧縮の有無を問わない。 */
+      const prog = JSON.parse(await D.blobToText(new Blob([
+        new Uint8Array(M.bytesOf('progress.json'))])));
       // 手元の★を消してから同期し直す＝「別端末で開いた」ことにする
       await S.updateAtom(aid, {is_starred:false, star_updated_at:0});
       await S.updateQuestion(qid, {is_starred:false, star_updated_at:0});
