@@ -222,6 +222,39 @@ def runtime_checks():
             ok("肢セレクターは見た目の外側を押しても、その肢として届く",
                got == r["num"], json.dumps({"expected": r["num"], "got": got}))
 
+        # ---------- ひとこと欄の送りは題と同じ行（V1.65） ----------
+        r = pg.evaluate("""async () => {
+          const M = window.Main, H = window.Half2Impl;
+          M.closeModals(); await M.go('home', { replace: true });
+          const tip = document.getElementById('home-tip');
+          tip.hidden = false;
+          if (H.renderHomeTips) { await H.renderHomeTips(); }
+          await new Promise(r => setTimeout(r, 350));
+          const B = s => { const e = document.querySelector(s); if (!e) return null;
+            const b = e.getBoundingClientRect();
+            return { x: Math.round(b.left), y: Math.round(b.top),
+                     w: Math.round(b.width), h: Math.round(b.height) }; };
+          const head = B('.home-tip-head'), prev = B('#home-tip-prev'),
+                cnt = B('#home-tip-count'), next = B('#home-tip-next');
+          const inRow = el => el && head && el.y >= head.y - 2
+                          && (el.y + el.h) <= (head.y + head.h + 2);
+          const before = document.getElementById('home-tip-count').textContent;
+          document.getElementById('home-tip-next').click();
+          await new Promise(r => setTimeout(r, 300));
+          const after = document.getElementById('home-tip-count').textContent;
+          return { sameRow: inRow(prev) && inRow(cnt) && inRow(next),
+                   order: prev && cnt && next && prev.x < cnt.x && cnt.x < next.x,
+                   prevH: prev ? prev.h : 0, nextH: next ? next.h : 0,
+                   navGone: !document.querySelector('.home-tip-nav'),
+                   moved: before !== after };
+        }""")
+        ok("ひとこと欄：前へ・数・次へが題と同じ行にある",
+           r["sameRow"] is True and r["order"] is True, json.dumps(r))
+        ok("ひとこと欄：送りボタンの高さが34px以上ある",
+           r["prevH"] >= 34 and r["nextH"] >= 34, json.dumps(r))
+        ok("ひとこと欄：下段の旧ナビは残っていない", r["navGone"] is True, json.dumps(r))
+        ok("ひとこと欄：移設しても送りが機能する", r["moved"] is True, json.dumps(r))
+
         ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))
         br.close()
 

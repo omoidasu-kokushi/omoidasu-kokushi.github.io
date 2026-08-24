@@ -2633,17 +2633,29 @@ html[data-theme="dark"] .memo-body strong{
   font-size:.64rem; font-weight:800; letter-spacing:.1em;
   color:var(--text-mute);
 }
-.home-tip-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:2px; }
+/* V1.65：題の行に送りボタンを同居させる。
+   align-items は center。baseline のままだと、34px のボタンと
+   1行の題で基準線がずれ、ボタンだけが下に沈む。
+   題が長くて折り返しても、送りは右上に留まる（flex:0 0 auto）。 */
+.home-tip-head{ display:flex; align-items:center; gap:8px; margin-bottom:2px; }
 /* V1.42：大きさの順を「題 ＞ 見出し ＞ 本文」に揃える。
    色面のバッジにはしない（押せるものと見分けがつかなくなる）。
    大きさで役割を示せば、色に頼らずに読み順が伝わる。 */
 .home-tip-label{
+  flex:1 1 auto; min-width:0;      /* 題が長ければ折り返す。送りは押し出さない */
   font-size:1.16rem; font-weight:800; line-height:1.4;
   color:var(--accent);
 }
+/* 前へ・2/34・次へ を1つの塊として右端に置く。
+   塊の中は折り返さない（「前へ」と数字が別の行に割れると読めない）。 */
+.home-tip-pager{
+  flex:0 0 auto; margin-left:auto;
+  display:inline-flex; align-items:center; gap:6px;
+  white-space:nowrap;
+}
 .home-tip-count{
-  margin-left:auto;
   font-family:var(--font-num); font-size:var(--fs-xs); color:var(--text-mute); font-weight:700;
+  min-width:38px; text-align:center;   /* 1/33→10/33 で桁が変わってもボタンが動かない */
 }
 .home-tip-title{
   margin-top:2px;
@@ -2657,12 +2669,15 @@ html[data-theme="dark"] .memo-body strong{
      コピペ由来の空白が意図せず画面に出る。改行だけを尊重する。 */
   white-space:pre-line;
 }
+/* V1.65：前へ・次へは同じ顔の小さな丸ボタン。
+   高さ34pxは §2 の下限（誤タップ水準）を守るため。 */
+.home-tip-prev,
 .home-tip-next{
-  display:inline-block; margin-top:9px;
-  padding:6px 13px; border-radius:var(--r-pill);
+  min-height:34px; padding:0 12px; border-radius:var(--r-pill);
   background:var(--surface-3); color:var(--text-sub);
   font-size:var(--fs-xs); font-weight:800;
 }
+.home-tip-prev:active,
 .home-tip-next:active{ background:var(--accent-soft); color:var(--accent); }
 
 /* ==========================================================================
@@ -2926,23 +2941,10 @@ html[data-theme="dark"] .memo-body strong{
  *   min-height に入れる。ここでは 0 のまま触らない。
  * ========================================================================== */
 
-.home-tip-nav{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:8px; margin-top:8px;
-}
-
-.home-tip-prev{
-  min-height:34px; padding:0 12px;
-  font-size:.78rem; border-radius:999px;
-  border:1px solid var(--line,#d6d9df);
-  background:transparent; color:var(--text-2,#5a6070); cursor:pointer;
-}
-
-.home-tip-prev:active{ background:var(--accent-soft); color:var(--accent); }
-
-/* 高さを固定したぶん、中身は上に寄せる（真ん中寄せだと送るたびに文が上下する） */
+/* V1.65：下段の .home-tip-nav は撤去（送りは題の行へ移した）。
+   縦積みは残す：高さ固定時に中身を上へ寄せる（真ん中寄せだと
+   送るたびに文が上下する）。 */
 .home-tip{ display:flex; flex-direction:column; align-items:stretch; }
-.home-tip-nav{ margin-top:auto; }
 
 /* --- 文言の編集 --- */
 
