@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.41.js
+ * 20260815_main_part2_V1.42.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,11 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.42 (1) 模試結果のシェア画像（V1.67）。端末内Canvasで1080×1080を
+ *            生成し、共有シート→だめならPNGダウンロードの2段。通信ゼロ。
+ *            合格可能性%は載せない（母集団データが無い数字は捏造）。
+ *            載せるのは実測の点数と合格ラインまでの距離だけ。
+ *            不合格の画像に合格帯は出さない（煽らない）。
  *  V1.41 (1) 間違いノートPDFの末尾に出典表記を1行（V1.66）。
  *            このノートは実習室で紙のまま回覧される。出どころが
  *            書いていない紙は「自作プリント」で終わり、見た人が
@@ -1677,6 +1682,7 @@
 
       var result = {
         exam_id: st.exam.id,
+        style: st.exam.style || 'real',
         total: answers.length,
         correct: answers.filter(function (a) { return a.answered_right; }).length,
         hisshu: { total: hisshu.length, correct: hOk, pct: hPct, pass: hPass },
@@ -1707,6 +1713,9 @@
       cell('所要', Math.round(r.elapsed_ms / 60000) + '分', true)
     ].join('');
 
+    /* シェア画像はモーダルを閉じたあとでも作れるよう、結果を控える（V1.67） */
+    st.exam.lastResult = r;
+
     setText('#exam-result-title', r.passed ? '合格ラインを超えました 🎉' : '採点結果');
     setHtml('#exam-score', cells +
       '<div class="score-cell" style="grid-column:1/-1">' +
@@ -1726,6 +1735,215 @@
       return '<div class="score-cell ' + (pass ? 'is-pass' : 'is-fail') + '">' +
              '<b>' + esc(val) + '</b><small>' + esc(label) + '</small></div>';
     }
+  }
+
+  /* ======================================================================
+   * 7-B. 模試結果のシェア画像（V1.67）
+   *
+   * 【なぜ作るか】
+   *   看護学生の横のつながりはSNS上にある。模試の点数は
+   *   「載せたくなる瞬間」が明確に存在する数少ない出力で、
+   *   サーバー無しで作れる唯一の拡散経路（戦略レビュー §1-3）。
+   *
+   * 【設計の線引き】
+   *   ・端末内の Canvas だけで生成する。通信ゼロ。個人情報ゼロ
+   *   ・合格可能性「%」は載せない（母集団データが無い数字は捏造）。
+   *     載せるのは実測の点数と、合格ラインまでの距離だけ
+   *   ・アプリのテーマ（ライト/セピア）には追従させず、固定の1デザイン。
+   *     外へ出る画像は、誰の端末から出ても同じ顔であるべき（ブランド）
+   * ====================================================================== */
+
+  var SHARE_W = 1080, SHARE_H = 1080;
+
+  function examLabel(examId) {
+    var hit = (S.MOCK_DEFS || []).filter(function (d) { return d.id === examId; })[0];
+    return hit ? hit.label : '模擬試験';
+  }
+
+  /* 角丸矩形。ctx.roundRect は iOS 15 以前に無いので自前で描く */
+  function rr(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /* 結果オブジェクト → 1080×1080 の Canvas。
+     描画だけを担い、Blob化・シェアは呼び出し側の仕事に分ける
+     （テストが「絵が正しいか」だけを単独で確かめられるように）。 */
+  function buildShareCard(r) {
+    var cv = global.document.createElement('canvas');
+    cv.width = SHARE_W; cv.height = SHARE_H;
+    var ctx = cv.getContext('2d');
+    var FONT = '-apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif';
+
+    /* --- 地：紺の縦グラデーション。スクショ列の中で沈まない濃さ --- */
+    var bg = ctx.createLinearGradient(0, 0, 0, SHARE_H);
+    bg.addColorStop(0, '#141C2B');
+    bg.addColorStop(1, '#0D1420');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, SHARE_W, SHARE_H);
+
+    /* うっすら模様（単色べた塗りはスクショで安っぽく見える） */
+    ctx.fillStyle = 'rgba(255,255,255,0.025)';
+    for (var gy = 0; gy < 5; gy++) {
+      ctx.beginPath();
+      ctx.arc(SHARE_W - 60, -40 + gy * 30, 340 - gy * 60, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    /* --- 上段：アプリ名・模試名・日付 --- */
+    ctx.fillStyle = '#7FD8E2';
+    ctx.font = '700 40px ' + FONT;
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('オモイダス', 72, 106);
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '500 30px ' + FONT;
+    ctx.fillText('看護師国家試験 対策', 72, 152);
+
+    var d = new Date();
+    var dateStr = d.getFullYear() + '.' +
+      String(d.getMonth() + 1).padStart(2, '0') + '.' +
+      String(d.getDate()).padStart(2, '0');
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.font = '600 32px ' + FONT;
+    ctx.fillText(dateStr, SHARE_W - 72, 106);
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '800 62px ' + FONT;
+    var title = examLabel(r.exam_id) +
+      (r.style === 'final' ? '（直前モード）' : '');
+    ctx.fillText(title, 72, 268);
+
+    /* --- 中央：総合スコア --- */
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '800 200px ' + FONT;
+    var main = r.correct + ' / ' + r.total;
+    ctx.fillText(main, SHARE_W / 2, 560);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '600 40px ' + FONT;
+    ctx.fillText('正答数', SHARE_W / 2, 630);
+
+    /* 合格帯（超えたときだけ出す。落ちた画像を煽らない） */
+    if (r.passed) {
+      ctx.fillStyle = '#1FA97A';
+      rr(ctx, SHARE_W / 2 - 210, 668, 420, 74, 37);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '800 42px ' + FONT;
+      ctx.fillText('合格ライン突破', SHARE_W / 2, 719);
+    }
+    ctx.textAlign = 'left';
+
+    /* --- 下段：必修・一般の2枚パネル。距離（±）まで書く --- */
+    var panels = [];
+    if (r.hisshu && r.hisshu.total) {
+      var hd = r.hisshu.pct - 80;
+      panels.push({ label: '必修', val: r.hisshu.pct + '%',
+                    sub: 'ライン80%まで ' + (hd >= 0 ? '+' : '') + hd,
+                    ok: r.hisshu.pass });
+    }
+    if (r.ippan && r.ippan.total) {
+      var idlt = r.ippan.score - 180;
+      panels.push({ label: '一般・状況（250点換算）', val: r.ippan.score + '点',
+                    sub: 'ボーダー目安180点まで ' + (idlt >= 0 ? '+' : '') + idlt,
+                    ok: r.ippan.pass });
+    }
+    var pw = panels.length === 2 ? 444 : 936, px0 = 72, py = 790, ph = 168;
+    panels.forEach(function (pn, i) {
+      var x = px0 + i * (pw + 48);
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      rr(ctx, x, py, pw, ph, 22);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.font = '600 28px ' + FONT;
+      ctx.fillText(pn.label, x + 32, py + 52);
+      ctx.fillStyle = pn.ok ? '#4ADCA9' : '#FFB3BD';
+      ctx.font = '800 62px ' + FONT;
+      ctx.fillText(pn.val, x + 32, py + 122);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.font = '500 26px ' + FONT;
+      ctx.fillText(pn.sub, x + 32, py + 156);
+    });
+
+    /* --- 最下段：出どころ。これが無いと画像を見た人が来られない --- */
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '600 30px ' + FONT;
+    ctx.fillText('omoidasu-kokushi.github.io', 72, SHARE_H - 56);
+
+    return cv;
+  }
+
+  function canvasToBlob(cv) {
+    return new Promise(function (resolve, reject) {
+      if (cv.toBlob) {
+        cv.toBlob(function (b) {
+          if (b) { resolve(b); } else { reject(new Error('画像を作れませんでした')); }
+        }, 'image/png');
+        return;
+      }
+      /* toBlob が無い古い環境。dataURL 経由で作る */
+      try {
+        var parts = cv.toDataURL('image/png').split(',');
+        var bin = global.atob(parts[1]);
+        var arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) { arr[i] = bin.charCodeAt(i); }
+        resolve(new Blob([arr], { type: 'image/png' }));
+      } catch (e) { reject(e); }
+    });
+  }
+
+  /* シェア本体。順序は
+       ① OSの共有シート（対応していれば。X/Instagram へ直接渡る）
+       ② だめならPNGをダウンロード
+     の2段。②があるので、どの環境でも必ず何かが手に残る。 */
+  function shareExamResult() {
+    var r = st.exam.lastResult;
+    if (!r) { toast('シェアできる結果がありません'); return Promise.resolve(null); }
+    var cv = buildShareCard(r);
+    return canvasToBlob(cv).then(function (blob) {
+      var file = null;
+      try {
+        file = new File([blob], 'omoidasu_result.png', { type: 'image/png' });
+      } catch (e) { /* File が作れない環境はダウンロードへ */ }
+
+      if (file && global.navigator.canShare &&
+          global.navigator.canShare({ files: [file] }) && global.navigator.share) {
+        return global.navigator.share({
+          files: [file],
+          title: 'オモイダス 模試結果',
+          text: examLabel(r.exam_id) + ' ' + r.correct + '/' + r.total + ' 正解'
+        }).catch(function (e) {
+          /* 利用者が共有シートを閉じただけなら何もしない。
+             失敗扱いにしてダウンロードが落ちてくると驚かせる */
+          if (e && e.name === 'AbortError') { return null; }
+          return downloadBlobAsFile(blob);
+        });
+      }
+      return downloadBlobAsFile(blob);
+    }).catch(function (e) {
+      toast('画像を作れませんでした：' + (e && e.message ? e.message : e), 4200);
+      return null;
+    });
+  }
+
+  function downloadBlobAsFile(blob) {
+    var url = global.URL.createObjectURL(blob);
+    var a = global.document.createElement('a');
+    a.href = url;
+    a.download = 'omoidasu_result.png';
+    global.document.body.appendChild(a);
+    a.click();
+    a.remove();
+    global.setTimeout(function () { global.URL.revokeObjectURL(url); }, 4000);
+    toast('画像を保存しました。SNSに貼れます', 3600);
+    return null;
   }
 
   /* ======================================================================
@@ -4065,6 +4283,7 @@
     buildIcs: buildIcs,                  buildPrintSheet: buildPrintSheet,
     collectNoteItems: collectNoteItems,
     gradeExam: gradeExam,                showExamResult: showExamResult,
+    buildShareCard: buildShareCard,      shareExamResult: shareExamResult,
     openSettings: openSettings,          runImport: runImport,
     runBackup: runBackup,                runRestore: runRestore,
     refreshStorage: refreshStorage,
@@ -4234,6 +4453,7 @@
       if (c) { startExam(c.dataset.examId); }
     });
     on($('#warn-study'), 'click', function () { closeModals(); openRandomSelect(); });
+    on($('#btn-exam-share'), 'click', function () { shareExamResult(); });
     on($('#warn-go'), 'click', function () {
       var id = st.exam.pendingId;
       closeModals();
