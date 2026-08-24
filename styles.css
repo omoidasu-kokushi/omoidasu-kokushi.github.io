@@ -77,11 +77,24 @@ html[data-theme="light"]{
   --border-2:  #C4D0DE;
   --text:      #14202D;
   --text-sub:  #56657A;
-  --text-mute: #8593A6;
+  /* V1.64a：4.5:1 を満たす最も薄い値。#8593A6 は最も濃い面（#ECF1F7）で
+     2.75 しかなく、小さい文字が読めなかった。明るい電車内では致命的。
+     色相と彩度はそのままで、明度だけを落としてある。 */
+  --text-mute: #606F84;
   --accent:    #0E8E9B;
   --accent-2:  #0FA3B1;
   --accent-ink:#FFFFFF;
   --accent-soft:#E2F4F6;
+  /* V1.64a：**淡い面の上**に載る「文字だけ」の色。
+     --accent-ink（べた塗りの上の文字）とは別物なので名前を分ける。
+     同じ名前にすると、白文字であるべき場所が濃い色に変わって潰れる
+     （最初の実装で実際に潰した）。
+     面の色や枠には使わない。面まで濃くすると、淡い色で区別している
+     設計（§4-13 の色の役割）が崩れる。
+     実測：accent をそのまま文字にすると 3.45 しかなく、小さい字が読めない。 */
+  --accent-on-soft:#0C7985;
+  --c-easy-on-soft:#146D4E;
+  --c-hard-on-soft:#B8182D;
   --danger:    #C62A3D;
   --shadow-1:  0 1px 2px rgba(20,32,45,.07), 0 2px 8px rgba(20,32,45,.05);
   --shadow-2:  0 4px 12px rgba(20,32,45,.11), 0 12px 32px rgba(20,32,45,.09);
@@ -105,11 +118,16 @@ html[data-theme="dark"]{
   --border-2:  #3A495C;
   --text:      #E7EEF7;
   --text-sub:  #9DACBE;
-  --text-mute: #74849A;
+  /* V1.64a：暗い面（#243040）で 3.51 しかなかった。同じ理由で明度だけ上げる。 */
+  --text-mute: #8A97AA;
   --accent:    #2AC7D6;
   --accent-2:  #46DCEA;
   --accent-ink:#06222A;
   --accent-soft:#123039;
+  /* V1.64a：暗いテーマでは明るくする側。accent はもともと十分なので据え置き。 */
+  --accent-on-soft:#2AC7D6;
+  --c-easy-on-soft:#39D29E;
+  --c-hard-on-soft:#FF808E;
   --danger:    #FF6274;
   --shadow-1:  0 1px 2px rgba(0,0,0,.44), 0 2px 8px rgba(0,0,0,.30);
   --shadow-2:  0 6px 16px rgba(0,0,0,.52), 0 16px 40px rgba(0,0,0,.42);
@@ -140,11 +158,16 @@ html[data-theme="sepia"]{
   --border-2:  #C9B08A;
   --text:      #382C1D;
   --text-sub:  #6B5A42;
-  --text-mute: #8C7A5F;
+  /* V1.64a：セピアの面（#EEE0C6）で 3.18 しかなかった。 */
+  --text-mute: #71624C;
   --accent:    #0D7F73;
   --accent-2:  #12998A;
   --accent-ink:#FFFFFF;
   --accent-soft:#DDEDE6;
+  /* V1.64a：セピア。 */
+  --accent-on-soft:#0C766B;
+  --c-easy-on-soft:#126448;
+  --c-hard-on-soft:#AA162A;
   --danger:    #A8331F;
   --shadow-1:  0 1px 2px rgba(80,60,30,.10), 0 2px 8px rgba(80,60,30,.08);
   --shadow-2:  0 4px 14px rgba(80,60,30,.16), 0 14px 34px rgba(80,60,30,.12);
@@ -410,7 +433,7 @@ small{ font-size:var(--fs-xs); }
 .level-chip{
   font-size:var(--fs-xs); font-weight:800; letter-spacing:.04em;
   padding:2px 8px; border-radius:var(--r-sm);
-  background:var(--accent-soft); color:var(--accent);
+  background:var(--accent-soft); color:var(--accent-on-soft);
 }
 .level-name{ flex:1 1 auto; font-size:var(--fs-sm); font-weight:700; color:var(--text-sub); }
 .level-pct{ font-size:var(--fs-md); font-weight:800; color:var(--accent); }
@@ -1035,12 +1058,12 @@ small{ font-size:var(--fs-xs); }
 /* main.js が data-verdict を付与した場合のみ、正誤で色分けする（任意強化） */
 .explanation-body [data-verdict="correct"]{
   background-color:color-mix(in srgb, var(--c-easy) 22%, transparent) !important;
-  color:var(--c-easy) !important;
+  color:var(--c-easy-on-soft) !important;
   box-shadow:inset 2px 0 0 var(--c-easy);
 }
 .explanation-body [data-verdict="wrong"]{
   background-color:color-mix(in srgb, var(--c-hard) 18%, transparent) !important;
-  color:var(--c-hard) !important;
+  color:var(--c-hard-on-soft) !important;
   box-shadow:inset 2px 0 0 var(--c-hard);
 }
 
@@ -1158,7 +1181,7 @@ small{ font-size:var(--fs-xs); }
 .tag-pill{
   font-size:.66rem; font-weight:700;
   padding:2px 8px; border-radius:var(--r-pill);
-  background:var(--accent-soft); color:var(--accent);
+  background:var(--accent-soft); color:var(--accent-on-soft);
   border:1px solid color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
