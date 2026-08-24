@@ -197,14 +197,21 @@ with sync_playwright() as p:
       const cs = await S.getConceptStats();
       const tag = (cs[0] && cs[0].tag) || (window.CONCEPT_TAGS_MASTER||[])[0];
       await H.startKnock(tag, 5);
-      await new Promise(r=>setTimeout(r,600));
+      /* 固定の待ち時間にしない（V1.58）。混んでいるときだけ落ちるテストは、
+         赤を無視する癖がつくので無いほうがまし。 */
+      { const t0 = Date.now();
+        while (M.state.screen !== 'quiz' && Date.now() - t0 < 8000) {
+          await new Promise(r => setTimeout(r, 50)); } }
       const during = { screen: M.state.screen, mode: M.state.session.mode,
                        shown: !document.getElementById('knock-timer').hidden,
                        body: document.body.classList.contains('is-knock'),
                        ticking: !!H.st.knock.tick,
                        t: document.getElementById('knock-time').textContent };
       document.getElementById('btn-home').click();
-      await new Promise(r=>setTimeout(r,700));
+      { const t0 = Date.now();
+        while (M.state.screen !== 'home' && Date.now() - t0 < 8000) {
+          await new Promise(r => setTimeout(r, 50)); } }
+      await new Promise(r=>setTimeout(r,300));
       const t1 = document.getElementById('knock-time').textContent;
       await new Promise(r=>setTimeout(r,1400));
       const after = { screen: M.state.screen,

@@ -141,9 +141,16 @@ def runtime_checks():
           K.buildQueue = (o) => { seen = o; return origQ(o); };
           try {
             await window.Half2Impl.startExam('mock_30');
-            await new Promise(r => setTimeout(r, 300));
+            /* 固定の待ちにしない（V1.58）。混んでいるときだけ落ちるテストは
+               赤を無視する癖がつくので無いほうがまし。 */
+            { const t0 = Date.now();
+              while (document.getElementById('modal-exam-style').hidden
+                     && Date.now() - t0 < 8000) {
+                await new Promise(r => setTimeout(r, 40)); } }
             document.querySelector('#modal-exam-style [data-exam-style=\"final\"]').click();
-            await new Promise(r => setTimeout(r, 900));
+            { const t0 = Date.now();
+              while (!seen && Date.now() - t0 < 8000) {
+                await new Promise(r => setTimeout(r, 40)); } }
           } finally {
             S.getUnlockState = origUnlock; K.shouldWarnBeforeExam = origWarn; K.buildQueue = origQ;
           }

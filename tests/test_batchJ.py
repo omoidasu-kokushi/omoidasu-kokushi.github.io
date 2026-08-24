@@ -179,8 +179,16 @@ with sync_playwright() as p:
       const row = document.querySelector('#bar-chart .bar-row');
       const f = row.getAttribute('data-scope-field'), v = row.getAttribute('data-scope-value');
       row.click();
-      await new Promise(r=>setTimeout(r,900));
+      /* 固定の待ち時間にしない。900ms 決め打ちだと、機械が混んでいるときだけ
+         遷移が間に合わず、**関係ない変更のたびに赤くなる**。
+         不安定なテストは、赤を無視する癖がつくので無いほうがまし。
+         条件が満たされるまで待ち、上限を過ぎたらそのまま返す。 */
+      const t0 = Date.now();
+      while (window.Main.state.screen !== 'quiz' && Date.now() - t0 < 8000) {
+        await new Promise(r => setTimeout(r, 50));
+      }
       return { tag: row.tagName, field:f, value:v,
+               waited: Date.now() - t0,
                screen: window.Main.state.screen,
                mode: window.Main.state.session.mode,
                qs: window.Main.state.session.questions.length }; }""")

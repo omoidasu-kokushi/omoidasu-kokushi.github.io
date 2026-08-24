@@ -167,14 +167,26 @@ with sync_playwright() as p:
     r = pg.evaluate("""async () => {
       window.Half2Impl.tip = () => Promise.resolve(false);
       document.querySelectorAll('.modal-scrim,.modal-card').forEach(e => { e.hidden = true; });
+      /* 固定の待ちを条件待ちに変えた（V1.58）。
+         決め打ちだと、機械が混んでいるときだけ間に合わず、
+         **関係ない変更のたびに赤くなる**。 */
+      const until = async (f, ms) => { const t0 = Date.now();
+        while (!f() && Date.now() - t0 < (ms || 10000)) {
+          await new Promise(r => setTimeout(r, 50)); } };
       await window.Main.startSession({mode:'random', count:3, newOnly:true, shuffle:true});
-      await new Promise(r => setTimeout(r, 1500));
+      /* 0.5秒の思考インターロックが明けるまで選択肢は押せない。 */
+      await until(() => { const c = document.querySelector('#choice-list .choice-card');
+        return c && getComputedStyle(c).pointerEvents !== 'none'; });
       const s = window.Main.state.session, q = s.questions[s.index];
       const w = q.atoms.findIndex(a => !a.is_correct);
       [...document.querySelectorAll('#choice-list .choice-card')][w].click();
-      await new Promise(r => setTimeout(r, 800));
+      await until(() => { const b = document.getElementById('btn-confirm');
+        return b && !b.disabled && !b.hidden; });
       document.getElementById('btn-confirm').click();
-      await new Promise(r => setTimeout(r, 2400));
+      /* 正誤ポップアップが消えて解説（review）が出るまで待つ。 */
+      await until(() => document.getElementById('screen-quiz')
+                          .getAttribute('data-phase') === 'review');
+      await until(() => document.querySelectorAll('#rv-choices .cx').length > 0);
       const rows = [...document.querySelectorAll('#rv-choices .cx')].map(c => {
         const cs = getComputedStyle(c);
         return { correct: c.classList.contains('is-correct'),

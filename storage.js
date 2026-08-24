@@ -2117,23 +2117,30 @@
   function updateAtomsBulk(patches) {
     var ids = Object.keys(patches || {});
     if (!ids.length) { return Promise.resolve(0); }
+    /* --- 直列にしない（V1.58） ---
+       以前は seq = seq.then(...) で1件ずつ順番に get → put していた。
+       IndexedDB は1つのトランザクションの中で複数の要求を同時に
+       走らせられるので、直列にすると**件数に比例して往復が積み上がる**。
+       同期の書き戻しや弱点の全件再計算では数千件を一度に扱うため、
+       ここが素直に効く。
+
+       キーが重ならないので、順番はどれでも結果が同じ。
+       （同じ id が2つ来ることは patches がオブジェクトなので起こらない） */
+    var ts = nowMs();
     return write([STORE.ATOMS], function (s) {
-      var seq = Promise.resolve(), n = 0;
-      ids.forEach(function (id) {
-        seq = seq.then(function () {
-          return req2promise(s[STORE.ATOMS].get(id)).then(function (a) {
-            if (!a) { return; }
-            var patch = patches[id];
-            Object.keys(patch).forEach(function (k) { a[k] = patch[k]; });
-            if (patch.is_starred !== undefined) { a._star = patch.is_starred ? 1 : 0; }
-            a._unlearned = (a.answer_count > 0) ? 0 : 1;
-            a.updated_at = nowMs();
-            s[STORE.ATOMS].put(a);
-            n++;
-          });
+      var n = 0;
+      return Promise.all(ids.map(function (id) {
+        return req2promise(s[STORE.ATOMS].get(id)).then(function (a) {
+          if (!a) { return; }
+          var patch = patches[id];
+          Object.keys(patch).forEach(function (k) { a[k] = patch[k]; });
+          if (patch.is_starred !== undefined) { a._star = patch.is_starred ? 1 : 0; }
+          a._unlearned = (a.answer_count > 0) ? 0 : 1;
+          a.updated_at = ts;
+          s[STORE.ATOMS].put(a);
+          n++;
         });
-      });
-      return seq.then(function () { return n; });
+      })).then(function () { return n; });
     });
   }
 
@@ -2141,22 +2148,21 @@
   function updateQuestionsBulk(patches) {
     var ids = Object.keys(patches || {});
     if (!ids.length) { return Promise.resolve(0); }
+    /* updateAtomsBulk と同じ理由で直列にしない（V1.58） */
+    var ts2 = nowMs();
     return write([STORE.QUESTIONS], function (s) {
-      var seq = Promise.resolve(), n = 0;
-      ids.forEach(function (id) {
-        seq = seq.then(function () {
-          return req2promise(s[STORE.QUESTIONS].get(id)).then(function (q) {
-            if (!q) { return; }
-            var patch = patches[id];
-            Object.keys(patch).forEach(function (k) { q[k] = patch[k]; });
-            if (patch.is_starred !== undefined) { q._star = patch.is_starred ? 1 : 0; }
-            q.updated_at = nowMs();
-            s[STORE.QUESTIONS].put(q);
-            n++;
-          });
+      var n = 0;
+      return Promise.all(ids.map(function (id) {
+        return req2promise(s[STORE.QUESTIONS].get(id)).then(function (q) {
+          if (!q) { return; }
+          var patch = patches[id];
+          Object.keys(patch).forEach(function (k) { q[k] = patch[k]; });
+          if (patch.is_starred !== undefined) { q._star = patch.is_starred ? 1 : 0; }
+          q.updated_at = ts2;
+          s[STORE.QUESTIONS].put(q);
+          n++;
         });
-      });
-      return seq.then(function () { return n; });
+      })).then(function () { return n; });
     });
   }
 
@@ -2392,22 +2398,44 @@
 
   /* scheduler が算出した理解率を書き戻す。
      全アトム未評価の概念は score=null のまま保持し、未学習と0%を混同させない。 */
+  /* --- 概念スコアの書き戻し（V1.58で読みを1回にした） ---
+     以前はタグ1つずつ get → put を投げていた。タグが1,235個ある
+     状態の実測で **552ms**。1件あたりの往復が積み上がるかたち。
+
+     索引の全件を1回読んでから put するだけにすれば、往復は1回で済む。
+     概念台帳はタグ数ぶんしか無い（多くても数千行）ので、
+     全件読みのほうが確実に軽い。 */
   function saveConceptScores(scoreMap) {
-    return write([STORE.CONCEPT], function (s) {
-      return Promise.all(Object.keys(scoreMap).map(function (tag) {
-        return req2promise(s[STORE.CONCEPT].get(tag)).then(function (row) {
-          var v = scoreMap[tag];
-          var rec = row || {
-            tag: tag, label: tag.replace(/^#/, ''), category: null,
-            atom_count: 0, in_master: false
-          };
-          rec.score           = (v && v.score !== undefined) ? v.score : null;
-          rec.evaluated_count = (v && v.evaluated_count) || 0;
-          if (v && isNum(v.atom_count)) { rec.atom_count = v.atom_count; }
-          rec.updated_at = nowMs();
-          s[STORE.CONCEPT].put(rec);
-        });
-      }));
+    return getAll(STORE.CONCEPT).then(function (rows) {
+      var prev = {};
+      (rows || []).forEach(function (r) { prev[r.tag] = r; });
+      var ts = nowMs();
+      /* 変わっていない行は書かない。概念スコアは大半の回で
+         数タグしか動かないので、毎回全行を書き直すと
+         **書き込み量がタグ数に比例して無駄に増える**。 */
+      var writes = [];
+      Object.keys(scoreMap).forEach(function (tag) {
+        var v = scoreMap[tag];
+        var old = prev[tag];
+        var score = (v && v.score !== undefined) ? v.score : null;
+        var evaluated = (v && v.evaluated_count) || 0;
+        var count = (v && isNum(v.atom_count)) ? v.atom_count : (old ? old.atom_count : 0);
+        if (old && old.score === score && old.evaluated_count === evaluated
+            && old.atom_count === count) { return; }
+        var rec = old || {
+          tag: tag, label: tag.replace(/^#/, ''), category: null,
+          atom_count: 0, in_master: false
+        };
+        rec.score = score;
+        rec.evaluated_count = evaluated;
+        rec.atom_count = count;
+        rec.updated_at = ts;
+        writes.push(rec);
+      });
+      if (!writes.length) { return 0; }
+      return write([STORE.CONCEPT], function (s) {
+        writes.forEach(function (rec) { s[STORE.CONCEPT].put(rec); });
+      }).then(function () { return writes.length; });
     });
   }
 

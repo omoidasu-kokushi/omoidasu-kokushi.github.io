@@ -217,9 +217,16 @@ with sync_playwright() as p:
 
     # 範囲を指定するとその場で出題が始まる（旧「まとめて出題」の代替）
     tapped = pg.evaluate("""async () => {
+      /* 固定の待ち時間にしない（V1.58）。
+         決め打ちだと、機械が混んでいるときだけ遷移が間に合わず、
+         **関係ない変更のたびに赤くなる**。不安定なテストは、
+         赤を無視する癖がつくので無いほうがまし。 */
+      const waitScreen = async (want, ms) => { const t0 = Date.now();
+        while (window.Main.state.screen !== want && Date.now() - t0 < (ms || 8000)) {
+          await new Promise(r => setTimeout(r, 50)); } return Date.now() - t0; };
       document.querySelector('#major-list .pick-dice').click();
-      await new Promise(r=>setTimeout(r,1200));
-      return { screen: window.Main.state.screen, mode: window.Main.state.session.mode,
+      const waited = await waitScreen('quiz');
+      return { waited, screen: window.Main.state.screen, mode: window.Main.state.session.mode,
                qs: window.Main.state.session.questions.length }; }""")
     ok("サイコロを押すとその場で出題が始まる",
        tapped["screen"] == "quiz" and tapped["qs"] > 0, json.dumps(tapped, ensure_ascii=False))
