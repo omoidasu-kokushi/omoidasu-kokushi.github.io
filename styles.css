@@ -45,9 +45,13 @@
   --r-pill: 999px;
 
   /* --- トリアージ評価色（全テーマ共通の意味づけ） --- */
-  --c-hard:   #E5384F;
+  /* V1.68：評価色の基色を、白文字が4.5:1に届く最小の暗さへ。
+     点灯した評価ボタン・赤バッジ・atom-chip など白を載せる面が
+     実測 2.99〜4.19 だった。tint（16〜22%混ぜ）の淡面は連動して
+     わずかに濃くなるため、on-soft 系は下で再解決している。 */
+  --c-hard:   #E32941;
   --c-normal: #E39A16;
-  --c-easy:   #1FA97A;
+  --c-easy:   #198661;
   --c-master: #C9962B;
   --c-hard-ink:   #FFFFFF;
   --c-normal-ink: #3B2A05;
@@ -81,7 +85,13 @@ html[data-theme="light"]{
      2.75 しかなく、小さい文字が読めなかった。明るい電車内では致命的。
      色相と彩度はそのままで、明度だけを落としてある。 */
   --text-mute: #606F84;
-  --accent:    #0E8E9B;
+  /* V1.68：#0E8E9B → #0C7985。白文字を載せた面（バッジ・ガイドの
+     吹き出し・btn-primary）が 3.92 で読みにくかった残件の解消。
+     両方向（白文字×accent面 5.11／accent文字×全表面 4.50以上）を
+     同時に満たす最小の暗さで、V1.64a の --accent-on-soft と同値に
+     収束した（同じ制約の解なので偶然ではない）。
+     ダークは --accent-ink が濃色（#06222A）を使う設計なので触らない。 */
+  --accent:    #0C7985;
   --accent-2:  #0FA3B1;
   --accent-ink:#FFFFFF;
   --accent-soft:#E2F4F6;
@@ -93,8 +103,12 @@ html[data-theme="light"]{
      設計（§4-13 の色の役割）が崩れる。
      実測：accent をそのまま文字にすると 3.45 しかなく、小さい字が読めない。 */
   --accent-on-soft:#0C7985;
-  --c-easy-on-soft:#146D4E;
-  --c-hard-on-soft:#B8182D;
+  /* V1.68：基色を暗くしたぶん tint 地も暗くなるので再解決。
+     normal/master は今回から追加（肢セレクター①〜⑤の文字用）。 */
+  --c-easy-on-soft:#125F45;
+  --c-hard-on-soft:#A01527;
+  --c-normal-on-soft:#7E550C;
+  --c-master-on-soft:#755719;
   --danger:    #C62A3D;
   --shadow-1:  0 1px 2px rgba(20,32,45,.07), 0 2px 8px rgba(20,32,45,.05);
   --shadow-2:  0 4px 12px rgba(20,32,45,.11), 0 12px 32px rgba(20,32,45,.09);
@@ -126,8 +140,17 @@ html[data-theme="dark"]{
   --accent-soft:#123039;
   /* V1.64a：暗いテーマでは明るくする側。accent はもともと十分なので据え置き。 */
   --accent-on-soft:#2AC7D6;
-  --c-easy-on-soft:#39D29E;
-  --c-hard-on-soft:#FF808E;
+  /* V1.68：tint（16〜22%混ぜ）はダークでは地を明るくするので、
+     載せる明色の文字はさらに明るく。丸め後の値で検証済み。 */
+  --c-easy-on-soft:#39D29D;
+  --c-hard-on-soft:#FF8895;
+  /* V1.68：ダークの基色はもともと十分なのでそのまま文字に使える */
+  --c-normal-on-soft:#F0AE33;
+  --c-master-on-soft:#E4B747;
+  /* V1.68：ダークのべた塗りは明色なので、載せる文字は濃くする
+     （normal/master と同じ型）。白のままだと 2.08〜3.11 しかない。 */
+  --c-hard-ink:#5F000B;
+  --c-easy-ink:#12503B;
   --danger:    #FF6274;
   --shadow-1:  0 1px 2px rgba(0,0,0,.44), 0 2px 8px rgba(0,0,0,.30);
   --shadow-2:  0 6px 16px rgba(0,0,0,.52), 0 16px 40px rgba(0,0,0,.42);
@@ -160,14 +183,17 @@ html[data-theme="sepia"]{
   --text-sub:  #6B5A42;
   /* V1.64a：セピアの面（#EEE0C6）で 3.18 しかなかった。 */
   --text-mute: #71624C;
-  --accent:    #0D7F73;
+  /* V1.68：#0D7F73 → #0C7166。セピア面での文字使用が 4.46 で
+     わずかに届かなかった。白方向は 5.87 で余裕。 */
+  --accent:    #0C7166;
   --accent-2:  #12998A;
   --accent-ink:#FFFFFF;
   --accent-soft:#DDEDE6;
   /* V1.64a：セピア。 */
   --accent-on-soft:#0C766B;
-  --c-easy-on-soft:#126448;
-  --c-hard-on-soft:#AA162A;
+  /* V1.68：ライトと共通の解（両テーマの全表面で解いた値）に揃える */
+  --c-easy-on-soft:#125F45;
+  --c-hard-on-soft:#A01527;
   --danger:    #A8331F;
   --shadow-1:  0 1px 2px rgba(80,60,30,.10), 0 2px 8px rgba(80,60,30,.08);
   --shadow-2:  0 4px 14px rgba(80,60,30,.16), 0 14px 34px rgba(80,60,30,.12);
@@ -401,11 +427,12 @@ small{ font-size:var(--fs-xs); }
   display:inline-grid; place-items:center;
   min-width:20px; height:20px; padding:0 6px;
   border-radius:var(--r-pill);
-  background:var(--c-hard); color:#fff;
+  background:var(--c-hard); color:var(--c-hard-ink);
   font-size:var(--fs-xs); font-weight:800; line-height:1;
   box-shadow:0 1px 3px color-mix(in srgb, var(--c-hard) 40%, transparent);
 }
-.badge-line.is-warm{ background:#F0641E; box-shadow:0 1px 3px rgba(240,100,30,.4); }
+/* V1.68：#F0641E は白文字と 3.21 しかなかった。同じ色相で暗く */
+.badge-line.is-warm{ background:#CC4D0E; box-shadow:0 1px 3px rgba(204,77,14,.4); }
 .badge-line.is-muted{ background:var(--text-mute); box-shadow:none; }
 
 .badge-prog{
@@ -887,8 +914,9 @@ small{ font-size:var(--fs-xs); }
   transform:translateY(-1px);
   box-shadow:0 2px 8px color-mix(in srgb, var(--text) 26%, transparent);
 }
-.atom-chip.is-active[data-state="correct"]{ background:var(--c-easy); border-color:var(--c-easy); color:#fff; }
-.atom-chip.is-active[data-state="wrong"]{   background:var(--c-hard); border-color:var(--c-hard); color:#fff; }
+/* V1.68：#fff 直書きをやめて ink へ。ダークでは濃色が選ばれる */
+.atom-chip.is-active[data-state="correct"]{ background:var(--c-easy); border-color:var(--c-easy); color:var(--c-easy-ink); }
+.atom-chip.is-active[data-state="wrong"]{   background:var(--c-hard); border-color:var(--c-hard); color:var(--c-hard-ink); }
 
 /* 2段目：選択中アトム本文 */
 .tz-atom{
@@ -1645,7 +1673,7 @@ button.set-row:active{ background:var(--surface-2); }
 .top3-rank{
   flex:0 0 auto; width:24px; height:24px; border-radius:50%;
   display:grid; place-items:center;
-  background:var(--c-hard); color:#fff;
+  background:var(--c-hard); color:var(--c-hard-ink);
   font-family:var(--font-num); font-size:var(--fs-xs); font-weight:800;
 }
 .top3-main{ flex:1 1 auto; min-width:0; }
@@ -1985,8 +2013,9 @@ body.is-knock #knock-timer{ z-index:58; }
   font-size:.98rem; font-weight:800; line-height:1;
   background:var(--surface-3); color:var(--text-mute);
 }
-.rv-mark.is-correct{ background:color-mix(in srgb, var(--c-easy) 16%, transparent); color:var(--c-easy); }
-.rv-mark.is-wrong{   background:color-mix(in srgb, var(--c-hard) 16%, transparent); color:var(--c-hard); }
+/* V1.68：淡い面の文字は on-soft（§4-21）。基色のままだと 3.83〜4.19 */
+.rv-mark.is-correct{ background:color-mix(in srgb, var(--c-easy) 16%, transparent); color:var(--c-easy-on-soft); }
+.rv-mark.is-wrong{   background:color-mix(in srgb, var(--c-hard) 16%, transparent); color:var(--c-hard-on-soft); }
 .rv-stem.is-correct{ border-bottom-color:color-mix(in srgb, var(--c-easy) 48%, var(--border)); }
 .rv-stem.is-wrong{   border-bottom-color:color-mix(in srgb, var(--c-hard) 48%, var(--border)); }
 .rv-stem-tools{ flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:2px; }
@@ -2125,14 +2154,16 @@ body.is-knock #knock-timer{ z-index:58; }
   transition:all var(--dur-fast) var(--ease);
 }
 /* 薄い＝推奨のまま／濃い＝自分で選んだ。どれを自分で判断したかが一目で分かる */
-.sum-dot[data-eval="hard"]{   background:color-mix(in srgb, var(--c-hard) 16%, transparent);   color:var(--c-hard); }
-.sum-dot[data-eval="normal"]{ background:color-mix(in srgb, var(--c-normal) 18%, transparent); color:var(--c-normal); }
-.sum-dot[data-eval="easy"]{   background:color-mix(in srgb, var(--c-easy) 16%, transparent);   color:var(--c-easy); }
-.sum-dot[data-eval="master"]{ background:color-mix(in srgb, var(--c-master) 18%, transparent); color:var(--c-master); }
+/* V1.68：淡い面の文字は on-soft（§4-21） */
+.sum-dot[data-eval="hard"]{   background:color-mix(in srgb, var(--c-hard) 16%, transparent);   color:var(--c-hard-on-soft); }
+.sum-dot[data-eval="normal"]{ background:color-mix(in srgb, var(--c-normal) 18%, transparent); color:var(--c-normal-on-soft); }
+.sum-dot[data-eval="easy"]{   background:color-mix(in srgb, var(--c-easy) 16%, transparent);   color:var(--c-easy-on-soft); }
+.sum-dot[data-eval="master"]{ background:color-mix(in srgb, var(--c-master) 18%, transparent); color:var(--c-master-on-soft); }
 .sum-dot.is-touched{ color:#fff; }
-.sum-dot.is-touched[data-eval="hard"]{   background:var(--c-hard);   border-color:var(--c-hard); }
+/* V1.68：べた塗りの文字は ink（ライトは白のまま、ダークは濃色になる） */
+.sum-dot.is-touched[data-eval="hard"]{   background:var(--c-hard);   border-color:var(--c-hard); color:var(--c-hard-ink); }
 .sum-dot.is-touched[data-eval="normal"]{ background:var(--c-normal); border-color:var(--c-normal); color:var(--c-normal-ink); }
-.sum-dot.is-touched[data-eval="easy"]{   background:var(--c-easy);   border-color:var(--c-easy); }
+.sum-dot.is-touched[data-eval="easy"]{   background:var(--c-easy);   border-color:var(--c-easy); color:var(--c-easy-ink); }
 .sum-dot.is-touched[data-eval="master"]{ background:var(--c-master); border-color:var(--c-master); color:var(--c-master-ink); }
 .sum-dot.is-star::after{
   content:"★"; position:absolute; top:-3px; right:-2px;
@@ -2202,10 +2233,11 @@ body.is-knock #knock-timer{ z-index:58; }
   font-size:.9rem; font-weight:800;
 }
 .choice-mark[data-kind="ground"][aria-pressed="true"]{
-  background:var(--c-easy); border-color:var(--c-easy); color:#fff;
+  /* V1.68：#fff 直書きをやめて ink へ（ダークでは濃色が選ばれる） */
+  background:var(--c-easy); border-color:var(--c-easy); color:var(--c-easy-ink);
 }
 .choice-card.is-eliminated{ border-left:4px solid var(--c-easy); }
-.choice-card.is-eliminated .choice-num{ background:color-mix(in srgb, var(--c-easy) 12%, var(--surface-2)); color:var(--c-easy); }
+.choice-card.is-eliminated .choice-num{ background:color-mix(in srgb, var(--c-easy) 12%, var(--surface-2)); color:var(--c-easy-on-soft); }
 .choice-card.is-selected .choice-num{ background:var(--accent); color:var(--accent-ink); }
 
 /* 模試の初回だけ出す使い方ヒント（「言われるまで気づかない」を防ぐ） */
