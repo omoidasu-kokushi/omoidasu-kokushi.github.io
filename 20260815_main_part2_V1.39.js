@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.38.js
+ * 20260815_main_part2_V1.39.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,14 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.39 (1) 設定に保存領域の欄（V1.60）。既定のブラウザ保存は
+ *            「いつ消されてもおかしくない」扱いなので、状態を見せて
+ *            ［消えないようにする］を1つ置く。
+ *        (2) 取り込みの前に空き容量を見る。途中で満杯になって落ちるより、
+ *            始める前に断るほうがよい。
+ *        (3) チュートリアル完了時と取り込み成功時に persist を要求する。
+ *            起動直後には呼ばない（何も積み上がっていない時点で聞くと
+ *            断られて終わり、二度と聞けない）。
  *  V1.38 (1) 復元（入れ替え）に確認を挟んだ。取り込み欄に同じファイルを
  *            貼ると足し合わせになり、**同じファイルなのに入口で結果が
  *            正反対**になっていた。入れ替え側にだけ確認を置く。
@@ -1717,6 +1725,7 @@
       refreshExplainMode();
       refreshDrive().catch(noop);
       refreshLicense();
+      refreshStorage().catch(noop);
       /* 押した瞬間に窓を開けるよう、ここで先に用意しておく。 */
       D.prepare().catch(noop);
       var pos = M.userImagePos();
@@ -1743,9 +1752,27 @@
     setHtml('#import-report', '<b>取り込み中…</b>');
     if (box) { box.hidden = false; box.classList.remove('is-error'); }
 
+    /* --- 始める前に空き容量を見る（V1.60） ---
+       途中で満杯になって落ちるより、始める前に断るほうがよい。
+       行数から必要量を見積もる（実測 1問あたり約8KB・余裕を見て12KB）。
+       件数は行数から概算する（JSONは1問1要素、TSVは1行1問）。 */
+    var roughRows = (String(text).match(/\n/g) || []).length + 1;
+    return S.checkRoomFor(roughRows).then(function (room) {
+      if (room.ok || room.unknown) { return null; }
+      var mb = function (n) { return Math.round(n / 1048576 * 10) / 10; };
+      setHtml('#import-report',
+        '<b>保存領域が足りません</b><br>' +
+        'この取り込みには約 ' + mb(room.need) + 'MB 必要ですが、' +
+        '空きは ' + mb(room.free) + 'MB です。<br>' +
+        '<small>設定から「バックアップを書き出す」を実行してファイルを保存したうえで、' +
+        '端末の写真やアプリを整理するか、自分で入れた図を減らしてから、もう一度お試しください。</small>');
+      if (box) { box.classList.add('is-error'); }
+      throw new Error('__ROOM__');
+    }).then(function () {
     /* メモを持つ問題があるなら、取り込みの前に必ず自動退避する。
        引き継ぎ漏れが起きた場合でも、書いた内容を失わせないための保険。 */
-    return S.countMemos().then(function (n) {
+      return S.countMemos();
+    }).then(function (n) {
       if (!n) { return null; }
       return S.downloadBackup('NurseExamApp_AutoBackup_BeforeImport').then(function (bk) {
         toast('メモが ' + n + ' 件あるため、取り込み前にバックアップを保存しました', 4200);
@@ -1807,13 +1834,27 @@
       if (box) { box.classList[rep.skipped ? 'add' : 'remove']('is-error'); }
 
       var area = $('#import-area');
-      if (area && rep.imported + rep.updated > 0) { area.value = ''; }
+      if (area && rep.imported + rep.updated > 0) {
+        area.value = '';
+        /* 問題を取り込んだ＝この端末に価値が乗った。ここでも要求する（V1.60）。
+           すでに許可されていれば storage.js 側が何もしない。 */
+        S.requestPersist().then(function () { return refreshStorage(); }).catch(noop);
+      }
 
       return K.refreshAll({ recomputeWeakness: true });
     }).then(function () {
       return M.refreshHome();
     }).catch(function (e) {
-      setHtml('#import-report', '<b>取り込みに失敗しました</b><br>' + esc(e && e.message ? e.message : String(e)));
+      /* 空き不足はすでに画面へ出しているので、ここで上書きしない（V1.60）。 */
+      if (e && e.message === '__ROOM__') { return null; }
+      /* 文言は storage.js の describeError が決める（V1.60）。
+         「取り込みに失敗しましたquota」では何も伝わらない。
+         必要なのは【次に何をすればよいか】。 */
+      var text = (S && S.describeError) ? S.describeError(e)
+               : (e && e.message ? e.message : String(e));
+      setHtml('#import-report', '<b>取り込みに失敗しました</b><br>' + esc(text) +
+        '<br><small>途中まで取り込めた分は残っています。原因を解消してから、' +
+        '同じデータをもう一度貼り付けてください（重複しては入りません）。</small>');
       if (box) { box.classList.add('is-error'); }
       return null;
     });
@@ -2516,6 +2557,47 @@
     var p = function (n) { return String(n).padStart(2, '0'); };
     return '最後の同期：' + d.getFullYear() + '/' + p(d.getMonth() + 1) + '/' + p(d.getDate()) +
            ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /* --- 保存領域の欄（V1.60） ---
+     既定のブラウザ保存は「いつ消されてもおかしくない」扱い。
+     端末の空きが減ると OS やブラウザが黙って IndexedDB を捨てるし、
+     Safari は一定期間開かないサイトのデータを消す。
+     **黙って消される状態のまま売ってはいけない**ので、状態を見せる。 */
+  function refreshStorage() {
+    var row = $('#store-row');
+    if (!row) { return Promise.resolve(null); }
+    return S.storageInfo().then(function (info) {
+      if (!info.supported) { row.hidden = true; return info; }
+      row.hidden = false;
+      var mb = function (n) { return Math.round(n / 1048576 * 10) / 10; };
+      setText('#store-note',
+        '使用 ' + mb(info.usage) + 'MB ／ 上限 ' + Math.round(info.quota / 1048576) + 'MB'
+        + '（空き ' + mb(info.free) + 'MB）');
+      var fill = $('#store-bar-fill');
+      if (fill) {
+        fill.style.width = info.pct + '%';
+        fill.setAttribute('data-tone', info.pct >= 90 ? 'bad' : info.pct >= 70 ? 'warn' : 'ok');
+      }
+      var btn = $('#btn-persist'), warn = $('#store-warn');
+      if (info.persisted === true) {
+        if (btn) { btn.hidden = true; }
+        if (warn) {
+          warn.hidden = false;
+          warn.textContent = 'この端末では、空き容量が減っても学習の記録が消されない設定になっています。';
+        }
+      } else {
+        if (btn) { btn.hidden = false; }
+        if (warn) {
+          warn.hidden = false;
+          /* 脅かさない。事実と、対処と、それでも保険が要ることだけを言う。 */
+          warn.textContent = '空き容量が減ったとき、ブラウザが学習の記録を消すことがあります。'
+            + '［消えないようにする］を押すと、消さないよう要求します。'
+            + 'どちらの場合も、ときどきバックアップを書き出しておくのが確実です。';
+        }
+      }
+      return info;
+    });
   }
 
   /* --- ライセンス欄（V1.53） ---
@@ -3882,6 +3964,15 @@
     M.hooks.onFinish = null;
     hideCoachMark();
 
+    /* --- ここで「消さないでほしい」を要求する（V1.60） ---
+       起動直後には呼ばない。Firefox は利用者へ確認を出すので、
+       **何も積み上がっていない時点で聞くと、断られて終わる**
+       （そして二度と聞けない）。チュートリアルを終えた＝
+       この人にとって記録が価値を持ち始めた瞬間に要求する。
+       結果は画面に出さない。ここで成否を言っても、まだ意味が伝わらない。
+       設定の保存領域欄でいつでも確認・再要求できる。 */
+    S.requestPersist().catch(noop);
+
     /* 2回目以降は全出題数設定（10/20/30/50/120問）を永久解放する */
     return S.setMetaBulk({
       onboarding_done: true,
@@ -3950,6 +4041,7 @@
     gradeExam: gradeExam,                showExamResult: showExamResult,
     openSettings: openSettings,          runImport: runImport,
     runBackup: runBackup,                runRestore: runRestore,
+    refreshStorage: refreshStorage,
     runResetAll: runResetAll,            setDayBoundary: setDayBoundary,
     fillDaylineOptions: fillDaylineOptions,
     openHelp: openHelp,                  HELP: HELP,
@@ -4236,6 +4328,19 @@
     on($('#btn-reset-all'), 'click', function () { openModal('#modal-reset'); });
     on($('#reset-go'), 'click', function () { closeModals(); runResetAll(); });
     on($('#btn-contact'), 'click', function () { openContact(); });
+    /* V1.60：保存領域 */
+    on($('#btn-persist'), 'click', function () {
+      S.requestPersist().then(function (r) {
+        if (r.persisted) { toast('学習の記録が消されない設定になりました', 3800); }
+        else if (r.supported) {
+          /* 断られたことを隠さない。隠すと「押したのに変わらない」になる。 */
+          toast('この端末では設定できませんでした。ホーム画面に追加してから'
+              + 'もう一度お試しいただくと通ることがあります', 5600);
+        } else { toast('この端末はこの設定に対応していません', 3800); }
+        return refreshStorage();
+      }).catch(noop);
+    });
+
     /* V1.53：ライセンス */
     on($('#lic-apply'), 'click', function () { applyLicense().catch(noop); });
     on($('#lic-buy'), 'click', function () { global.open(M.BUY_URL, '_blank', 'noopener'); });

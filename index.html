@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.59">
+<link rel="stylesheet" href="./styles.css?v=1.60">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.59",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.60",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.59",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.60",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.59",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.60",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.35.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.36.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.38.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.39.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.59",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.60",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=1.59",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=1.60",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -413,7 +413,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260824_Omoidasu_V1.59</p>
+        <p class="build-stamp">20260824_Omoidasu_V1.60</p>
       </div>
     </section>
 
@@ -1128,6 +1128,19 @@
             <span class="set-row-body"><b>間違いノートを印刷する</b><small>★と「難しい」だけを集めて、A4/A5/B4/B5 で出せます</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
+          <!-- V1.60：保存領域。既定では「いつ消されてもおかしくない」扱いなので、
+               状態を見せて、消えないようにする経路を1つ置く。 -->
+          <div class="set-row set-static set-stack" id="store-row" hidden>
+            <span class="set-row-body"><b>保存領域</b>
+              <small id="store-note"></small></span>
+            <div class="store-bar"><span id="store-bar-fill"></span></div>
+            <div class="store-actions">
+              <button type="button" class="btn-primary btn-sm" id="btn-persist" hidden>
+                消えないようにする</button>
+            </div>
+            <p class="set-note" id="store-warn" hidden></p>
+          </div>
+
           <button type="button" class="set-row" id="btn-backup">
             <span class="set-row-body"><b>バックアップを書き出す</b><small>JSONファイルとして保存します</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
@@ -1152,7 +1165,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260824_Omoidasu_V1.59 / cache v1.48.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260824_Omoidasu_V1.60 / cache v1.49.0</p>
         </section>
       </div>
     </section>
@@ -1452,6 +1465,22 @@
     </div>
   </div>
 
+  <!-- V1.60：保存に失敗したことを、消えない形で知らせる。
+       トーストにすると数秒で消え、記録が残らなかったことに
+       気づかないまま解き続けることになる。 -->
+  <div class="modal-card" id="modal-save-error" hidden>
+    <h3 class="modal-title">保存できませんでした</h3>
+    <div class="modal-body">
+      <p id="save-error-body"></p>
+      <p class="save-error-note"><b>いま解いた分は記録されていません。</b>
+        原因を解消してから、もう一度この問題に答えてください。</p>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>閉じる</button>
+      <button type="button" class="btn-primary" id="save-error-backup">バックアップを書き出す</button>
+    </div>
+  </div>
+
   <!-- V1.55：取り消せない操作の共通確認。
        個別にモーダルを増やすと、増やし忘れた操作だけが素通りする。
        確認が要る操作は、必ずここを通す。 -->
@@ -1618,12 +1647,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.59"></script>
-<script src="./storage.js?v=1.59"></script>
-<script src="./scheduler.js?v=1.59"></script>
-<script src="./20260815_main_part1_V1.35.js"></script>
-<script src="./drive.js?v=1.59"></script>
-<script src="./license.js?v=1.59"></script>
-<script src="./20260815_main_part2_V1.38.js"></script>
+<script src="./questions.js?v=1.60"></script>
+<script src="./storage.js?v=1.60"></script>
+<script src="./scheduler.js?v=1.60"></script>
+<script src="./20260815_main_part1_V1.36.js"></script>
+<script src="./drive.js?v=1.60"></script>
+<script src="./license.js?v=1.60"></script>
+<script src="./20260815_main_part2_V1.39.js"></script>
 </body>
 </html>

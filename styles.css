@@ -4052,3 +4052,36 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 }
 .buy-list{ margin:10px 0 0; padding-left:1.2em; font-size:.84rem; color:var(--text-sub); }
 .buy-list li{ margin-bottom:4px; }
+
+/* =====================================================================
+ * §62 保存領域・保存の失敗（V1.60）
+ *
+ * 作法：ここは「脅す」場所ではない。事実と、次にやることだけを出す。
+ * 満杯に近いときだけ色を変え、それ以外は他の設定行と同じ顔にする。
+ * ===================================================================== */
+
+.store-bar{
+  width:100%; height:8px; margin:8px 0 6px;
+  border-radius:999px; background:var(--surface-2); overflow:hidden;
+}
+.store-bar > span{
+  display:block; height:100%; width:0;
+  background:var(--text-sub);
+  transition:width .3s ease-out;
+}
+/* 70%までは何も言わない。90%を超えたら赤にする。
+   早くから赤くすると、赤が「いつもの色」になって効かなくなる。 */
+.store-bar > span[data-tone="warn"]{ background:#c8912a; }
+.store-bar > span[data-tone="bad"] { background:#c0392b; }
+
+.store-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:4px; }
+
+/* 保存に失敗したときの覆い。§4-1 の青（早期復習）とぶつからない色にする。 */
+.save-error-note{
+  margin-top:10px; padding:8px 10px;
+  border-radius:8px;
+  background:color-mix(in srgb, #c0392b 12%, var(--surface-2));
+  border:1px solid color-mix(in srgb, #c0392b 35%, var(--border-2));
+  color:var(--text-main);
+  font-size:.86rem;
+}

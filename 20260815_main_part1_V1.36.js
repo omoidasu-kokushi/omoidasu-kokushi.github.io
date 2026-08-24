@@ -1,9 +1,14 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.35.js
+ * 20260815_main_part1_V1.36.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.36 (1) 保存に失敗したら、覆いを出して手を止めさせる（V1.60）。
+ *            トーストだと数秒で消え、**記録が残らなかったことに
+ *            気づかないまま解き続ける**ことになる。
+ *        (2) 文言は storage.js の describeError に一本化。
+ *            「保存に失敗しました：quota」では何も伝わらない。
  *  V1.35 (1) 出題プール分離（V1.56）：力試しカードに
  *            【予想問題 ◯問が待機中】を出す。模試用に取り込んだ問題は
  *            ランダムにも単元学習にも出ないので、どこにも出さないと
@@ -2393,7 +2398,18 @@
       return advanceQueue();
     }).catch(function (e) {
       console.error('[nextQuestion]', e);
-      toast('保存に失敗しました：' + (e && e.message ? e.message : e), 5000);
+      /* --- 保存に失敗したら、必ず止まって知らせる（V1.60） ---
+         ここで先へ進めてはいけない。進むと【解いたつもりなのに
+         記録が残っていない】状態になり、利用者は気づけない。
+         いまの作りでも advanceQueue() はこの catch より前なので
+         進まないが、それは偶然ではなく守るべき性質。
+
+         文言は storage.js の describeError が決める。
+         「保存に失敗しました：quota」では何も伝わらない。
+         必要なのは【何が起きたか】ではなく【次に何をすればよいか】。 */
+      var text = (S && S.describeError) ? S.describeError(e)
+               : ('保存に失敗しました：' + (e && e.message ? e.message : e));
+      openSaveErrorDialog(text);
     }).then(function () {
       if (btn) { btn.disabled = false; }
     });
@@ -2771,6 +2787,15 @@
     f(!!yes);
   }
 
+  /* --- 保存に失敗したことを、消えない形で知らせる（V1.60） ---
+     トーストにしない。数秒で消えるので、**記録が残らなかったことに
+     気づかないまま解き続ける**ことになる。覆いを出して手を止めさせる。 */
+  function openSaveErrorDialog(text) {
+    setText('#save-error-body', text);
+    openModal('#modal-save-error');
+    return null;
+  }
+
   /* V1.53：購入案内。買わせる画面ではなく【止まったのは初見だけ】を
      伝える画面。ここで復習まで止まっていると誤解されると、
      いちばん大事な使い方（毎日の復習）ごと離脱される。 */
@@ -2814,6 +2839,12 @@
     on($('#btn-settings'), 'click', function () { Half2.openSettings(); });
     /* V1.53：無料枠まわり。案内は1箇所（openBuyDialog）に集める。 */
     on($('#free-gate-btn'), 'click', function () { openBuyDialog(); });
+    /* 保存に失敗した画面から、そのままバックアップへ逃がす（V1.60）。
+       領域が満杯のときこそ、先に書き出しておかないと危ない。 */
+    on($('#save-error-backup'), 'click', function () {
+      closeModals();
+      if (Half2 && Half2.runBackup) { Half2.runBackup(); }
+    });
     on($('#buy-open'), 'click', function () {
       closeModals();
       global.open(BUY_URL, '_blank', 'noopener');
@@ -3302,6 +3333,7 @@
     openModal     : openModal,
     /* V1.53：ライセンス。後半（設定画面）から呼ぶ。 */
     openBuyDialog : openBuyDialog,
+    openSaveErrorDialog : openSaveErrorDialog,
     /* V1.55：取り消せない操作の共通確認。後半からも使う。 */
     confirmAction : confirmAction,
     licGate       : licGate,

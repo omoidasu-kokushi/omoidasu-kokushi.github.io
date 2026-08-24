@@ -3000,6 +3000,129 @@
    * 15. 公開API
    * ====================================================================== */
 
+  /* ======================================================================
+   * 16. 保存領域（V1.60）
+   *
+   * 【なぜ必要か】
+   * ブラウザの保存領域は、既定では**いつ消されてもおかしくない**扱い。
+   * 端末の空きが減ると、OS やブラウザが黙って IndexedDB を捨てる。
+   * Safari は「一定期間開かないサイトのデータを消す」挙動も持つ。
+   *
+   * このアプリの価値は利用者が積み上げた学習記録そのものなので、
+   * **黙って消される状態のまま売ってはいけない。**
+   *
+   * navigator.storage.persist() を通すと「消さないでほしい」を宣言できる。
+   * 保証ではないが、要求しないより確実に強い。
+   * ====================================================================== */
+
+  function storageSupported() {
+    return !!(global.navigator && global.navigator.storage &&
+              typeof global.navigator.storage.estimate === 'function');
+  }
+
+  /* いまの使用量と、消されない状態かどうか。
+     取れない環境では supported:false を返し、呼び出し側は黙って隠す
+     （出せない情報の枠だけが残ると、壊れているように見える）。 */
+  function storageInfo() {
+    if (!storageSupported()) {
+      return Promise.resolve({ supported: false, usage: 0, quota: 0, pct: 0, persisted: null });
+    }
+    var nav = global.navigator;
+    return nav.storage.estimate().then(function (est) {
+      var usage = Number(est.usage || 0), quota = Number(est.quota || 0);
+      var persisted = (typeof nav.storage.persisted === 'function')
+        ? nav.storage.persisted().catch(function () { return null; })
+        : Promise.resolve(null);
+      return persisted.then(function (pv) {
+        return {
+          supported: true,
+          usage: usage,
+          quota: quota,
+          free: Math.max(0, quota - usage),
+          pct: quota > 0 ? Math.min(100, Math.round(usage / quota * 100)) : 0,
+          persisted: pv
+        };
+      });
+    }).catch(function () {
+      return { supported: false, usage: 0, quota: 0, pct: 0, persisted: null };
+    });
+  }
+
+  /* 「消さないでほしい」を要求する。
+     ブラウザによって挙動が違う：
+       Chrome … 問い合わせずに自動で可否を決める（インストール済みなら通りやすい）
+       Firefox … 利用者へ確認を出す
+       Safari … 自動判定
+     **確認が出る可能性があるので、起動直後には呼ばない。**
+     投資が発生したあと（チュートリアル完了・取り込み）と、
+     設定の明示的なボタンからだけ呼ぶ（§4-8 その場・その時・1つずつ）。 */
+  function requestPersist() {
+    var nav = global.navigator;
+    if (!nav || !nav.storage || typeof nav.storage.persist !== 'function') {
+      return Promise.resolve({ supported: false, persisted: null });
+    }
+    return nav.storage.persisted().then(function (already) {
+      if (already) { return { supported: true, persisted: true, asked: false }; }
+      return nav.storage.persist().then(function (granted) {
+        return { supported: true, persisted: !!granted, asked: true };
+      });
+    }).catch(function () {
+      return { supported: false, persisted: null };
+    });
+  }
+
+  /* --- 例外を人の言葉にする（V1.60） ---
+     「保存に失敗しました：quota」では何も伝わらない。
+     利用者にとって必要なのは【何が起きたか】ではなく【次に何をすればよいか】。 */
+  function describeError(e) {
+    var name = (e && e.name) ? String(e.name) : '';
+    var msg  = (e && e.message) ? String(e.message) : String(e || '');
+
+    if (name === 'QuotaExceededError' || /quota/i.test(name) || /quota/i.test(msg)) {
+      return '端末の保存領域がいっぱいで、これ以上保存できませんでした。'
+           + '設定から「バックアップを書き出す」を実行してファイルを保存したうえで、'
+           + '端末の写真やアプリを整理するか、自分で入れた図を減らしてください。';
+    }
+    if (name === 'InvalidStateError' || /closing|closed/i.test(msg)) {
+      return 'データベースが閉じられました。アプリを開き直してください。'
+           + '（別のタブで開いていると起きることがあります）';
+    }
+    if (name === 'VersionError' || name === 'AbortError') {
+      return '保存の処理が中断されました。もう一度お試しください。'
+           + '直らない場合は、他のタブを閉じてから開き直してください。';
+    }
+    if (name === 'NotFoundError') {
+      return '保存先が見つかりませんでした。アプリを開き直してください。';
+    }
+    if (/IndexedDB/i.test(msg) || /プライベート/i.test(msg)) { return msg; }
+    /* 心当たりの無い失敗は、元の文言も添える。
+       黙って一般論に置き換えると、問い合わせのときに手がかりが消える。 */
+    return '保存に失敗しました。'
+         + 'アプリを開き直しても直らない場合は、設定からバックアップを書き出してご連絡ください。'
+         + '（' + (name ? name + ': ' : '') + msg + '）';
+  }
+
+  /* 取り込み前の見積もり。1問あたりの実測から出す。
+     実測（V1.58 の規模検証）：2,500問・10,000肢で約20MB ＝ 1問あたり約8KB。
+     余裕を見て 12KB/問 で見積もる。足りないまま走らせて途中で
+     落ちるより、始める前に断るほうがよい。 */
+  var BYTES_PER_QUESTION = 12 * 1024;
+
+  function checkRoomFor(questionCount) {
+    return storageInfo().then(function (info) {
+      var need = Math.max(0, Number(questionCount || 0)) * BYTES_PER_QUESTION;
+      if (!info.supported || !info.quota) {
+        return { ok: true, unknown: true, need: need };
+      }
+      /* 空きを全部使い切る想定にはしない。書き出しや図のぶんを残す。 */
+      var usable = info.free - (8 * 1024 * 1024);
+      return {
+        ok: usable >= need, unknown: false,
+        need: need, free: info.free, usage: info.usage, quota: info.quota
+      };
+    });
+  }
+
   var API = {
     /* --- 定数 --- */
     APP_BUILD    : APP_BUILD,
@@ -3074,6 +3197,13 @@
     bumpDirty          : bumpDirty,
     getDirty           : getDirty,
     clearDirty         : clearDirty,
+
+    /* --- 保存領域（V1.60） --- */
+    storageInfo        : storageInfo,
+    requestPersist     : requestPersist,
+    describeError      : describeError,
+    checkRoomFor       : checkRoomFor,
+    BYTES_PER_QUESTION : BYTES_PER_QUESTION,
     updateQuestionsBulk: updateQuestionsBulk,
     toggleQuestionStar : toggleQuestionStar,
     toggleAtomStar     : toggleAtomStar,
