@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.63">
+<link rel="stylesheet" href="./styles.css?v=1.64">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.63",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.64",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.63",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.64",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.63",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.64",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
-    { file: "./20260815_main_part1_V1.37.js", label: "アプリ本体【前半】（起動・出題・解説）",
+    { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
-    { file: "./20260815_main_part2_V1.39.js", label: "アプリ本体【後半】（分析・検索・設定）",
+    { file: "./20260815_main_part2_V1.40.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.63",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.64",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=1.63",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=1.64",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -413,7 +413,7 @@
           </div>
         </section>
 
-        <p class="build-stamp">20260824_Omoidasu_V1.63</p>
+        <p class="build-stamp">20260824_Omoidasu_V1.64</p>
       </div>
     </section>
 
@@ -1115,7 +1115,9 @@
               <button type="button" class="btn-ghost" id="btn-import-file">ファイルから選ぶ</button>
               <input type="file" id="import-file" accept=".tsv,.txt,.json" hidden>
             </div>
-            <div class="import-report" id="import-report" hidden></div>
+            <!-- V1.64：取り込みの結果は読み上げの対象。成否と件数が読まれないと、目で追えない人には何も伝わらない。 -->
+            <div class="import-report" id="import-report" hidden
+                 role="status" aria-live="polite" aria-atomic="true"></div>
           </div>
           <!-- V1.51：iOS は App Badging も Web Push も実質使えない。
                アプリが通知するのをやめて、OSのカレンダーに任せる。 -->
@@ -1165,7 +1167,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260824_Omoidasu_V1.63 / cache v1.52.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260824_Omoidasu_V1.64 / cache v1.53.0</p>
         </section>
       </div>
     </section>
@@ -1224,7 +1226,7 @@
 <div class="modal-layer" id="modal-layer" hidden>
 
   <!-- 起動時ダイアログ -->
-  <div class="modal-card" id="modal-boot" hidden>
+  <div class="modal-card" id="modal-boot" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="modal-boot-title">今やれる復習があります！</h3>
     <p class="modal-body" id="modal-boot-body">復習待ちが <b>0</b> 件あります。</p>
     <div class="modal-actions">
@@ -1234,7 +1236,7 @@
   </div>
 
   <!-- チュートリアル中断復帰 -->
-  <div class="modal-card" id="modal-resume" hidden>
+  <div class="modal-card" id="modal-resume" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">前回の続きから始めますか？</h3>
     <p class="modal-body">チュートリアルの <b id="resume-n">問7</b> で中断しています。</p>
     <div class="modal-actions">
@@ -1244,7 +1246,7 @@
   </div>
 
   <!-- 一問一答の出しかた -->
-  <div class="modal-card modal-wide" id="modal-oneq" hidden>
+  <div class="modal-card modal-wide" id="modal-oneq" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">一問一答の出しかた</h3>
     <p class="modal-body">「本日の復習」で、期日を迎えた選択肢が<b>何本までなら</b>
       1肢だけの一問一答で出すかを決めます。2本以上なら4択のまま出します。</p>
@@ -1277,7 +1279,7 @@
   </div>
 
   <!-- 文言の編集 -->
-  <div class="modal-card modal-wide" id="modal-text-edit" hidden>
+  <div class="modal-card modal-wide" id="modal-text-edit" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="text-edit-title">文言を直す</h3>
     <p class="modal-body" id="text-edit-where"></p>
     <p class="text-stale" id="text-edit-stale" hidden>元の文がアプリの更新で変わりました。下の「元の文」と見比べて、必要なら直してください。</p>
@@ -1294,7 +1296,7 @@
   </div>
 
   <!-- ポモドーロ 25分経過 -->
-  <div class="modal-card" id="modal-pomodoro" hidden>
+  <div class="modal-card" id="modal-pomodoro" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="pomo-title">25分が経過しました。5分休憩しませんか？</h3>
     <p class="modal-body" id="pomo-body">いったん目を離すと、次の25分の集中が戻りやすくなります。</p>
     <div class="modal-actions modal-stack">
@@ -1305,7 +1307,7 @@
   </div>
 
   <!-- 長め休憩 -->
-  <div class="modal-card" id="modal-longbreak" hidden>
+  <div class="modal-card" id="modal-longbreak" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">4セッション完了。長めに休みましょう</h3>
     <p class="modal-body">休憩時間を選んでください。</p>
     <div class="seg-group" role="group" aria-label="長休憩の時間">
@@ -1321,7 +1323,7 @@
   </div>
 
   <!-- 休憩カウントダウン -->
-  <div class="modal-card modal-break" id="modal-break" hidden>
+  <div class="modal-card modal-break" id="modal-break" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">休憩中</h3>
     <p class="break-clock" id="break-clock">05:00</p>
     <div class="modal-actions">
@@ -1330,7 +1332,7 @@
   </div>
 
   <!-- 復習完了（紙吹雪） -->
-  <div class="modal-card modal-celebrate" id="modal-review-done" hidden>
+  <div class="modal-card modal-celebrate" id="modal-review-done" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">本日の復習タスク完了！🎉</h3>
     <p class="modal-body"><b id="done-count">0</b> 件の復習を終えました。</p>
     <div class="modal-actions">
@@ -1339,7 +1341,7 @@
   </div>
 
   <!-- 最優先で埋めたいテーマ TOP3 -->
-  <div class="modal-card modal-top3" id="modal-top3" hidden>
+  <div class="modal-card modal-top3" id="modal-top3" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">⚠️ 最優先で埋めたいテーマ TOP 3</h3>
     <p class="modal-body">理解度が50%を下回っているテーマです。タップすると、そのテーマだけを集中演習します。</p>
     <ul class="top3-list" id="top3-list"></ul>
@@ -1349,7 +1351,7 @@
   </div>
 
   <!-- ノック時間選択 -->
-  <div class="modal-card" id="modal-knock-time" hidden>
+  <div class="modal-card" id="modal-knock-time" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">テーマ別 弱点ノック</h3>
     <p class="modal-body">対象テーマ：<b id="knock-target">#人口動態統計</b></p>
     <div class="modal-actions">
@@ -1360,7 +1362,7 @@
   </div>
 
   <!-- 解説の書き換え（上書き型メモ） -->
-  <div class="modal-card modal-memo" id="modal-memo" hidden>
+  <div class="modal-card modal-memo" id="modal-memo" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">解説を自分の言葉に書き換える</h3>
     <p class="memo-target" id="memo-target"></p>
     <textarea id="memo-input" class="import-area" rows="6"
@@ -1378,7 +1380,7 @@
   </div>
 
   <!-- タグの理解度シート（画面遷移せずここで見せる） -->
-  <div class="modal-card" id="modal-tagsheet" hidden>
+  <div class="modal-card" id="modal-tagsheet" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="tagsheet-name">#テーマ</h3>
     <div class="exam-score" id="tagsheet-body"></div>
     <div class="modal-actions">
@@ -1389,7 +1391,7 @@
   </div>
 
   <!-- ノック終了サマリー -->
-  <div class="modal-card" id="modal-knock-summary" hidden>
+  <div class="modal-card" id="modal-knock-summary" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">お疲れ様でした！</h3>
     <p class="modal-body"><b id="knock-solved">0</b> 問の演習が完了しました。</p>
     <div class="modal-actions">
@@ -1404,7 +1406,7 @@
        白衣に入れたいならA5、カバンで持ち歩けるならA4と、置かれた状況で最適が変わる。
        既定はA4。家庭用プリンタはA5給紙に対応していないことが多く、
        A5を既定にすると「選べるのに印刷できない」になりやすい。 -->
-  <div class="modal-card" id="modal-note" hidden>
+  <div class="modal-card" id="modal-note" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">間違いノートを印刷</h3>
     <div class="modal-body">
       <label class="note-row"><span>集めるもの</span>
@@ -1447,7 +1449,7 @@
        本番モード＝実力測定／直前モード＝成功体験。
        合格基準はどちらも本番と同じ。変えるのは【出題】だけにする。
        基準まで甘くすると達成感が偽物になり、当日に効かない。 -->
-  <div class="modal-card" id="modal-exam-style" hidden>
+  <div class="modal-card" id="modal-exam-style" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">どちらで受けますか</h3>
     <div class="modal-body">
       <p class="exam-style-lead">合格の基準はどちらも本番と同じです。変わるのは出る問題だけ。</p>
@@ -1468,7 +1470,7 @@
   <!-- V1.60：保存に失敗したことを、消えない形で知らせる。
        トーストにすると数秒で消え、記録が残らなかったことに
        気づかないまま解き続けることになる。 -->
-  <div class="modal-card" id="modal-save-error" hidden>
+  <div class="modal-card" id="modal-save-error" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">保存できませんでした</h3>
     <div class="modal-body">
       <p id="save-error-body"></p>
@@ -1484,7 +1486,7 @@
   <!-- V1.55：取り消せない操作の共通確認。
        個別にモーダルを増やすと、増やし忘れた操作だけが素通りする。
        確認が要る操作は、必ずここを通す。 -->
-  <div class="modal-card" id="modal-confirm" hidden>
+  <div class="modal-card" id="modal-confirm" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="confirm-title"></h3>
     <div class="modal-body"><p id="confirm-body"></p></div>
     <div class="modal-actions">
@@ -1496,7 +1498,7 @@
   <!-- V1.53：無料枠を使い切ったときの案内。
        「買え」ではなく「復習は続けられる」を先に言う。
        止まったのは初見の問題だけで、学習記録は人質に取っていない。 -->
-  <div class="modal-card" id="modal-buy" hidden>
+  <div class="modal-card" id="modal-buy" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">無料でお試しいただける範囲を解き終えました</h3>
     <div class="modal-body">
       <p><b id="buy-count">200問</b>を解き終えました。ここから先の新しい問題は、
@@ -1517,7 +1519,7 @@
   </div>
 
   <!-- 模試ソフト警告 -->
-  <div class="modal-card" id="modal-exam-warn" hidden>
+  <div class="modal-card" id="modal-exam-warn" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">今の状態でも挑戦できるよ！</h3>
     <p class="modal-body">ただ、単元学習で少し知識を補強しておくと、合格率がもっと上がるかも。どうする？</p>
     <div class="modal-actions modal-stack">
@@ -1527,7 +1529,7 @@
   </div>
 
   <!-- 模試結果 -->
-  <div class="modal-card" id="modal-exam-result" hidden>
+  <div class="modal-card" id="modal-exam-result" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="exam-result-title">採点結果</h3>
     <div class="exam-score" id="exam-score"></div>
     <div class="modal-actions">
@@ -1536,7 +1538,7 @@
   </div>
 
   <!-- 全初期化 -->
-  <div class="modal-card" id="modal-reset" hidden>
+  <div class="modal-card" id="modal-reset" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">すべて消して最初からやり直しますか？</h3>
     <p class="modal-body">消す直前に、バックアップJSONを自動で書き出します。この操作は取り消せません。</p>
     <div class="modal-actions">
@@ -1546,7 +1548,7 @@
   </div>
 
   <!-- 初回起動：概要（3行・5秒。ここに項目を足さないこと。§8-①への妥協点） -->
-  <div class="modal-card modal-welcome" id="modal-welcome" hidden>
+  <div class="modal-card modal-welcome" id="modal-welcome" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">はじめまして</h3>
     <ul class="welcome-list">
       <li><b>覚えたかは、自分で決めます。</b>正解・不正解ではなく「その選択肢の根拠を説明できたか」を、解いた直後に自分で選びます。</li>
@@ -1560,7 +1562,7 @@
   </div>
 
   <!-- 設定の [？] 共通ヘルプ -->
-  <div class="modal-card" id="modal-help" hidden>
+  <div class="modal-card" id="modal-help" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="help-title"></h3>
     <div class="modal-body help-body" id="help-body"></div>
     <div class="modal-actions">
@@ -1569,7 +1571,7 @@
   </div>
 
   <!-- 中項目ごとの進捗リセット：一覧から選ぶ -->
-  <div class="modal-card modal-wide" id="modal-reset-medium" hidden>
+  <div class="modal-card modal-wide" id="modal-reset-medium" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">どの中項目の進捗を消しますか？</h3>
     <p class="modal-body">問題データは残ります。消えるのは評価・復習期日・弱点ptなどの学習記録だけです。</p>
     <div class="medium-list" id="reset-medium-list"></div>
@@ -1579,7 +1581,7 @@
   </div>
 
   <!-- 中項目リセット：最終確認（取り消せないので2段階） -->
-  <div class="modal-card" id="modal-reset-medium-confirm" hidden>
+  <div class="modal-card" id="modal-reset-medium-confirm" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">この範囲の学習記録を消します</h3>
     <p class="modal-body" id="reset-medium-confirm-body"></p>
     <div class="modal-actions">
@@ -1589,7 +1591,7 @@
   </div>
 
   <!-- 復習が溜まった状態で他モードへ行こうとしたとき（ブロックはしない） -->
-  <div class="modal-card" id="modal-review-nag" hidden>
+  <div class="modal-card" id="modal-review-nag" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">復習が <b id="nag-count">0</b> 件たまっています</h3>
     <p class="modal-body">先に片付けたほうが、同じ時間でも点になります。
       忘れかけている選択肢だけが、期日の近い順に出てきます。</p>
@@ -1601,7 +1603,7 @@
   </div>
 
   <!-- 初見の問題が尽きたとき -->
-  <div class="modal-card" id="modal-no-new" hidden>
+  <div class="modal-card" id="modal-no-new" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="nonew-title">初見の問題は残っていません</h3>
     <p class="modal-body" id="nonew-body">ランダムモードは、まだ一度も解いていない問題だけを出します。
       この範囲はすべて解き終えました。</p>
@@ -1614,7 +1616,7 @@
   </div>
 
   <!-- PWA更新 -->
-  <div class="modal-card" id="modal-sw-update" hidden>
+  <div class="modal-card" id="modal-sw-update" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">新しいバージョンが利用可能です</h3>
     <p class="modal-body">更新しますか？</p>
     <div class="modal-actions">
@@ -1637,7 +1639,9 @@
 <canvas id="confetti" class="confetti-canvas" hidden></canvas>
 
 <!-- トースト -->
-<div class="toast" id="toast" hidden><span id="toast-text"></span></div>
+<!-- V1.64：読み上げの対象。動きの通知はここを通るので、
+     polite にしておくと、操作の邪魔をせずに読み上げられる。 -->
+<div class="toast" id="toast" hidden role="status" aria-live="polite" aria-atomic="true"><span id="toast-text"></span></div>
 
 <!-- 拡大した問題文のオーバーレイ -->
 <div class="stem-overlay" id="stem-overlay" hidden>
@@ -1647,12 +1651,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.63"></script>
-<script src="./storage.js?v=1.63"></script>
-<script src="./scheduler.js?v=1.63"></script>
-<script src="./20260815_main_part1_V1.37.js"></script>
-<script src="./drive.js?v=1.63"></script>
-<script src="./license.js?v=1.63"></script>
-<script src="./20260815_main_part2_V1.39.js"></script>
+<script src="./questions.js?v=1.64"></script>
+<script src="./storage.js?v=1.64"></script>
+<script src="./scheduler.js?v=1.64"></script>
+<script src="./20260815_main_part1_V1.38.js"></script>
+<script src="./drive.js?v=1.64"></script>
+<script src="./license.js?v=1.64"></script>
+<script src="./20260815_main_part2_V1.40.js"></script>
 </body>
 </html>

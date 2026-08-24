@@ -1,9 +1,15 @@
 /* ==========================================================================
- * 20260815_main_part1_V1.37.js
+ * 20260815_main_part1_V1.38.js
  * アプリ本体【前半】：起動 〜 出題 〜 解説 〜 サムゾーン1肢固定ステート
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.38 (1) 覆いのフォーカス（V1.64）。開く前にいた場所を覚え、
+ *            中の最初の押せるものへ移し、閉じたら元へ戻す。
+ *            それまでは位置が覆いの外に残り、Tabで裏の画面をたどれた。
+ *        (2) 見出しをそのまま aria-label にする。見出しは差し替わる
+ *            ことがあるので、開くたびに読み直す。
+ *        (3) Tab を覆いの中で折り返す（軽い閉じ込め）。
  *  V1.37 (1) 更新の受け渡しを作り直した（V1.62）。SKIP_WAITING の直後に
  *            reload していたため、新しい版が主導権を取る前に読み込み直され、
  *            **古い版のまま案内だけが消えていた**（実測で確認）。
@@ -369,7 +375,10 @@
        swReloading      … こちらが頼んだリロードかどうか
        swUpdatePending  … 出題中だったので保留した案内 */
     swReloading: false,
-    swUpdatePending: false
+    swUpdatePending: false,
+    /* V1.64：覆いのフォーカス。開く前にいた場所と、いま開いているカード。 */
+    modalReturnTo: null,
+    modalCard: null
   };
 
   /* ======================================================================
@@ -2848,13 +2857,59 @@
    * 14. モーダル
    * ====================================================================== */
 
+  /* --- 覆いを開く（V1.64でフォーカスと読み上げを足した） ---
+     それまでは表示を切り替えるだけで、
+       ・キーボードの位置が覆いの外に残る（Tabで裏の画面をたどれてしまう）
+       ・読み上げが「何のダイアログか」を言わない
+       ・閉じたあと、どこにいたか分からなくなる
+     の3つが起きていた。 */
   function openModal(sel) {
     var layer = $('#modal-layer');
     if (!layer) { return; }
+    /* 開く前にいた場所を覚える。閉じたらここへ戻す。 */
+    var active = doc.activeElement;
+    if (active && active !== doc.body && (!layer.contains(active))) {
+      state.modalReturnTo = active;
+    }
     $$('#modal-layer > .modal-card').forEach(function (c) { c.hidden = true; });
     var card = $(sel);
-    if (card) { card.hidden = false; }
+    if (card) {
+      card.hidden = false;
+      /* 見出しをそのまま名前にする。見出しは差し替わることがある
+         （確認の覆いは中身を毎回書き換える）ので、開くたびに読み直す。 */
+      var title = card.querySelector('.modal-title');
+      if (title) { card.setAttribute('aria-label', (title.textContent || '').trim()); }
+      state.modalCard = card;
+      /* 中の最初の押せるものへ移す。
+         入力欄があればそちらを優先する（メモや鍵の入力は、
+         開いた直後に打ち始められるほうが速い）。 */
+      global.setTimeout(function () {
+        if (card.hidden) { return; }
+        var first = card.querySelector('input:not([type="hidden"]), textarea, select')
+                 || card.querySelector('button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])');
+        if (first && typeof first.focus === 'function') {
+          try { first.focus({ preventScroll: true }); } catch (e) { first.focus(); }
+        }
+      }, 30);
+    }
     layer.hidden = false;
+  }
+
+  /* 覆いの中だけを Tab で回す。外へ出ると、裏の画面を触れてしまう。
+     完全な閉じ込めではなく「端で折り返す」だけの軽い実装にしてある。 */
+  function trapTab(ev) {
+    var layer = $('#modal-layer');
+    if (!layer || layer.hidden || ev.key !== 'Tab') { return; }
+    var card = state.modalCard;
+    if (!card || card.hidden) { return; }
+    var list = Array.prototype.filter.call(
+      card.querySelectorAll('button:not([disabled]), a[href], input:not([type="hidden"]), textarea, select, [tabindex]:not([tabindex="-1"])'),
+      function (el) { return el.offsetWidth > 0 || el.offsetHeight > 0; });
+    if (!list.length) { return; }
+    var first = list[0], last = list[list.length - 1];
+    if (!ev.shiftKey && doc.activeElement === last) { ev.preventDefault(); first.focus(); }
+    else if (ev.shiftKey && doc.activeElement === first) { ev.preventDefault(); last.focus(); }
+    else if (!card.contains(doc.activeElement)) { ev.preventDefault(); first.focus(); }
   }
 
   /* --- 取り消せない操作の共通確認（V1.55） ---
@@ -2918,6 +2973,15 @@
     var layer = $('#modal-layer');
     if (layer) { layer.hidden = true; }
     $$('#modal-layer > .modal-card').forEach(function (c) { c.hidden = true; });
+    state.modalCard = null;
+    /* 開く前にいた場所へ戻す。戻さないと、閉じたあと
+       キーボードの位置が消えて、先頭からたどり直しになる。
+       その要素がもう無いこともあるので、必ず存在を確かめる。 */
+    var back = state.modalReturnTo;
+    state.modalReturnTo = null;
+    if (back && doc.body.contains(back) && typeof back.focus === 'function') {
+      try { back.focus({ preventScroll: true }); } catch (e) { back.focus(); }
+    }
   }
 
   /* ======================================================================
@@ -3106,6 +3170,8 @@
        覆いが残る事故は白画面より重い。背景タップは指では届くが、
        PCで開いたときに逃げ道が［やめる］ボタン1つしかなかった。
        出題中の判定より前に置く（出題中でも覆いは畳めなければならない）。 */
+    on(doc, 'keydown', function (ev) { trapTab(ev); });
+
     on(doc, 'keydown', function (ev) {
       if (ev.key !== 'Escape' && ev.key !== 'Esc') { return; }
       var layer = $('#modal-layer');

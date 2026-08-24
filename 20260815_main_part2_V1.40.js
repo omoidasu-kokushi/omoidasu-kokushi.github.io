@@ -1,5 +1,5 @@
 /* ==========================================================================
- * 20260815_main_part2_V1.39.js
+ * 20260815_main_part2_V1.40.js
  * アプリ本体【後半】：分析・検索・★ノート・単元別・力試し・設定・
  *                     オンボーディング・ポモドーロ完了処理
  *
@@ -13,6 +13,10 @@
  *
  * 【改版履歴】
  *  V1.00 初版
+ *  V1.40 (1) 検索結果を div から button へ（V1.64）。押すと演習が始まるのに
+ *            div のままで、Tabでたどれず・読み上げがボタンと言わず・
+ *            押した手ごたえも無かった。他の一覧（.concept-row / .bar-row）は
+ *            すでに button で、ここだけ取り残されていた。
  *  V1.39 (1) 設定に保存領域の欄（V1.60）。既定のブラウザ保存は
  *            「いつ消されてもおかしくない」扱いなので、状態を見せて
  *            ［消えないようにする］を1つ置く。
@@ -612,12 +616,22 @@
       }
 
       setHtml('#search-results', res.hits.map(function (h) {
-        return '<div class="search-hit" data-qid="' + esc(h.q_id) + '">' +
-               '<div class="search-hit-head">' +
+        /* --- button にする（V1.64） ---
+           押すとその問題の演習が始まるのに、div のままだった。
+           影が付いていて見た目は押せるのに、
+             ・Tab でたどり着けない
+             ・読み上げが「ボタン」と言わない
+             ・押した手ごたえ（:active）が無い
+           の3つが欠けていた。他の一覧（.concept-row / .bar-row）は
+           すでに button なので、ここだけが取り残されていた。 */
+        return '<button type="button" class="search-hit" data-qid="' + esc(h.q_id) + '"' +
+               ' aria-label="' + esc(h.rank) + 'ランク ' + esc(h.num_code || '') +
+               ' この問題を解く">' +
+               '<span class="search-hit-head">' +
                '<span class="rank-badge ' + esc(h.rank) + '">' + esc(h.rank) + '</span>' +
                '<small class="num-code">' + esc(h.num_code || '') + '</small>' +
-               '<span class="sum-chip">' + h.fields.map(fieldLabel).join('・') + '</span></div>' +
-               '<p class="search-hit-body">' + mark(h.excerpt, st.search.keyword) + '</p></div>';
+               '<span class="sum-chip">' + h.fields.map(fieldLabel).join('・') + '</span></span>' +
+               '<span class="search-hit-body">' + mark(h.excerpt, st.search.keyword) + '</span></button>';
       }).join(''));
       show('#btn-solve-now'); show('#search-mode-note');
       return res;

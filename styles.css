@@ -1352,12 +1352,20 @@ small{ font-size:var(--fs-xs); }
 }
 .sum-chip b{ color:var(--accent); }
 .search-results{ display:flex; flex-direction:column; gap:9px; }
+/* V1.64：div から button へ。見た目は1pxも変えない。
+   width:100% と text-align:left を明示するのは、button の既定が
+   「中身の幅・中央寄せ」で、そのままだと組版が変わるため。 */
 .search-hit{
+  display:block; width:100%; text-align:left;
   padding:12px 13px; border-radius:var(--r-md);
   background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow-1);
+  color:inherit; font:inherit;
+  /* §4-13：押せるものは押した瞬間に沈む。transform なので周りが動かない。 */
+  transition:transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
+.search-hit:active{ transform:translateY(1px) scale(.99); box-shadow:none; }
 .search-hit-head{ display:flex; align-items:center; gap:6px; margin-bottom:5px; }
-.search-hit-body{ font-size:var(--fs-sm); color:var(--text-sub); line-height:1.6; }
+.search-hit-body{ display:block; font-size:var(--fs-sm); color:var(--text-sub); line-height:1.6; }
 .search-hit mark, .star-item mark{
   background:var(--mark-bg); color:var(--mark-ink);
   font-weight:800; padding:0 2px; border-radius:3px;
