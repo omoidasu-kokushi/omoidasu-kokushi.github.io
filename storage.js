@@ -1326,6 +1326,44 @@
   /* ここで trim() を使ってはいけない（V1.01で撤去）。
      末尾の空白を削る動作が、TSVの「空の最終列」を区切りタブごと消してしまう。
      落とすのは前後の改行だけ。タブと半角スペースは1文字も触らない。 */
+  /* --- 出題基準タキソノミー検査（V1.71） ---
+     NotebookLMでの分類（391バッチ）は表記ゆれを起こしやすく、
+     中項目名が1字でも違うと3階層ツリーが分裂する。取り込み時に
+     公式タキソノミー（questions.js の TAXONOMY_MASTER・458中項目）と
+     突合し、無い分類を件数と実例で警告する。ブロックはしない：
+     出題基準の改定や意図的な独自分類を止めない。 */
+  var _taxSet = null;
+  function normalizeTaxKey(v) {
+    return String(v == null ? '' : v)
+      .replace(/[（）]/g, function (m) { return m === '（' ? '(' : ')'; })
+      .replace(/[＜＞]/g, function (m) { return m === '＜' ? '<' : '>'; })
+      .replace(/[\s\u3000]+/g, ' ')
+      .trim();
+  }
+  function taxKeyOf(unit, major, medium) {
+    return normalizeTaxKey(unit) + '|' + normalizeTaxKey(major) + '|' + normalizeTaxKey(medium);
+  }
+  function taxHas(unit, major, medium) {
+    var master = (typeof global !== 'undefined' && global.TAXONOMY_MASTER) || null;
+    if (!master || !master.length) { return true; }   /* マスター不在なら検査しない */
+    if (!_taxSet) {
+      _taxSet = {};
+      for (var i = 0; i < master.length; i++) {
+        _taxSet[taxKeyOf(master[i][0], master[i][1], master[i][2])] = 1;
+      }
+    }
+    return !!_taxSet[taxKeyOf(unit, major, medium)];
+  }
+  function taxCheckInto(report, q, lineNo) {
+    if (taxHas(q.unit, q.major, q.medium)) { return; }
+    report.tax_bad = (report.tax_bad || 0) + 1;
+    if (report.tax_examples.length < 3) {
+      report.tax_examples.push(
+        (lineNo ? lineNo + '件目：' : '') +
+        [q.unit, q.major, q.medium].join(' ＞ '));
+    }
+  }
+
   function importText(text, options) {
     options = options || {};
     var raw = String(text == null ? '' : text)
@@ -1365,6 +1403,7 @@
         ok: true, source: 'tsv', started_at: nowMs(),
         total_lines: 0, parsed: 0, imported: 0, updated: 0,
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
+        tax_bad: 0, tax_examples: [],
         errors: [], warnings: [], messages: []
       };
 
@@ -1405,6 +1444,7 @@
         }
 
         report.parsed++;
+        taxCheckInto(report, built.question, i + 1);
         if (built.question.verify_status === 'unverified') { report.unverified++; }
         (built.warnings || []).forEach(function (w) {
           report.warnings.push({ line: i + 1, message: (i + 1) + '行目：' + w });
@@ -1452,6 +1492,7 @@
         total_lines: list.length, parsed: 0, imported: 0, updated: 0,
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
         pool_main: 0, pool_mock: 0,
+        tax_bad: 0, tax_examples: [],
         errors: [], warnings: [], messages: []
       };
 
@@ -1519,6 +1560,7 @@
         });
 
         report.parsed++;
+        taxCheckInto(report, qq, idx + 1);
         /* 取り込み結果にプールの内訳を出す（V1.56）。
            出さないと「模試用のつもりが本体へ入っていた」に気づけない。
            気づけるのは、模試を受けたときか、ランダムに予想問題が
