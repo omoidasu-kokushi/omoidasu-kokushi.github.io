@@ -2571,10 +2571,58 @@ var QR_MATRIX = [
     return Promise.resolve();
   }
 
+  /* --- 同梱の見本問題（V1.81） ---
+     `init()` は「問題数0 かつ seed_imported が未設定」で見本問題を入れる。
+     ところが `resetAll()` は meta ストアごと消すので **seed_imported も一緒に消える**。
+     その結果、全初期化したあとページを読み込み直すと**見本問題が戻ってくる**。
+
+     旧来の回避策は「初期化したら、再読込せずにそのまま取り込む」だった。
+     手順を1つ外すと戻ってくる作りで、しかも戻ってきたことに気づきにくい
+     （問題数が453に見えるだけで、エラーは何も出ない）。
+
+     消したのは利用者の意思なので、**消えたままにする**。
+     初期化のあとに印を立て直せば、読み込み直しても入らない。
+     いったん消したあとで見本が要るようになったら、
+     設定の［同梱の見本問題を入れ直す］から明示的に入れる。 */
+  function markSeedConsumed() {
+    return S.setMeta('seed_imported', true).catch(noop);
+  }
+
+  function restoreSeedQuestions() {
+    if (!global.SEED_QUESTIONS_TSV) {
+      toast('この配布物には見本問題が入っていません', 4000);
+      return Promise.resolve(null);
+    }
+    return M.confirmAction({
+      title: '同梱の見本問題を入れ直しますか？',
+      body: '見本問題を取り込みます。いまの問題データや学習の記録は消えません。' +
+            '<br><small>同じ問題がすでにある場合は上書きされます（学習の記録は引き継がれます）。</small>',
+      ok: '入れ直す'
+    }).then(function (yes) {
+      if (!yes) { return null; }
+      return S.importText(global.SEED_QUESTIONS_TSV).then(function (rep) {
+        return markSeedConsumed().then(function () {
+          toast('見本問題を入れ直しました：新規 ' + rep.imported + ' 問 ／ 更新 ' + rep.updated + ' 問', 4600);
+          return rep;
+        });
+      }).then(function (rep) {
+        return K.refreshAll({ recomputeWeakness: true }).then(function () { return rep; });
+      }).then(function (rep) {
+        return M.refreshHome().then(function () { return rep; });
+      }).catch(function (e) {
+        toast('入れ直せませんでした：' + (e && e.message ? e.message : e), 5000);
+        return null;
+      });
+    });
+  }
+
   /* 全初期化。storage.js 側が、消す直前に自動でJSONを書き出す。 */
   function runResetAll() {
     return S.resetAll().then(function (r) {
       toast('バックアップ（' + r.backup_filename + '）を保存してから初期化しました', 5000);
+      /* 消したものが読み込み直しで戻ってこないようにする（V1.81） */
+      return markSeedConsumed().then(function () { return r; });
+    }).then(function () {
       return K.refreshAll({ recomputeWeakness: false });
     }).then(function () {
       return M.refreshHome();
@@ -4735,6 +4783,7 @@ var QR_MATRIX = [
     openTextEditor: openTextEditor,      renderTextList: renderTextList,
     openTextItem: openTextItem,          saveTextItem: saveTextItem,
     revertTextItem: revertTextItem,      resetAllText: resetAllText,
+    restoreSeedQuestions: restoreSeedQuestions, markSeedConsumed: markSeedConsumed,
     buildTextPack: buildTextPack,        importTextPack: importTextPack,
     exportTextPack: exportTextPack,      textUi: textUi,
     startBreak: startBreak,              openLongBreakDialog: openLongBreakDialog,
@@ -4960,6 +5009,7 @@ var QR_MATRIX = [
     on($('#btn-text-revert'), 'click', function () { revertTextItem(); });
     on($('#btn-text-export'), 'click', function () { exportTextPack(); });
     on($('#btn-text-reset-all'), 'click', function () { resetAllText(); });
+    on($('#btn-seed-restore'), 'click', function () { restoreSeedQuestions(); });
     on($('#btn-text-import-file'), 'click', function () {
       var f = $('#text-import-file'); if (f) { f.click(); }
     });
