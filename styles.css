@@ -4095,8 +4095,16 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   .rp-grid td{ font-variant-numeric:tabular-nums; }
   .rp-name{ display:inline-block; min-width:42mm; border-bottom:1px solid #000; }
   .rp-note{ font-size:8.5pt; color:#444; margin-top:4mm; }
+  /* 出典表記。V1.75 からQRを主にした（紙のURLは打ち込まれない）。 */
   .pn-credit{ margin-top:6mm; padding-top:2mm; border-top:1px solid #ccc;
-              font-size:7.5pt; color:#777; text-align:right; }
+              font-size:7.5pt; color:#777;
+              display:flex; align-items:center; justify-content:flex-end; gap:3mm;
+              break-inside:avoid; page-break-inside:avoid; }
+  /* 22mm角。スマホのカメラが安定して読める下限（15mm前後）に余裕を持たせた寸法。
+     テーマ色は使わない：セピア／ダークのまま刷ると読み取り率が落ちる。 */
+  .pn-qr{ width:22mm; height:22mm; flex:0 0 auto; display:block; }
+  .pn-credit-text{ text-align:right; line-height:1.5; }
+  .pn-credit-text small{ font-size:6.5pt; color:#999; }
 }
 
 /* =====================================================================

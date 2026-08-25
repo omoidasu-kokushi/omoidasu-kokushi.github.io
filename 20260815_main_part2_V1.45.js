@@ -1426,10 +1426,87 @@
            出どころが書いていない紙は「あの子の自作プリント」で終わり、
            見た人がアプリへたどり着く経路が無い。
            控えめに最終ページの末尾へ1行だけ。広告然とさせない。 */
-        '<p class="pn-credit">オモイダス — 看護師国家試験 対策アプリ ／ ' +
-        'omoidasu-kokushi.github.io</p>';
+        printCredit();
       return { count: items.length, total: total };
     });
+  }
+
+/* --- 印刷用QR（V1.75・tools/make_qr.py で生成） ---
+   中身: https://omoidasu-kokushi.github.io/
+   版3・誤り訂正M・29×29モジュール
+   URLを変えたら make_qr.py を実行して差し替えること。 */
+var QR_URL = 'https://omoidasu-kokushi.github.io/';
+var QR_MATRIX = [
+  '11111110010011101111001111111',
+  '10000010111110110101101000001',
+  '10111010011011101011101011101',
+  '10111010000101110011101011101',
+  '10111010101110101111001011101',
+  '10000010001101011101101000001',
+  '11111110101010101010101111111',
+  '00000000010001101111100000000',
+  '10101010010000111110000010010',
+  '01110101010110100000111001001',
+  '00010010101001000100011110111',
+  '01100000010000001100010110010',
+  '10011010000010011101111001011',
+  '11101101100111001100111001001',
+  '11110010101110100100001101011',
+  '00111001101101110110100011010',
+  '11010111001010111101111001011',
+  '01101100000010101000101001101',
+  '10100111111001001010001110011',
+  '01001000001010001110001011010',
+  '10001011100100011101111110000',
+  '00000000100011000111100010111',
+  '11111110011100101001101011011',
+  '10000010000001100100100011001',
+  '10111010100100101100111110001',
+  '10111010001100101000000110111',
+  '10111010101111100011010111001',
+  '10000010000010111101100010010',
+  '11111110100000000100111100011'
+];
+
+  /* --- 紙のQR（V1.75） ---
+     【なぜURLの文字だけでは足りないか】
+     このノートは実習室や図書館で紙のまま回る（V1.66の出典表記の狙い）。
+     ところが**紙のURLは打ち込まれない。** 見た人がアプリへ来る経路として
+     文字列は事実上機能しないので、その場で読めるQRにする。
+
+     【なぜ画像を貼らないか】
+     外部のQR生成APIはオフライン要件に反する（圏外で真っ白になる）。
+     符号化器を積むとコードが6〜8KB増える。URLは固定なので、
+     **行列だけを定数で持ち、その場でSVGを組む**のがいちばん軽くて壊れない。
+
+     【印刷での寸法】
+     29モジュール＋クワイエットゾーン4モジュール（規格上必須。
+     余白を削ると読み取り率が落ちる）。紙面では22mm角で出す
+     （スマホのカメラが安定して読める下限が15mm前後）。
+     色は必ず黒／白で焼く。テーマ色を使うと、セピアやダークの設定のまま
+     刷ったときにコントラストが落ちて読めなくなる。 */
+  function qrSvg(label) {
+    var n = QR_MATRIX.length, quiet = 4, span = n + quiet * 2;
+    var d = '', y, x, row;
+    for (y = 0; y < n; y++) {
+      row = QR_MATRIX[y];
+      for (x = 0; x < n; x++) {
+        if (row.charAt(x) === '1') {
+          d += 'M' + (x + quiet) + ' ' + (y + quiet) + 'h1v1h-1z';
+        }
+      }
+    }
+    return '<svg class="pn-qr" viewBox="0 0 ' + span + ' ' + span + '" role="img" ' +
+           'aria-label="' + esc(label || QR_URL) + '" shape-rendering="crispEdges">' +
+           '<rect width="' + span + '" height="' + span + '" fill="#fff"/>' +
+           '<path d="' + d + '" fill="#000"/></svg>';
+  }
+
+  /* 紙の隅に置く出典。QRを主にし、URLの文字は読めなかったときの控えとして小さく残す。 */
+  function printCredit() {
+    return '<div class="pn-credit">' + qrSvg('オモイダス ' + QR_URL) +
+           '<span class="pn-credit-text">オモイダス<br>看護師国家試験 対策アプリ<br>' +
+           '<small>omoidasu-kokushi.github.io</small></span></div>';
   }
 
   /* --- 印刷する前に「何問・およそ何枚か」を見せる（V1.74） ---
@@ -1621,8 +1698,7 @@
         (conceptHtml ? '<h2 class="rp-sec">苦手な概念 TOP5</h2>' + conceptHtml : '') +
         '<p class="rp-note">定着率＝「普通」以上の評価が付いた選択肢の割合（未学習を含む全肢が分母）。' +
         'すべてこのアプリでの実測値です。</p>' +
-        '<p class="pn-credit">オモイダス — 看護師国家試験 対策アプリ ／ ' +
-        'omoidasu-kokushi.github.io</p>';
+        printCredit();
 
       return { count: answeredTotal };
     });
@@ -4627,6 +4703,7 @@
     openExamList: openExamList,          startExam: startExam,
     exportReviewCalendar: exportReviewCalendar,
     buildIcs: buildIcs,                  buildPrintSheet: buildPrintSheet,     refreshNoteCount: refreshNoteCount,
+    qrSvg: qrSvg,                        printCredit: printCredit,
     noteSheetsFor: noteSheetsFor,        limitNoteItems: limitNoteItems,
     collectNoteItems: collectNoteItems,
     gradeExam: gradeExam,                showExamResult: showExamResult,
