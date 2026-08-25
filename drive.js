@@ -1214,14 +1214,20 @@
     var starA = {};
     (opts.starsAtom || []).forEach(function (r) { starA[r.id] = r; });
 
-    return S.replaceAllLogs(merged).then(function () {
+    /* skipLogs：台帳に新しい記録が1件も無いときは、書き戻しも状態の作り直しも
+       しない（V1.76）。★の書き戻しだけは続ける（★は台帳と無関係）。 */
+    var writeLogs = opts.skipLogs
+      ? Promise.resolve(0)
+      : S.replaceAllLogs(merged);
+
+    return writeLogs.then(function () {
       return S.getAllAtoms();
     }).then(function (atoms) {
       var patches = {}, touched = 0;
       atoms.forEach(function (a) {
         var patch = null;
         var logs = byAtom[a.atom_id];
-        if (logs && logs.length) {
+        if (!opts.skipLogs && logs && logs.length) {
           patch = K.rebuildAtomState(a, logs, { boundaryHour: boundary, capMs: capMs });
           if (patch) { touched++; }
         }
@@ -1328,9 +1334,23 @@
       report.stars_atom = starsA.filter(function (r) { return r.on; }).length;
       report.stars_question = starsQ.filter(function (r) { return r.on; }).length;
 
-      if (say) { say('学習の記録を合わせています…'); }
+      /* --- 台帳が1行も増えていないなら、書き戻さない（V1.76） ---
+         mergeLogs は重複を鍵（atom_id|answered_at）で落とすので、
+         **合体後の件数が手元と同じ ＝ 相手から新しい記録は1件も来ていない**。
+         それでも従来は台帳を全消しして全件書き直し、全肢の状態を作り直していた。
+
+         実測（1,173問・6,674肢）：台帳26,696行で反映に **37秒**、
+         66,740行では **92秒**。しかも自分が上げた直後の同期では、
+         落ちてくるのは自分が上げたファイルなので**必ずこの空振りになる**。
+
+         増えていないなら、記録から導かれる肢の状態も変わらない。
+         ★だけは台帳と無関係（解いていない肢にも付く）なので、
+         そちらは従来どおり書き戻す。 */
+      var noNewLogs = (merged.length === mine.logs.length);
+      report.logs_write_skipped = noNewLogs;
+      if (say) { say(noNewLogs ? '新しい記録はありません' : '学習の記録を合わせています…'); }
       return applyProgress(merged, meta,
-                           { starsAtom: starsA, starsQuestion: starsQ })
+                           { starsAtom: starsA, starsQuestion: starsQ, skipLogs: noNewLogs })
       .then(function (n) {
         report.atoms_rebuilt = n;
         /* meta を書き戻す（数えものは大きい方、設定は新しい方） */

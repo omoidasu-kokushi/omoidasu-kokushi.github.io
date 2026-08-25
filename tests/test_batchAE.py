@@ -127,12 +127,28 @@ def runtime_checks():
            r["keepsAtom"] and r["keepsWhen"], json.dumps(r))
 
         # ---------- 4. 進捗の書き戻しが落ちたら「成功」にしない ----------
+        # V1.76：新しい記録が0件なら書き戻しを省くようになった（§11-14）。
+        # 「書き戻しが落ちる」を試すには、**相手に自分より新しい記録がある**
+        # 状態を作らなければならない。空の相手のままだと書き戻し自体が
+        # 走らず、この試験は「落ちるはずのものが落ちない」で緑になる。
         r = pg.evaluate("""async () => {
           const S = window.Storage, D = window.Drive;
           window.__mock = window.makeDriveMock();
           D.__setTransport(window.__mock);
           await D.giveConsent();
           await D.signIn();
+          // 2台目に見立てて、相手側へ3件の記録を置く（いったん上げる）
+          const now = Date.now();
+          await S.replaceAllLogs([
+            { atom_id: 'A1', q_id: 'Q1', answered_at: now - 3000, eval: 'normal', is_correct: true },
+            { atom_id: 'A1', q_id: 'Q1', answered_at: now - 2000, eval: 'easy',   is_correct: true },
+            { atom_id: 'A2', q_id: 'Q1', answered_at: now - 1000, eval: 'hard',   is_correct: false }
+          ]);
+          await D.signInAndSync(function () {});
+          // こちらの台帳を1件に減らす ＝ 相手のほうが2件多い状態
+          await S.replaceAllLogs([
+            { atom_id: 'A1', q_id: 'Q1', answered_at: now - 3000, eval: 'normal', is_correct: true }
+          ]);
           await S.clearDirty();
           await S.bumpDirty(3);
           const before = await D.pendingCount();
