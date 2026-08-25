@@ -1379,7 +1379,9 @@
       body = '<div class="pn-exp' + (opts.explain === 'back' ? ' pn-back' : '') + '">' +
              (q.overall_explanation ? '<p>' + q.overall_explanation.replace(/<[^>]+>/g, ' ') + '</p>' : '') +
              (exp ? '<ul>' + exp + '</ul>' : '') +
-             (q.user_memo ? '<p class="pn-memo">✎ ' + q.user_memo + '</p>' : '') +
+             /* 自分で書いたメモも、紙に出すときは必ずエスケープする（V1.84）。
+                「<」を書いただけで紙面が崩れる。 */
+             (q.user_memo ? '<p class="pn-memo">✎ ' + esc(q.user_memo) + '</p>' : '') +
              '</div>';
     }
     return '<article class="pn-item">' + head + stem + '<ul class="pn-atoms">' + list + '</ul>' + body + '</article>';

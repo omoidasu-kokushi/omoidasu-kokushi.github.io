@@ -2264,8 +2264,103 @@
   /* TSV由来のHTMLを描画用に整える。
      1) <table> を .tbl-scroll で包む（包まないと横スクロールせず画面外で切れる）
      2) ①正解／①誤り のハイライトに data-verdict を付け、赤緑に色分けする */
+  /* --- 解説HTMLの無害化（V1.84・新設） --------------------------------------
+     解説は**HTMLのまま**描画している（<b> <u> 表 色つきspan が中身の一部）。
+     つまり取り込んだ文字列が、そのまま innerHTML に入る。
+
+     敵対的な取り込みデータで実測したところ、
+       ・`<img src=x onerror="...">` が**実行された**
+       ・`<iframe src="https://…">` `<img src="https://…">`
+         `style="background:url(https://…)"` で**外部へ通信が出た**
+     `<script>` は innerHTML では走らないが、onerror は走る。
+
+     これは2つの約束を破る。
+       ①「記録はこの端末の中だけです。ログインも通信も要りません」（初回の説明）
+       ② 買い切りで配ったあと、**利用者どうしが問題データを配り合う**ことは
+          自然に起きる。悪意ある1行で、その端末のIndexedDB全部と
+          ドライブのアクセストークンが読める。
+
+     直し方は「全部エスケープ」ではない（表も強調も消えてしまう）。
+     **実データに出てくるタグだけ通す**。同梱453問を数えた実測は
+       タグ： u 6496／b 6144／br 4812／span 2980／td 2100／tr 892／th 604／
+              table 192／thead 18／tbody 18
+       属性： class 2283／style 1732／rowspan 24／colspan 12
+     これに、仕様で使う ul/li/p/div/small/sup/sub/code/pre/details/summary/
+     strong/em/i/s/mark/hr/ol/tfoot/caption を足したものを許可する。
+     **img は許可しない**（実データに1件も無く、画像はアプリ側の仕組みで出す）。
+
+     判定は正規表現ではなくDOMで行う。
+     `document.implementation.createHTMLDocument()` は**動かない文書**で、
+     ここに入れた時点では画像も読み込まれず、スクリプトも走らない。 */
+  var SAFE_TAGS = {
+    b:1, strong:1, i:1, em:1, u:1, s:1, mark:1, small:1, sup:1, sub:1,
+    br:1, hr:1, p:1, div:1, span:1, code:1, pre:1,
+    ul:1, ol:1, li:1, details:1, summary:1,
+    table:1, thead:1, tbody:1, tfoot:1, tr:1, th:1, td:1, caption:1
+  };
+  /* 中身ごと消すもの（テキストを残すと、コードや設定がそのまま本文に出る） */
+  var DROP_WHOLE = {
+    script:1, style:1, iframe:1, object:1, embed:1, link:1, meta:1, base:1,
+    svg:1, math:1, img:1, picture:1, source:1, audio:1, video:1, canvas:1,
+    form:1, input:1, button:1, textarea:1, select:1, option:1, template:1, noscript:1
+  };
+  var SAFE_ATTRS = { class:1, style:1, colspan:1, rowspan:1, 'data-verdict':1, 'aria-hidden':1 };
+  /* style から外部を取りにいく書き方だけ落とす。色や太さは残す。 */
+  var STYLE_BAD = /url\s*\(|expression\s*\(|javascript\s*:|@import|behavior\s*:|-moz-binding/i;
+
+  var _inertDoc = null;
+  function inertDoc() {
+    if (_inertDoc) { return _inertDoc; }
+    if (!doc || !doc.implementation || !doc.implementation.createHTMLDocument) { return null; }
+    _inertDoc = doc.implementation.createHTMLDocument('');
+    return _inertDoc;
+  }
+
+  function cleanStyle(value) {
+    return String(value || '').split(';').filter(function (d) {
+      return d.trim() && !STYLE_BAD.test(d);
+    }).join(';');
+  }
+
+  function sanitizeExplanationHtml(html) {
+    var src = String(html == null ? '' : html);
+    if (src.indexOf('<') < 0) { return src; }
+    var d = inertDoc();
+    /* 動かない文書が作れない環境では、安全側に倒してタグを全部落とす */
+    if (!d) { return src.replace(/<[^>]*>/g, ''); }
+
+    var box = d.createElement('div');
+    box.innerHTML = src;
+
+    var all = box.querySelectorAll('*'), i, el, name, j, attrs, an;
+    for (i = all.length - 1; i >= 0; i--) {
+      el = all[i];
+      name = String(el.nodeName || '').toLowerCase();
+      if (DROP_WHOLE[name]) {
+        if (el.parentNode) { el.parentNode.removeChild(el); }
+        continue;
+      }
+      if (!SAFE_TAGS[name]) {
+        /* 知らないタグは、中身（文字）だけ残して枠を外す */
+        while (el.firstChild) { el.parentNode.insertBefore(el.firstChild, el); }
+        if (el.parentNode) { el.parentNode.removeChild(el); }
+        continue;
+      }
+      attrs = el.attributes;
+      for (j = attrs.length - 1; j >= 0; j--) {
+        an = String(attrs[j].name || '').toLowerCase();
+        if (!SAFE_ATTRS[an]) { el.removeAttribute(attrs[j].name); continue; }
+        if (an === 'style') {
+          var cleaned = cleanStyle(attrs[j].value);
+          if (cleaned) { el.setAttribute('style', cleaned); } else { el.removeAttribute('style'); }
+        }
+      }
+    }
+    return box.innerHTML;
+  }
+
   function prepareExplanationHtml(html) {
-    var s = String(html == null ? '' : html);
+    var s = sanitizeExplanationHtml(html);
 
     /* 重要語句のマークダウン記法を <b> へ寄せる。
        取り込み時ではなく描画時に変換するのは、元データを書き換えずに
@@ -3443,6 +3538,7 @@
   var Main = {
     APP_BUILD    : APP_BUILD,
     INTERLOCK_MS : INTERLOCK_MS,
+    sanitizeExplanationHtml : sanitizeExplanationHtml,
 
     boot          : boot,
     bindOnce      : bindOnce,
