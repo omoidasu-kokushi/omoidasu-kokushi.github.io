@@ -1302,6 +1302,19 @@
    * ====================================================================== */
   var PAPER = { A4: 'A4', A5: 'A5', B4: 'B4', B5: 'JIS-B5' };
 
+  /* --- 印刷量の上限（V1.74） ---
+     実測：1,173問を入れて「難しい」が100問たまった状態で印刷すると、
+     A4・1段・解説ありで **34.5枚**（400問なら233枚）。
+     いまは上限が無く、枚数が分からないまま印刷画面が開く。
+     数を絞るときは【何問中の何問か】を紙面にも書く。黙って切らない。 */
+  function limitNoteItems(items, limit) {
+    if (!limit || items.length <= limit) { return items; }
+    /* 絞るときだけ並べ替える。全部のときは順序を変えない（従来どおり）。 */
+    return items.slice().sort(function (a, b) {
+      return (b.last_at || 0) - (a.last_at || 0);
+    }).slice(0, limit);
+  }
+
   function collectNoteItems(kind) {
     return Promise.all([S.getStarredNote(), S.getAllAtoms()]).then(function (r) {
       var starred = r[0] || [], atoms = r[1] || [];
@@ -1311,10 +1324,17 @@
         if (!hardByQ[a.q_id]) { hardByQ[a.q_id] = []; }
         hardByQ[a.q_id].push(a.atom_id);
       });
+      /* 絞り込みの並べ替えに使う「最後に解いた時刻」を問題ごとに拾う（V1.74） */
+      var lastAt = {};
+      atoms.forEach(function (a) {
+        var t = a.last_answered_at || 0;
+        if (t > (lastAt[a.q_id] || 0)) { lastAt[a.q_id] = t; }
+      });
       var map = {};
       if (kind !== 'hard') {
         starred.forEach(function (x) {
-          map[x.question.q_id] = { question: x.question, marks: x.marked_atoms.slice(), why: '★' };
+          map[x.question.q_id] = { question: x.question, marks: x.marked_atoms.slice(), why: '★',
+                                   last_at: lastAt[x.question.q_id] || 0 };
         });
       }
       if (kind !== 'star') {
@@ -1322,7 +1342,8 @@
         if (!ids.length) { return Object.keys(map).map(function (k) { return map[k]; }); }
         return S.getQuestionsFull(ids).then(function (full) {
           full.forEach(function (q) {
-            map[q.q_id] = { question: q, marks: hardByQ[q.q_id], why: '難' };
+            map[q.q_id] = { question: q, marks: hardByQ[q.q_id], why: '難',
+                            last_at: lastAt[q.q_id] || 0 };
           });
           Object.keys(map).forEach(function (k) {
             if (hardByQ[k] && map[k].why === '★') { map[k].why = '★難'; }
@@ -1365,10 +1386,12 @@
   }
 
   function buildPrintSheet(cfg) {
-    return collectNoteItems(cfg.kind).then(function (items) {
+    return collectNoteItems(cfg.kind).then(function (all) {
+      var total = all.length;
+      var items = limitNoteItems(all, cfg.limit);
       if (!items.length) {
         toast('★も「難しい」もまだありません', 3600);
-        return { count: 0 };
+        return { count: 0, total: 0 };
       }
       var sheet = $('#print-sheet');
       if (!sheet) { return { count: 0 }; }
@@ -1391,7 +1414,10 @@
       sheet.setAttribute('data-cols', cfg.cols === '2' ? '2' : '1');
       sheet.innerHTML =
         '<h1 class="pn-title">オモイダス　間違いノート</h1>' +
-        '<p class="pn-meta">' + items.length + '問　／　' +
+        '<p class="pn-meta">' +
+        (items.length < total
+          ? total + '問中 ' + items.length + '問（最後に解いた順）'
+          : items.length + '問') + '　／　' +
         (cfg.kind === 'star' ? '★のみ' : cfg.kind === 'hard' ? '「難しい」のみ' : '★と「難しい」') +
         '　／　' + (PAPER[cfg.paper] || 'A4') + '</p>' +
         items.map(function (it) { return noteItemHtml(it, cfg); }).join('') +
@@ -1402,8 +1428,43 @@
            控えめに最終ページの末尾へ1行だけ。広告然とさせない。 */
         '<p class="pn-credit">オモイダス — 看護師国家試験 対策アプリ ／ ' +
         'omoidasu-kokushi.github.io</p>';
-      return { count: items.length };
+      return { count: items.length, total: total };
     });
+  }
+
+  /* --- 印刷する前に「何問・およそ何枚か」を見せる（V1.74） ---
+     枚数は実測から出す：A4・1段・解説ありで **1問あたり約0.35枚**
+     （1,173問投入・「難しい」100問で34.5枚を実測。幅794px＝A4相当で計測）。
+     2段で約0.28枚／問、解説なしなら約0.20枚／問（同条件の実測）。
+     紙は実際の内容量で前後するので「およそ」と書く。
+     数字を出す目的は正確さではなく、**200枚の印刷を知らずに始めさせないこと**。 */
+  var NOTE_PAGE_PER_Q = { '1all': 0.35, '1none': 0.20, '2all': 0.28, '2none': 0.13 };
+
+  function noteSheetsFor(n, cols, explain) {
+    var key = (cols === '2' ? '2' : '1') + (explain === 'none' ? 'none' : 'all');
+    return Math.max(1, Math.round(n * (NOTE_PAGE_PER_Q[key] || 0.35)));
+  }
+
+  function refreshNoteCount() {
+    var el = $('#note-count');
+    if (!el) { return Promise.resolve(0); }
+    var kind = ($('#note-kind') || {}).value || 'both';
+    var limit = parseInt(($('#note-limit') || {}).value || '0', 10) || 0;
+    var cols = ($('#note-cols') || {}).value || '1';
+    var explain = ($('#note-explain') || {}).value || 'all';
+    return collectNoteItems(kind).then(function (all) {
+      var n = limit ? Math.min(all.length, limit) : all.length;
+      if (!all.length) {
+        el.textContent = '対象がまだありません（★を付けるか「難しい」を押すと集まります）';
+        return 0;
+      }
+      var sheets = noteSheetsFor(n, cols, explain);
+      el.textContent = '対象 ' + n + '問'
+        + (n < all.length ? '（全' + all.length + '問中・最後に解いた順）' : '')
+        + '　／　' + (PAPER[($('#note-paper') || {}).value] || 'A4')
+        + 'でおよそ ' + sheets + '枚';
+      return n;
+    }).catch(function () { el.textContent = ''; return 0; });
   }
 
   function runPrintNote() {
@@ -1411,7 +1472,8 @@
       kind:  ($('#note-kind') || {}).value || 'both',
       paper: ($('#note-paper') || {}).value || 'A4',
       cols:  ($('#note-cols') || {}).value || '1',
-      explain: ($('#note-explain') || {}).value || 'all'
+      explain: ($('#note-explain') || {}).value || 'all',
+      limit: parseInt(($('#note-limit') || {}).value || '0', 10) || 0
     };
     return buildPrintSheet(cfg).then(function (r) {
       if (!r.count) { return r; }
@@ -4564,7 +4626,8 @@
     openStarredNote: openStarredNote,    renderStarredNote: renderStarredNote,
     openExamList: openExamList,          startExam: startExam,
     exportReviewCalendar: exportReviewCalendar,
-    buildIcs: buildIcs,                  buildPrintSheet: buildPrintSheet,
+    buildIcs: buildIcs,                  buildPrintSheet: buildPrintSheet,     refreshNoteCount: refreshNoteCount,
+    noteSheetsFor: noteSheetsFor,        limitNoteItems: limitNoteItems,
     collectNoteItems: collectNoteItems,
     gradeExam: gradeExam,                showExamResult: showExamResult,
     buildReportSheet: buildReportSheet,  runPrintReport: runPrintReport,
@@ -4919,7 +4982,13 @@
     on($('#btn-contact-close'), 'click', function () { hide('#modal-contact'); });
     on($('#btn-drive-save-id'), 'click', function () { saveDriveClientId(); });
     on($('#btn-ics'),          'click', function () { exportReviewCalendar(); });
-    on($('#btn-note-print'),   'click', function () { openModal('#modal-note'); });
+    on($('#btn-note-print'),   'click', function () {
+      openModal('#modal-note');
+      refreshNoteCount();
+    });
+    ['#note-kind', '#note-limit', '#note-cols', '#note-explain', '#note-paper'].forEach(function (sel) {
+      on($(sel), 'change', function () { refreshNoteCount(); });
+    });
     on($('#btn-report-print'), 'click', function () { runPrintReport(); });
     on($('#btn-sync-conflicts'), 'click', function () { openSyncConflicts(); });
     on($('#btn-conflicts-clear'), 'click', function () { conflictClearAll(); });

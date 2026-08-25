@@ -4043,6 +4043,14 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   font-size:var(--fs-sm);
 }
 .note-hint{ font-size:var(--fs-xs); color:var(--text-mute); line-height:1.6; margin:6px 0 0; }
+/* 印刷する前に対象数と枚数の目安を出す（V1.74）。
+   ここは「読み飛ばされては困る数字」なので、hint より一段強くする。 */
+.note-count{
+  font-size:var(--fs-sm); color:var(--text-sub); line-height:1.6;
+  margin:10px 0 0; padding:8px 10px;
+  border-radius:var(--r-sm); background:var(--surface-2);
+  border:1px solid var(--border);
+}
 
 @media print{
   /* 画面のものは全部消す。紙に出るのは #print-sheet だけ。 */

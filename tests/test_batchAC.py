@@ -28,14 +28,30 @@ ok("解説の3段階がある", 'id="set-explain-mode"' in idx
    and idx.count('data-explain=') == 3)
 ok("設定の版表示が最新（古い刻印が残っていない）",
    "NurseExamApp_V1.38" not in idx and 'id="build-stamp-settings"' in idx)
-ok("版の刻印が2箇所とも V1.72", idx.count("Omoidasu_V1.72") >= 2)
+# 版は【固定値で書かない】（V1.74で修正）
+#   ここは以前 "V1.72" を直に書いていた。版を上げるたびにテストを直す必要があり、
+#   しかも V1.73 では実際に取り残された（走らせた順序のせいで偶然すり抜けた）。
+#   本当に守りたいのは「刻印と資産の版が3箇所で揃っていること」（§1-7）なので、
+#   期待値は index.html の刻印から**読み取って**照合する。
+_stamps = re.findall(r"Omoidasu_V(\d+\.\d+)", idx)
+ok("版の刻印が2箇所以上ある", len(_stamps) >= 2, str(_stamps))
+ok("刻印の版が全部同じ", len(set(_stamps)) == 1, str(set(_stamps)))
+_ver = _stamps[0] if _stamps else None
 
 # 資産の版が index と sw で一致（V1.42で入れた決まり）
 _idxq = dict(re.findall(r'"\./([^"?]+)\?v=([^"]+)"', idx))
 _swq = dict(re.findall(r"'\./([^'?]+)\?v=([^']+)'", sw))
 for f in ["styles.css", "questions.js", "storage.js", "scheduler.js", "drive.js", "license.js"]:
-    ok("%s の版が index と sw で一致" % f, _idxq.get(f) == _swq.get(f) and _idxq.get(f) == "1.72",
-       "idx=%s sw=%s" % (_idxq.get(f), _swq.get(f)))
+    ok("%s の版が index と sw で一致し、刻印とも揃う" % f,
+       _idxq.get(f) == _swq.get(f) and _idxq.get(f) == _ver,
+       "idx=%s sw=%s stamp=%s" % (_idxq.get(f), _swq.get(f), _ver))
+
+# CACHE_NAME も上がっているか（上げ忘れると古いコードが配られ続ける）
+_cache = re.search(r"CACHE_NAME\s*=\s*'v([\d.]+)'", sw)
+ok("sw.js に CACHE_NAME がある", bool(_cache))
+ok("設定画面の刻印に cache の版が載っている",
+   bool(_cache) and ("cache v" + _cache.group(1)) in idx,
+   (_cache.group(1) if _cache else "?"))
 
 
 def _external(t):
