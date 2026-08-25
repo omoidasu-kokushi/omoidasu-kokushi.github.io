@@ -2041,6 +2041,24 @@ var QR_MATRIX = [
         return true;
       };
 
+      /* --- 途中でやめたときの後片付け（V1.85・新設） -----------------------
+         `endSession()` は **hooks を消さない**。消すのは各モードの役目で、
+         概念ノックは `onAbort` で片付けている（`abortKnock`）。
+         模試だけ `onAbort` を張っていなかったため、
+         **［ホーム］で模試を抜けたあと afterGrade / onFinish が生き残り**、
+         次に始めた通常学習の解答が、死んだ模試の answers へ吸い込まれていた。
+
+         実測（画面から再現）：模試を1問解いて［ホーム］→ ランダムを開始 →
+         1問解いても **解説が出ず（phase が answer のまま）**、
+         **［次へ］も押せず**、**記録は1件も増えない**。JSエラーも出ない。
+         「解いても解いても増えない」が延々続く。
+
+         模試を始めてやめるのは、ごく普通の操作。ここは必ず片付ける。 */
+      M.hooks.onAbort = function (mode) {
+        if (mode !== 'exam') { return; }
+        abortExam();
+      };
+
       global.setTimeout(function () { tip('ground'); }, 1200);
       M.state.session = {
         mode: 'exam', sessionId: 'EX' + Date.now().toString(36),
@@ -2050,6 +2068,17 @@ var QR_MATRIX = [
       K.Interrupt.endSession();
       return M.go('quiz').then(function () { M.renderQuestion(); return st.exam; });
     });
+  }
+
+  /* 模試を最後まで行かずに畳んだときの後片付け。
+     `M.endSession()` は【呼ばない】：ここは endSession から呼ばれる側なので、
+     呼び返すと入れ子になる（概念ノックの `abortKnock` と同じ理由）。
+     採点はしない。受験の途中で抜けた以上、点数は出しようがない。 */
+  function abortExam() {
+    M.hooks.afterGrade = null;
+    M.hooks.onFinish = null;
+    M.hooks.onAbort = null;
+    if (st.exam) { st.exam.answers = []; st.exam.aborted = true; }
   }
 
   /* 採点：肢ごとに履歴連動 自動昇格／安全降格を適用する（第11章③）。
@@ -2109,6 +2138,9 @@ var QR_MATRIX = [
   function showExamResult(result) {
     M.hooks.afterGrade = null;
     M.hooks.onFinish = null;
+    /* V1.85：onAbort も必ず外す。張ったままだと、次のモードを畳んだときに
+       模試の後片付けが走る（いまは無害だが、無害さに寄りかからない）。 */
+    M.hooks.onAbort = null;
     M.endSession();
 
     var r = result;
