@@ -48,8 +48,10 @@ ok("ログインしていなければ送らない（勝手にログイン窓を�
 ok("初期化ダイアログは専用の開き方を通る", "openResetModal()" in js and "function openResetModal(" in js)
 ok("同期を使っていない人にはそう言う", "同期を使っていません" in js)
 ok("gzipにはしていない（貼り付け復元を残す）", ".json.gz" not in st and ".json.gz" not in js)
-ok("版番号を上げた", "20260825_Omoidasu_V1.82" in idx and "?v=1.82" in idx)
-ok("キャッシュ名を上げた", "'v1.70.0'" in read("sw.js") and "?v=1.82" in read("sw.js"))
+# 版番号は**絶対値で書かない**。batchAC が「上がっているか」と
+# 「3箇所そろっているか」を見ているので、ここは重複させず、
+# BG が入れた中身だけを見る。（V1.82 で 1.82 を直書きし、V1.83 で赤くした）
+ok("問い合わせ先などの版表記は index.html 側で一元管理", 'id="build-stamp-settings"' in idx)
 
 # ---------------------------------------------------------------- 実行時検査
 from playwright.sync_api import sync_playwright

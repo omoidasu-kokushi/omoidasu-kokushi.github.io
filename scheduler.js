@@ -1705,13 +1705,30 @@
       }
       if (l1Done && l2Done && l3Done && l4Done && l5Done) { level = 5; }
 
+      /* --- 達成していないのに 100% と出さない（V1.83） ---
+         `Math.round` は 99.6% を 100% にする。
+         インストール〜合格の通し検証（400日）で、**残り20肢（5,448中）のまま
+         Level 4 が「100%」と表示され、それ以上どうやっても進まない**状態になった。
+         バーが満タンなのに次へ行かないのは、利用者からは不具合にしか見えないし、
+         「あと何をすればいいか」も画面から消える。
+
+         切り捨てではなく 99 で止めるのは、99.6% を 99% と出したいのではなく
+         **「100% ＝ 達成」を崩さない**ため。達成した瞬間に 100 になる。
+
+         ここで止めておくと、高水位（max_pct_lvN）にも 100 が焼き付かない。
+         焼き付くと、未達成のまま「AREA CLEARED!」が出続ける（theme_cleared）。 */
+      function shown(n) {
+        var v = Math.round(pcts[n]);
+        if (!done[n] && v >= 100) { return 99; }
+        return v;
+      }
+
       return {
         level: level,
         level_name: LEVEL_DEFS[level - 1].name,
-        current_pct: Math.round(pcts[level]),
+        current_pct: shown(level),
         pct_by_level: {
-          1: Math.round(pcts[1]), 2: Math.round(pcts[2]), 3: Math.round(pcts[3]),
-          4: Math.round(pcts[4]), 5: Math.round(pcts[5])
+          1: shown(1), 2: shown(2), 3: shown(3), 4: shown(4), 5: shown(5)
         },
         done_by_level: done,
         stats: {
