@@ -2025,6 +2025,8 @@ var QR_MATRIX = [
             };
           }),
           answered_right: cur.answeredRight,
+          /* 反応時間はこの瞬間にしか取れない（採点は最後にまとめて走る）。V1.79 */
+          think_ms: (typeof M.thinkMsForCurrent === 'function') ? M.thinkMsForCurrent() : null,
           unit: cur.question.unit
         });
         M.state.session.answeredCount++;
@@ -2062,7 +2064,7 @@ var QR_MATRIX = [
           return K.applyExamResult(at.atom_id, {
             correct: handledRight,
             ground_on: at.ground_on
-          }, { sessionId: st.exam.sessionId }).then(function (r) {
+          }, { sessionId: st.exam.sessionId, thinkMs: a.think_ms }).then(function (r) {
             patterns[r.pattern] = (patterns[r.pattern] || 0) + 1;
           });
         });

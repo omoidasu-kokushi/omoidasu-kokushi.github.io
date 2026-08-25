@@ -823,7 +823,11 @@
         srs_step_after  : patch.srs_step,
         schedule_updated: true,
         exam_pattern    : pattern,
-        ground_on       : groundOn
+        ground_on       : groundOn,
+        /* 反応時間は模試でも記録する（V1.79）。V1.78 は通常の解答経路だけに
+           入れたため、**時間を測る場である模試だけが空欄**になっていた。
+           採点は最後にまとめて走るので、値は受験中に控えたものを受け取る。 */
+        think_ms        : isNum(ctx.thinkMs) ? Math.round(ctx.thinkMs) : null
       };
 
       return S.commitAnswer(atomId, patch, log).then(function () {
