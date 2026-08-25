@@ -680,7 +680,15 @@
         srs_step_after : updateSchedule ? plan.srs_step : (atom.srs_step || 0),
         schedule_updated: updateSchedule,
         /* 期日前に間違えて戻した肢は、あとから見分けられるようにしておく */
-        early_miss     : !!decision.demote
+        early_miss     : !!decision.demote,
+        /* --- 反応時間（V1.78） ---
+           §2-5 で「思考インターロックを1.5秒・5秒へ延ばす」案を退けたとき、
+           代わりに約束したのがこれ。**待たせずに測る。**
+           選択肢が押せるようになってから最初のタップまでのミリ秒。
+           これがあれば「即答できた／迷った」は事後に判定できる。
+           取れなかったとき（形式が違う・途中で画面を離れた等）は null。
+           **いま入れておかないと、これから解く分のデータが永久に取れない。** */
+        think_ms       : isNum(ctx.thinkMs) ? Math.round(ctx.thinkMs) : null
       };
 
       return S.commitAnswer(atomId, patch, log).then(function () {
@@ -718,7 +726,9 @@
       seq = seq.then(function () {
         return applyEvaluation(e.atom_id, e.eval, {
           mode: ctx.mode, isCorrect: e.is_correct, sessionId: ctx.sessionId,
-          now: ctx.now, boundaryHour: ctx.boundaryHour, force: ctx.force
+          now: ctx.now, boundaryHour: ctx.boundaryHour, force: ctx.force,
+          /* 反応時間は「1問の提示」に対して1つ。同じ問題の全アトムに同じ値が載る（V1.78） */
+          thinkMs: ctx.thinkMs
         }).then(function (r) { results.push(r); });
       });
     });

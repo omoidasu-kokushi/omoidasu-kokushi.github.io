@@ -1321,7 +1321,12 @@
       touched: {},
       lastTouchedEval: null,
       recommendations: null,
-      startedAt: Date.now()
+      startedAt: Date.now(),
+      /* --- 反応時間（V1.78・§2-5の約束） ---
+         readyAt  … 選択肢が押せるようになった時刻（0.5秒の待ちは含めない）
+         firstTapAt … 最初に肢へ触れた時刻。2回目以降は上書きしない */
+      readyAt: 0,
+      firstTapAt: 0
     };
 
     var quiz = $('#screen-quiz');
@@ -1497,11 +1502,16 @@
       list.classList.remove('is-interlocked');
       list.classList.add('is-ready');
       state.interlock.ready = true;
+      /* 反応時間の起点は「押せるようになった瞬間」（V1.78）。
+         描画時から測ると、全員に同じ0.5秒が乗るだけで区別が付かない。 */
+      if (state.current) { state.current.readyAt = Date.now(); }
     }, INTERLOCK_MS);
   }
 
   function onChoiceTap(card) {
     if (!state.interlock.ready || state.current.graded) { return; }
+    /* 最初の1回だけ。選び直しは「迷い」の一部なので起点を動かさない（V1.78） */
+    if (!state.current.firstTapAt) { state.current.firstTapAt = Date.now(); }
     var q = state.current.question;
     var num = parseInt(card.getAttribute('data-num'), 10);
     var sel = state.current.selected;
@@ -1794,6 +1804,22 @@
 
   /* この肢を今回記録してよいか。scheduler.js の門番をそのまま呼ぶので、
      画面の表示と実際の書き込みがズレることが構造的に起こらない。 */
+  /* --- 反応時間（V1.78・§2-5の約束） ---
+     「押せるようになってから最初に肢へ触れるまで」のミリ秒。
+     取れないときは null を返す。**推測で埋めない。**
+       ・数値入力や、肢に触れずに確定した（＝タップが無い）
+       ・画面を離れて戻ってきた等で起点が無い
+     上限を10分で切る。放置して戻ってきた1件が、平均を意味の無い値にする。 */
+  var THINK_MAX_MS = 600000;
+
+  function thinkMsForCurrent() {
+    var c = state.current;
+    if (!c || !c.readyAt || !c.firstTapAt) { return null; }
+    var ms = c.firstTapAt - c.readyAt;
+    if (!(ms >= 0) || ms > THINK_MAX_MS) { return null; }
+    return ms;
+  }
+
   function commitDecisionFor(a) {
     var cur = state.current;
     var picked = cur.selected.indexOf(a.original_num) >= 0;
@@ -2482,7 +2508,8 @@
       commit = K.applyQuestionEvaluations(q.q_id, evaluations, {
         mode: mode,
         sessionId: state.session.sessionId,
-        boundaryHour: state.meta ? state.meta.day_boundary_hour : 4
+        boundaryHour: state.meta ? state.meta.day_boundary_hour : 4,
+        thinkMs: thinkMsForCurrent()
       });
     }
 
@@ -3487,6 +3514,7 @@
     scrollToChoice: scrollToChoice,
     renderSummary : renderSummary,
     commitDecisionFor: commitDecisionFor,
+    thinkMsForCurrent: thinkMsForCurrent,
     fmtDueShort   : fmtDueShort,
     forgetAtom    : forgetAtom,
     setEval       : setEval,
