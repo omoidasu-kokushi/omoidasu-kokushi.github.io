@@ -2374,6 +2374,7 @@ var QR_MATRIX = [
       refreshDrive().catch(noop);
       refreshLicense();
       refreshStorage().catch(noop);
+      refreshBackupSize().catch(noop);
       /* 押した瞬間に窓を開けるよう、ここで先に用意しておく。 */
       D.prepare().catch(noop);
       var pos = M.userImagePos();
@@ -2447,6 +2448,8 @@ var QR_MATRIX = [
         if (box2) { box2.hidden = false; box2.classList.remove('is-error'); }
         return K.refreshAll({ recomputeWeakness: true })
           .then(function () { return M.refreshHome(); })
+          /* 件数が変わったので、書き出しの見積り表示も直す（V1.82） */
+          .then(function () { return refreshBackupSize().catch(noop); })
           .then(function () { return rep; });
       }
       lines.push('<b>' + (rep.ok ? '取り込みが完了しました' : '取り込めた行がありませんでした') + '</b>');
@@ -2504,6 +2507,9 @@ var QR_MATRIX = [
       return K.refreshAll({ recomputeWeakness: true });
     }).then(function () {
       return M.refreshHome();
+    }).then(function () {
+      /* 件数が変わったので、書き出しの見積り表示も直す（V1.82） */
+      return refreshBackupSize().catch(noop);
     }).catch(function (e) {
       /* 空き不足はすでに画面へ出しているので、ここで上書きしない（V1.60）。 */
       if (e && e.message === '__ROOM__') { return null; }
@@ -2562,7 +2568,8 @@ var QR_MATRIX = [
           return S.restoreBackup(payload, 'replace').then(function (rep) {
             toast('復元しました：問題 ' + rep.questions + ' 問 ／ 選択肢 ' + rep.atoms + ' 件', 4000);
             return K.refreshAll({ recomputeWeakness: true });
-          }).then(function () { return M.refreshHome(); });
+          }).then(function () { return M.refreshHome(); })
+            .then(function () { return refreshBackupSize().catch(noop); });
         }).catch(function (e) { toast('復元に失敗しました：' + e.message, 5000); });
       };
       fr.readAsText(f);
@@ -2616,8 +2623,121 @@ var QR_MATRIX = [
     });
   }
 
+  /* --- 書き出しの大きさを、押す前に見せる（V1.82・新設） ------------------
+     上限規模の実測（§6-9）で、バックアップが75.6MBになることが分かった。
+     間違いノートの印刷（§4-25）と同じで、**押してから気づくのでは遅い**。
+     見積りは storage.js が件数と抜き取りから出す（全件は組み立てない）。 */
+  function fmtMB(bytes) {
+    var mb = bytes / 1048576;
+    if (mb < 1) { return Math.max(1, Math.round(bytes / 1024)) + 'KB'; }
+    return (Math.round(mb * 10) / 10) + 'MB';
+  }
+
+  function backupSummary(est) {
+    var c = est.counts || {};
+    var parts = [];
+    if (c.questions)    { parts.push('問題 ' + c.questions + '問'); }
+    if (c.atoms)        { parts.push('選択肢 ' + c.atoms + '肢'); }
+    if (c.progress_log) { parts.push('学習の記録 ' + c.progress_log + '件'); }
+    if (est.user_files_bytes) {
+      parts.push('自分で入れた図と音 ' + fmtMB(est.user_files_bytes) +
+                 (est.user_files_included ? '' : '（30MB超のため書き出しに含みません）'));
+    }
+    return parts.join('／');
+  }
+
+  function refreshBackupSize() {
+    var el = $('#backup-size');
+    if (!el || !S.estimateBackupBytes) { return Promise.resolve(null); }
+    return S.estimateBackupBytes().then(function (est) {
+      var body = backupSummary(est);
+      if (!body) { el.hidden = true; return est; }
+      var txt = 'いまの中身：' + body + ' → 書き出しは約 ' + fmtMB(est.bytes) + ' になります。';
+      if (est.big) {
+        txt += ' ⚠ 端末の空きと、保存先を先に確かめてください。' +
+               '大きいファイルは、貼り付けでの復元ができません（ファイル選択で戻します）。';
+      }
+      setText('#backup-size', txt);
+      cls(el, 'is-warn', !!est.big);
+      el.hidden = false;
+      return est;
+    }).catch(function () { if (el) { el.hidden = true; } return null; });
+  }
+
+  /* --- 全初期化の前に、いま何が守られているかを出す（V1.82・新設） --------
+     同期が生きているなら、学習の記録は gzip 1.3MB で向こうにも残る（§6-9）。
+     生きていないなら、退避は手元のJSONファイル1本だけ。
+     **どちらなのかを、押す前に必ず言う。** */
+  function driveGuardState() {
+    return S.loadMeta().then(function (m) {
+      var id = m.drive_client_id || (D.hasBuiltInClientId && D.hasBuiltInClientId() ? 'builtin' : '');
+      return { configured: !!id, signedIn: !!(D.tokenValid && D.tokenValid()) };
+    }).catch(function () { return { configured: false, signedIn: false }; });
+  }
+
+  function openResetModal() {
+    setText('#reset-detail', '中身を数えています…');
+    openModal('#modal-reset');
+    return Promise.all([
+      S.estimateBackupBytes ? S.estimateBackupBytes() : Promise.resolve(null),
+      driveGuardState()
+    ]).then(function (r) {
+      var est = r[0], g = r[1];
+      var lines = [];
+      if (est) {
+        lines.push('消えるもの：' + (backupSummary(est) || '（まだ何も入っていません）'));
+        lines.push('自動で書き出すファイル：約 ' + fmtMB(est.bytes));
+      }
+      if (g.signedIn) {
+        lines.push('消す前に、学習の記録をドライブへ送ります。送れなかったら中止します。');
+      } else if (g.configured) {
+        lines.push('⚠ ドライブにログインしていません。退避は、いま書き出すファイル1本だけです。' +
+                   'やめて先に［今すぐ同期］を押しておくと、記録は向こうにも残ります。');
+      } else {
+        lines.push('⚠ 同期を使っていません。退避は、いま書き出すファイル1本だけです。');
+      }
+      setText('#reset-detail', lines.join(' ／ '));
+      return { est: est, guard: g };
+    }).catch(function () {
+      setText('#reset-detail', '');
+      return null;
+    });
+  }
+
+  /* ログイン中なら、消す前に1回だけ送る。送れなければ**消さない**。
+     ここで黙って続けると、「失わないための仕組み」が
+     失敗したことにすら気づけないまま消えることになる。 */
+  function syncBeforeReset() {
+    if (!(D.tokenValid && D.tokenValid())) { return Promise.resolve({ skipped: true }); }
+    toast('消す前に、学習の記録をドライブへ送っています…', 4000);
+    return D.autoSync().then(function (rep) {
+      if (rep && rep.ok === false) { return { ok: false, error: rep.error || null }; }
+      return { ok: true, rep: rep };
+    }).catch(function (e) {
+      return { ok: false, error: (e && e.message) || String(e) };
+    });
+  }
+
   /* 全初期化。storage.js 側が、消す直前に自動でJSONを書き出す。 */
   function runResetAll() {
+    return syncBeforeReset().then(function (sy) {
+      if (sy && sy.ok === false) {
+        return M.confirmAction({
+          title: 'ドライブへ送れませんでした',
+          body: 'いまの中身はまだ消していません。' +
+                'このまま消すと、退避はこれから書き出すファイル1本だけになります。' +
+                (sy.error ? '（' + sy.error + '）' : ''),
+          ok: 'それでも消す'
+        });
+      }
+      return true;
+    }).then(function (go) {
+      if (!go) { toast('やめました。中身は消えていません', 4000); return null; }
+      return doResetAll();
+    });
+  }
+
+  function doResetAll() {
     return S.resetAll().then(function (r) {
       toast('バックアップ（' + r.backup_filename + '）を保存してから初期化しました', 5000);
       /* 消したものが読み込み直しで戻ってこないようにする（V1.81） */
@@ -4764,6 +4884,8 @@ var QR_MATRIX = [
     runBackup: runBackup,                runRestore: runRestore,
     refreshStorage: refreshStorage,
     runResetAll: runResetAll,            setDayBoundary: setDayBoundary,
+    refreshBackupSize: refreshBackupSize, openResetModal: openResetModal,
+    syncBeforeReset: syncBeforeReset,    driveGuardState: driveGuardState,
     fillDaylineOptions: fillDaylineOptions,
     openHelp: openHelp,                  HELP: HELP,
     HELP_COLS: HELP_COLS,
@@ -5049,7 +5171,7 @@ var QR_MATRIX = [
       st.welcomeNext = null;
       f();
     });
-    on($('#btn-reset-all'), 'click', function () { openModal('#modal-reset'); });
+    on($('#btn-reset-all'), 'click', function () { openResetModal(); });
     on($('#reset-go'), 'click', function () { closeModals(); runResetAll(); });
     on($('#btn-contact'), 'click', function () { openContact(); });
     /* V1.60：保存領域 */

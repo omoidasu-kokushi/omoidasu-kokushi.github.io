@@ -1581,6 +1581,12 @@ button.set-row:active{ background:var(--surface-2); }
   font-size:var(--fs-sm); font-weight:700;
 }
 .set-note{ margin-top:8px; font-size:var(--fs-xs); color:var(--text-mute); }
+/* V1.82：書き出しの大きさを押す前に見せる行。
+   20MBを超えたら地の色を変えて、読み飛ばされないようにする。 */
+.backup-size{ margin-top:6px; padding:8px 10px; border-radius:10px;
+  background:var(--surface-2); line-height:1.7; }
+.backup-size.is-warn{ color:var(--text-sub); font-weight:700;
+  background:rgba(217,48,37,.10); }
 
 .import-box{
   padding:14px; border-radius:var(--r-md);
@@ -1632,6 +1638,9 @@ button.set-row:active{ background:var(--surface-2); }
 .modal-title{ font-size:var(--fs-lg); font-weight:800; line-height:1.45; margin-bottom:8px; }
 .modal-body{ font-size:var(--fs-md); color:var(--text-sub); line-height:1.72; }
 .modal-body b{ color:var(--accent); font-weight:800; }
+/* V1.82：全初期化の前に「何が消え・何で守られているか」を出す行 */
+.modal-detail{ margin-top:10px; padding:9px 11px; border-radius:10px;
+  background:var(--surface-2); font-size:var(--fs-xs); line-height:1.7; }
 .modal-note{ margin-top:11px; font-size:var(--fs-xs); color:var(--text-mute); text-align:center; }
 .modal-actions{ display:flex; gap:9px; margin-top:18px; }
 .modal-actions > *{ flex:1 1 0; }

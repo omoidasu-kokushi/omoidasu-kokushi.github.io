@@ -2818,6 +2818,78 @@
     });
   }
 
+  /* --- バックアップの大きさを、作る前に見積もる（V1.82・新設） -------------
+     上限規模の実測（§6-9）で、書き出しが **75.6MB** になることが分かった。
+     しかもこれは全初期化の直前とメモありの取り込み直前に**自動で走る**ので、
+     「失わないための仕組み」のほうが先に重くなる。
+     §4-25（量に上限が無い出力は、押す前に量を見せる）を書き出しにも当てる。
+
+     全件を組み立てて測ると、見せるためだけに75MBの文字列を作ることになる。
+     そこで **件数 × 先頭数十件から測った1件あたりの実バイト数** で見積もる。
+     画像と音は実バイトが記録に入っているので、base64ぶんを掛けて足す。 */
+  var BACKUP_SAMPLE = 40;
+  var BACKUP_BIG_BYTES = 20 * 1024 * 1024;
+  var B64_INFLATE = 1.37;   /* base64（4/3）＋JSON文字列としての目減り */
+
+  function byteLen(text) {
+    var s = String(text == null ? '' : text);
+    if (typeof TextEncoder !== 'undefined') {
+      try { return new TextEncoder().encode(s).length; } catch (e) { /* 続行 */ }
+    }
+    if (typeof Blob !== 'undefined') {
+      try { return new Blob([s]).size; } catch (e2) { /* 続行 */ }
+    }
+    return s.length;
+  }
+
+  /* 先頭 limit 件だけ読んで、1件あたりのバイト数を出す。
+     0件のときは 0 を返す（掛け算の相手も0件なので影響しない）。 */
+  function samplePerRowBytes(storeName, limit) {
+    return getAll(storeName, null, null, limit).then(function (rows) {
+      if (!rows || !rows.length) { return 0; }
+      var s;
+      try { s = JSON.stringify(rows); } catch (e) { return 0; }
+      /* 前後の [] を除いた実データぶんを件数で割る */
+      return Math.max(0, byteLen(s) - 2) / rows.length;
+    }).catch(function () { return 0; });
+  }
+
+  function estimateBackupBytes() {
+    return Promise.all([
+      countStore(STORE.QUESTIONS), countStore(STORE.ATOMS), countStore(STORE.PROGRESS),
+      countStore(STORE.CONCEPT), countStore(STORE.GUARD), countStore(STORE.META),
+      samplePerRowBytes(STORE.QUESTIONS, BACKUP_SAMPLE),
+      samplePerRowBytes(STORE.ATOMS, BACKUP_SAMPLE),
+      samplePerRowBytes(STORE.PROGRESS, BACKUP_SAMPLE * 5),
+      samplePerRowBytes(STORE.CONCEPT, BACKUP_SAMPLE),
+      samplePerRowBytes(STORE.GUARD, BACKUP_SAMPLE),
+      samplePerRowBytes(STORE.META, BACKUP_SAMPLE),
+      getAllUserFiles().then(function (list) {
+        return list.reduce(function (n, f) { return n + (f.bytes || 0); }, 0);
+      }).catch(function () { return 0; })
+    ]).then(function (r) {
+      var counts = { questions: r[0], atoms: r[1], progress_log: r[2],
+                     concept_stat: r[3], guard_log: r[4], meta: r[5] };
+      var filesBytes = r[12];
+      /* 画像と音は30MBを超えると入らない（packUserFiles）。
+         入らないものを見積りに足すと、実物より大きく出る。 */
+      var filesIncluded = filesBytes <= BACKUP_FILES_CAP;
+      var bytes = counts.questions * r[6] + counts.atoms * r[7] + counts.progress_log * r[8] +
+                  counts.concept_stat * r[9] + counts.guard_log * r[10] + counts.meta * r[11] +
+                  (filesIncluded ? filesBytes * B64_INFLATE : 0) +
+                  2048; /* 見出し・件数まわりの固定ぶん */
+      bytes = Math.round(bytes);
+      return {
+        counts: counts,
+        user_files_bytes: filesBytes,
+        user_files_included: filesIncluded,
+        bytes: bytes,
+        mb: Math.round(bytes / 1048576 * 10) / 10,
+        big: bytes >= BACKUP_BIG_BYTES
+      };
+    });
+  }
+
   function timestampName() {
     var d = new Date();
     function p(n) { return (n < 10 ? '0' : '') + n; }
@@ -3353,6 +3425,8 @@
 
     /* --- バックアップ --- */
     exportBackup         : exportBackup,
+    estimateBackupBytes  : estimateBackupBytes,
+    BACKUP_BIG_BYTES     : BACKUP_BIG_BYTES,
     blobToBase64         : blobToBase64,
     base64ToBlob         : base64ToBlob,
     packUserFiles        : packUserFiles,
