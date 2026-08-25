@@ -1214,11 +1214,21 @@
     var starA = {};
     (opts.starsAtom || []).forEach(function (r) { starA[r.id] = r; });
 
-    /* skipLogs：台帳に新しい記録が1件も無いときは、書き戻しも状態の作り直しも
-       しない（V1.76）。★の書き戻しだけは続ける（★は台帳と無関係）。 */
+    /* 書き戻しは3通り（V1.76／V1.77）
+         skipLogs   … 1件も増えていない。書かない・作り直さない
+         addedLogs  … 足されただけ。その分だけ足し、動いた肢だけ作り直す
+         それ以外   … 墓標で記録が落ちている。従来どおり全件書き直し
+       ★の書き戻しはどの場合も続ける（★は台帳と無関係）。 */
     var writeLogs = opts.skipLogs
       ? Promise.resolve(0)
-      : S.replaceAllLogs(merged);
+      : (opts.addedLogs ? S.appendLogs(opts.addedLogs) : S.replaceAllLogs(merged));
+
+    /* 状態を作り直す対象。addedLogs のときは記録が動いた肢だけに絞る。 */
+    var only = null;
+    if (opts.addedLogs) {
+      only = {};
+      opts.addedLogs.forEach(function (l) { only[l.atom_id] = 1; });
+    }
 
     return writeLogs.then(function () {
       return S.getAllAtoms();
@@ -1227,7 +1237,7 @@
       atoms.forEach(function (a) {
         var patch = null;
         var logs = byAtom[a.atom_id];
-        if (!opts.skipLogs && logs && logs.length) {
+        if (!opts.skipLogs && logs && logs.length && (!only || only[a.atom_id])) {
           patch = K.rebuildAtomState(a, logs, { boundaryHour: boundary, capMs: capMs });
           if (patch) { touched++; }
         }
@@ -1348,9 +1358,43 @@
          そちらは従来どおり書き戻す。 */
       var noNewLogs = (merged.length === mine.logs.length);
       report.logs_write_skipped = noNewLogs;
+
+      /* --- 増えた分だけ書く（V1.77） ---
+         V1.76 は「1件も増えていないなら書かない」までだった。
+         相手が1件でも新しい記録を持っていれば、いまも全消し＋全件書き直しで、
+         実測 43.8秒（26,696行）かかっていた。2台で使えば毎回ここを通る。
+
+         合体の結果は、手元の台帳に対して
+           ・足された記録（相手が持っていて手元に無い）
+           ・落とされた記録（墓標＝全消し／範囲リセットで切られた）
+         の2方向に動きうる。**足すだけで済むときは足すだけにする。**
+
+         落とされた記録があるとき（墓標が効いたとき）は、行を選んで消す
+         必要があるので**従来どおり全件書き直しに倒す**。墓標は滅多に立たず、
+         立ったときは正しさが速さより重い。
+
+         状態の作り直しも、**記録が動いた肢だけ**に絞る。
+         動いていない肢は、同じ入力から同じ結果しか出ない。 */
+      var addedLogs = null;
+      if (!noNewLogs) {
+        var mineKeys = {};
+        mine.logs.forEach(function (l) { mineKeys[K.logKey(l)] = 1; });
+        var kept = 0;
+        addedLogs = [];
+        merged.forEach(function (l) {
+          if (mineKeys[K.logKey(l)]) { kept++; return; }
+          addedLogs.push(l);
+        });
+        /* 手元の記録が1件でも落ちていたら、足すだけでは辻褄が合わない */
+        if (kept !== mine.logs.length) { addedLogs = null; }
+      }
+      report.logs_added = addedLogs ? addedLogs.length : null;
+      report.logs_full_rewrite = !noNewLogs && !addedLogs;
+
       if (say) { say(noNewLogs ? '新しい記録はありません' : '学習の記録を合わせています…'); }
       return applyProgress(merged, meta,
-                           { starsAtom: starsA, starsQuestion: starsQ, skipLogs: noNewLogs })
+                           { starsAtom: starsA, starsQuestion: starsQ,
+                             skipLogs: noNewLogs, addedLogs: addedLogs })
       .then(function (n) {
         report.atoms_rebuilt = n;
         /* meta を書き戻す（数えものは大きい方、設定は新しい方） */

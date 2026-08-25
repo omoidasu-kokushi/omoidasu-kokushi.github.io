@@ -2155,6 +2155,29 @@
     }).then(function () { return (logs || []).length; });
   }
 
+  /* --- 台帳へ「増えた分だけ」足す（V1.77） ---
+     replaceAllLogs は全消し＋全件書き直しなので、台帳が育つほど重い
+     （実測：26,696行で26.5秒／66,740行で63.3秒）。相手から来た記録が
+     数件なら、その数件を足すだけで足りる。
+
+     log_id は落とす。落とさずに add() すると、別端末から来た連番が
+     そのまま主キーになり、自分の連番と衝突してトランザクションごと落ちる
+     （V1.48で潰した事故と同じ形）。autoIncrement に採番し直させる。
+
+     **重複の判定はしない。** 呼ぶ側が「手元に無い記録だけ」を渡すこと
+     （合体は Scheduler.mergeLogs が鍵 atom_id|answered_at で済ませている）。 */
+  function appendLogs(logs) {
+    var list = logs || [];
+    if (!list.length) { return Promise.resolve(0); }
+    return write([STORE.PROGRESS], function (s) {
+      list.forEach(function (l) {
+        var rec = {};
+        Object.keys(l).forEach(function (k) { if (k !== 'log_id') { rec[k] = l[k]; } });
+        s[STORE.PROGRESS].add(rec);
+      });
+    }).then(function () { return list.length; });
+  }
+
   /* 複数の肢の状態をまとめて書き戻す。{atom_id: patch} を渡す。 */
   function updateAtomsBulk(patches) {
     var ids = Object.keys(patches || {});
@@ -3274,6 +3297,7 @@
 
     /* --- 書き込み --- */
     replaceAllLogs     : replaceAllLogs,
+    appendLogs         : appendLogs,
     updateAtomsBulk    : updateAtomsBulk,
     commitAnswer       : commitAnswer,
     updateAtom         : updateAtom,

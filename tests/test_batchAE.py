@@ -152,17 +152,25 @@ def runtime_checks():
           await S.clearDirty();
           await S.bumpDirty(3);
           const before = await D.pendingCount();
-          const orig = S.replaceAllLogs;
-          S.replaceAllLogs = function () { return Promise.reject(new Error('わざと失敗')); };
+          /* 書き戻しの経路は1本ではない（V1.77：増えた分だけなら appendLogs、
+             墓標が立ったときは replaceAllLogs）。**どちらが走っても落ちる**
+             ように両方を塞ぐ。1本だけ塞ぐと、経路が変わった日に
+             「落ちるはずのものが落ちない」で緑になる（実際に2度起きた）。 */
+          const origR = S.replaceAllLogs, origA = S.appendLogs;
+          let called = 0;
+          S.replaceAllLogs = function () { called++; return Promise.reject(new Error('わざと失敗')); };
+          S.appendLogs     = function () { called++; return Promise.reject(new Error('わざと失敗')); };
           let rep = null;
           try { rep = await D.signInAndSync(function () {}); }
-          finally { S.replaceAllLogs = orig; }
+          finally { S.replaceAllLogs = origR; S.appendLogs = origA; }
           const after = await D.pendingCount();
           const meta = await S.loadMeta();
           return { ok: rep && rep.ok, error: (rep && rep.error) || null,
                    progressError: (rep && rep.progress_error) || null,
-                   before, after, lastError: meta.drive_last_error || null };
+                   called, before, after, lastError: meta.drive_last_error || null };
         }""")
+        ok("書き戻しが実際に試みられている（試験が素通りしていない）",
+           r["called"] > 0, json.dumps(r, ensure_ascii=False))
         ok("失敗を成功として報告しない", r["ok"] is False, json.dumps(r, ensure_ascii=False))
         ok("何が落ちたのかが文面に出る",
            bool(r["error"]) and "学習の記録" in r["error"], json.dumps(r, ensure_ascii=False))
