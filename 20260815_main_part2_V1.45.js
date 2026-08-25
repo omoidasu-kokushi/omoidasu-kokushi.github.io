@@ -2260,11 +2260,15 @@
     setHtml('#import-report', '<b>取り込み中…</b>');
     if (box) { box.hidden = false; box.classList.remove('is-error'); }
 
-    /* --- 始める前に空き容量を見る（V1.60） ---
+    /* --- 始める前に空き容量を見る（V1.60／V1.73で数え方を修正） ---
        途中で満杯になって落ちるより、始める前に断るほうがよい。
-       行数から必要量を見積もる（実測 1問あたり約8KB・余裕を見て12KB）。
-       件数は行数から概算する（JSONは1問1要素、TSVは1行1問）。 */
-    var roughRows = (String(text).match(/\n/g) || []).length + 1;
+       必要量は「問題数 × 実測12KB」で見積もる。
+       V1.72 まではここで**改行の数**を問題数の代わりにしていたが、
+       整形済みJSONでは1問が数十行になるため見積もりが数十倍に膨らみ、
+       1,173問の取り込みが「保存領域が足りません」で丸ごと拒否された。
+       数え方は形式を知っている storage.js に持たせた（estimateImportRows）。 */
+    var roughRows = S.estimateImportRows ? S.estimateImportRows(text)
+                  : ((String(text).match(/\n/g) || []).length + 1);
     return S.checkRoomFor(roughRows).then(function (room) {
       if (room.ok || room.unknown) { return null; }
       var mb = function (n) { return Math.round(n / 1048576 * 10) / 10; };

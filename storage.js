@@ -3150,6 +3150,48 @@
      落ちるより、始める前に断るほうがよい。 */
   var BYTES_PER_QUESTION = 12 * 1024;
 
+  /* --- 取り込み量の見積もり（V1.73） -------------------------------------
+     V1.60〜V1.72 は、呼び出し側（part2 runImport）が**改行の数**を
+     問題数の代わりにしていた。TSVは1行＝1問なので正しいが、
+     **JSONでは改行数と問題数が一致しない。**
+
+     実測：整形済みJSON（indent 1）の 1,173問は 73,000行あり、
+     12KB/問で見積もると約880MBとなって「保存領域が足りません」と
+     誤って拒否した。取り込みが**1件も走らない**という形で出る。
+     逆に1行へ詰めたJSONは「1行＝1問」と数えるため見積もりが過小になり、
+     こんどは途中で容量切れを起こす。どちらの向きにも壊れていた。
+
+     そこで、形式の判定を importText と同じ規則（先頭が [ か { ）で行い、
+     JSONは**実際に解析して要素数を数える**。3MBのJSONで解析は約60ms。
+     取り込み本体でもう一度解析することになるが、
+     「入るのに断る／入らないのに走る」を防ぐ価値のほうが大きい。 */
+  function estimateImportRows(text) {
+    var raw = String(text == null ? '' : text);
+    var sniff = raw.replace(/^[\s\uFEFF]+/, '');
+    var head = sniff.charAt(0);
+
+    if (head === '[' || head === '{') {
+      var data = safeParseJson(sniff, null);
+      /* 読めないJSONはここで断らない。importText 側が理由を添えて断る。
+         0 を返せば見積もりは 0 になり、容量チェックは素通りする。 */
+      if (!data) { return 0; }
+      if (data.stores && data.schema_version) {
+        var qs = data.stores.questions;
+        return Array.isArray(qs) ? qs.length : 0;
+      }
+      if (Array.isArray(data)) { return data.length; }
+      if (Array.isArray(data.questions)) { return data.questions.length; }
+      return 1;
+    }
+
+    /* TSV：空行は問題ではないので数えない */
+    var lines = raw.split(/\r\n|\r|\n/), n = 0, i;
+    for (i = 0; i < lines.length; i++) {
+      if (lines[i] && lines[i].trim()) { n++; }
+    }
+    return n;
+  }
+
   function checkRoomFor(questionCount) {
     return storageInfo().then(function (info) {
       var need = Math.max(0, Number(questionCount || 0)) * BYTES_PER_QUESTION;
@@ -3245,6 +3287,7 @@
     requestPersist     : requestPersist,
     describeError      : describeError,
     checkRoomFor       : checkRoomFor,
+    estimateImportRows : estimateImportRows,
     BYTES_PER_QUESTION : BYTES_PER_QUESTION,
     updateQuestionsBulk: updateQuestionsBulk,
     toggleQuestionStar : toggleQuestionStar,
