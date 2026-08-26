@@ -1219,6 +1219,44 @@
     return a;
   }
 
+  /* --- ランクを効かせた抽選（V1.90） --------------------------------
+   *
+   * 【なぜ「並べ替え」ではなく「抽選」なのか】
+   * 直近5年（第111〜115回）1,200問で、4回分からランクを付けて残り1回を
+   * 本番として採点する検証をした。中項目の学習割合＝その中項目の得点率、
+   * 未学習は5択の消去法で25%拾う、という単純化での実測。
+   *
+   *   一般+状況（プール950問・ボーダー62%）
+   *     450問時点  均等 63.7点 → 重み 66.8点（+3.1）／ 完全ソート 65.3点（+1.6）
+   *     600問時点  均等 76.5点 → 重み 78.1点（+1.6）／ 完全ソート 74.1点（**-2.4**）
+   *   完全ソートは600問時点で5回中4回が均等より悪い。
+   *   本試験の配点の35.8%はB中項目から出るので、S・Aを先に固めるやり方は
+   *   後半で必ず折り返してくる。**並べ替えではなく重み付き抽選が正しい。**
+   *
+   * 【必修には掛けない】
+   * 同じ検証を必修だけでやると、全帯域で重みが**悪化**させた。
+   *     120問時点  均等 68.7点 → 重み 67.2点（5回中4回で悪化）
+   *     180問時点  均等 90.6点 → 重み 89.1点（5回中5回で悪化）
+   * 必修は50問を54中項目へほぼ1問ずつ配るので、的を絞るほど取りこぼす。
+   * よって必修の候補は重み 1.0 のまま＝均等に扱う。
+   * **必修は「順番」ではなく「量」で守る。それが §16 の枠（V1.89）。**
+   *
+   * 【手法】Efraimidis-Spirakis。各候補に -ln(U)/w の鍵を振って昇順。
+   * 重み付き非復元抽出になり、重みが小さい候補も0にはならない。
+   * 乱数は shuffle と同じ LCG。seed を渡せば同じ並びを再現できる。
+   * ------------------------------------------------------------------ */
+  function rankShuffle(arr, seed) {
+    var s = isNum(seed) ? seed : nowMs();
+    var keyed = arr.map(function (c) {
+      s = (s * 1103515245 + 12345) & 0x7fffffff;
+      var u = (s + 1) / 0x80000000;            /* (0,1] */
+      var w = c.hissu ? 1.0 : rankWeight(c.rank);
+      return { c: c, k: (w > 0) ? (-Math.log(u) / w) : Infinity };
+    });
+    keyed.sort(function (a, b) { return a.k - b.k; });
+    return keyed.map(function (x) { return x.c; });
+  }
+
   /* --- 本日の復習（第5章①） ---
      期日を迎えたアトムを「次回指定インターバルが短い順」の緊急度昇順で出す。
      due_date 昇順ではなく interval_code 昇順が正であることに注意。 */
@@ -1512,9 +1550,13 @@
                 un   = shuffle(pool.filter(function (c) { return c.mastered > 0; }), options.seed);
                 rest = shuffle(pool.filter(function (c) { return c.mastered === 0; }), options.seed);
               } else {
-                /* 純ランダム指定時も、未学習だけは前方に寄せる */
-                un   = shuffle(pool.filter(function (c) { return c.unlearned > 0; }), options.seed);
-                rest = shuffle(pool.filter(function (c) { return c.unlearned === 0; }), options.seed);
+                /* 純ランダム指定時も、未学習だけは前方に寄せる。
+                   V1.90：その中の順番だけ、ランクで重み付けして抽選する。
+                   「頻出問題を優先する」トグル（既定ON）で切れる。
+                   未学習と既出の境目は動かさない（一周の完了問数は変えない）。 */
+                var pick = preferFrequent ? rankShuffle : shuffle;
+                un   = pick(pool.filter(function (c) { return c.unlearned > 0; }), options.seed);
+                rest = pick(pool.filter(function (c) { return c.unlearned === 0; }), options.seed);
               }
               picked = un.concat(rest).slice(0, count);
             } else {
@@ -2507,6 +2549,7 @@
     WEAK_PT          : WEAK_PT,
     STREAK_MULTIPLIER: STREAK_MULTIPLIER,
     RANK_WEIGHT      : RANK_WEIGHT,
+    rankShuffle      : rankShuffle,
     LEVEL_DEFS       : LEVEL_DEFS,
     VISUAL_BY_LEVEL  : VISUAL_BY_LEVEL,
     SCAN_MODEL_SIZE  : SCAN_MODEL_SIZE,

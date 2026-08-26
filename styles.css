@@ -1205,7 +1205,12 @@ small{ font-size:var(--fs-xs); }
 .atom-note-flag.is-wrong{ background:color-mix(in srgb, var(--c-hard) 16%, transparent); color:var(--c-hard); }
 .atom-note-text{ font-weight:700; font-size:var(--fs-md); margin-bottom:4px; }
 .atom-note-exp{ font-size:var(--fs-md); color:var(--text-sub); }
-.atom-tags{ display:flex; flex-wrap:wrap; gap:5px; margin-top:7px; }
+.atom-tags{ display:flex; flex-wrap:wrap; column-gap:5px; row-gap:19px; margin-top:7px; }
+/* row-gap を 19px にしてあるのは見た目のためではない（V1.90）。
+   .tag-pill::after が上下へ 9px ずつ出ているので、行の隙間が 5px だと
+   **折り返した2行目のタグと当たり判定が 13px 重なる**（実測）。
+   重なると、タップが隣の行のタグに吸われて別のテーマが開く。
+   9+9 より広い隙間が要る。タグが1行に収まっているときは何も起きない。 */
 .tag-pill{
   font-size:.66rem; font-weight:700;
   padding:2px 8px; border-radius:var(--r-pill);
@@ -2100,7 +2105,7 @@ body.is-knock #knock-timer{ z-index:58; }
   font-weight:700; line-height:1.68; text-indent:0;
 }
 .cx-noexp{ color:var(--text-mute); font-size:var(--fs-sm); }
-.cx-tags{ display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+.cx-tags{ display:flex; flex-wrap:wrap; column-gap:5px; row-gap:19px; margin-top:4px; }
 
 /* --- 行間と余白：-16%の行間 ＋ ブロック余白カットで1肢あたり約24px圧縮 --- */
 .cx .explanation-body{ line-height:1.5; }
@@ -4289,7 +4294,9 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
    上へだけ逃がす。上にあるのは解説の本文で、押せる部品ではない。 */
 .cx-write::after{ top:-18px; bottom:-1px; }
 
-/* タグは横の隙間5px。左右は触らず、上下だけ厚くする。 */
+/* タグは横の隙間5px。左右は触らず、上下だけ厚くする。
+   **折り返したときは行どうしが重なる。** 容器側で row-gap:19px を取っている
+   （.atom-tags / .cx-tags）。片方だけ直すと、また重なる。 */
 .tag-pill::after{ top:-9px; bottom:-9px; }
 
 /* ヘッダーの？は上に余白が無い。下だけ広げる。 */
