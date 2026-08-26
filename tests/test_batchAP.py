@@ -27,7 +27,13 @@ TO_REVIEW = """async () => {
   await M.startSession({ mode:'random', count:3 });
   await until(() => { const c = document.querySelector('#choice-list .choice-card');
     return c && getComputedStyle(c).pointerEvents !== 'none'; });
-  document.querySelector('#choice-list .choice-card').click();
+  /* 「2つ選べ」の問題が先頭に来ることがある。1枚だけ押すと
+     確定が押せないまま止まる。必要な枚数まで押す（V1.89）。 */
+  for (const c of document.querySelectorAll('#choice-list .choice-card')) {
+    const b = document.getElementById('btn-confirm');
+    if (b && !b.disabled) { break; }
+    c.click();
+  }
   await until(() => { const b = document.getElementById('btn-confirm'); return b && !b.disabled; });
   document.getElementById('btn-confirm').click();
   await until(() => document.getElementById('screen-quiz')

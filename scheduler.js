@@ -1037,6 +1037,118 @@
     return String(unit || '').indexOf('必修') >= 0;
   }
 
+  /* ======================================================================
+   * 必修の出題比率（V1.89）
+   *
+   * 【なぜ「ランク重み」でやらないか】
+   *   priorityScore は preferFrequent が false のとき rankWeight を通らない。
+   *   つまり「頻出問題を優先する」をOFFにしている人には**1ミリも届かない**。
+   *   さらにランダムモードは shuffle 経路で sortCandidates を通らないので、
+   *   そもそもランク重みが効いていない。必修の強化をランクに載せると、
+   *   効く人と効かない人が出る。
+   *
+   * 【なぜ「枠」なのか】
+   *   必修は絶対基準80%（50問中40問）で、1問も吸収されない。
+   *   一般・状況は相対基準（実測ボーダー142〜167点）で、取りこぼしをボーダーが吸収する。
+   *   **確率的な重みではなく、枠で確保する。**
+   *
+   * 【どこに入れるか】
+   *   新規・ランダムだけ。**本日の復習には一切入れない。**
+   *   期日は測定の結果であって、優先度で歪めるものではない。
+   *   単元や大項目を選んだとき（scope あり）も入れない。利用者が範囲を明示している。
+   *
+   * 【割合の根拠】
+   *   17% は本番の配点比（必修50点 ÷ 300点）。80% は必修の合格基準そのもの。
+   *   恣意的な数字を置かない。
+   *
+   * 【戻すこと】
+   *   80%を超えたあと75%を割ったら25%へ**自動で戻す**。
+   *   レベル表示は不退転でよいが、必修の枠を不退転にしてはいけない。
+   *   忘れたら弱いままになる。
+   * ====================================================================== */
+  var HISSU_SHARE = { boost: 0.40, mid: 0.25, normal: 0.17 };
+  /* ①② は「増やす」、③ は「減らす」。向きが違う。
+     同梱シードは必修が68%（1,232/1,816肢）、過去問を入れても34%ある。
+     ①② を上限にすると、始めたばかりの人の必修が**減って**しまう。
+     逆に ③ を下限にすると、必修が80%そろったあとも必修が出続けて
+     一般に時間が回らない。だから段ごとに向きを変える。 */
+  var HISSU_DIR   = { boost: 'floor', mid: 'floor', normal: 'cap' };
+  var HISSU_UP    = 0.50;   /* これ未満は boost */
+  var HISSU_OK    = 0.80;   /* これ以上で normal（＝必修の合格基準） */
+  var HISSU_BACK  = 0.75;   /* normal から戻る線（ヒステリシス） */
+  var HISSU_GOOD  = { normal: 1, easy: 1, master: 1 };   /* 「普通以上」 */
+
+  /* 必修の充足率＝必修問題単元の肢のうち「普通以上」の割合。分母は未学習も含む全肢。
+     §6-7「全アトムの読みは1回だけ」。buildQueue は既に全アトムを読んでいるので、
+     そこからは fillFromAtoms を使う。getHissuFill は画面から単独で呼ぶとき用。 */
+  function fillFromAtoms(atoms) {
+    var total = 0, good = 0;
+    (atoms || []).forEach(function (a) {
+      if (!isHissu(a.unit)) { return; }
+      total++;
+      if (HISSU_GOOD[a.last_eval]) { good++; }
+    });
+    return { atoms: total, good: good, rate: total ? good / total : 0 };
+  }
+  function getHissuFill() {
+    return S.getAllAtoms().then(fillFromAtoms);
+  }
+
+  function hissuStageOf(rate, prev) {
+    if (rate < HISSU_UP) { return 'boost'; }
+    if (prev === 'normal') { return rate >= HISSU_BACK ? 'normal' : 'mid'; }
+    return rate >= HISSU_OK ? 'normal' : 'mid';
+  }
+
+  /* 手動は3択（auto / strong / normal）。既定は auto。
+     手動が自動より弱いときだけ、呼び出し側へ hint を返す。 */
+  function resolveHissuShare(meta, rate) {
+    var prev = meta && meta.hissu_stage ? meta.hissu_stage : null;
+    var stage = hissuStageOf(rate, prev);
+    var auto = HISSU_SHARE[stage];
+    var mode = (meta && meta.hissu_mode) || 'auto';
+    var share = (mode === 'strong') ? HISSU_SHARE.boost
+              : (mode === 'normal') ? HISSU_SHARE.normal : auto;
+    var dir = (mode === 'strong') ? 'floor'
+            : (mode === 'normal') ? 'cap' : HISSU_DIR[stage];
+    return { stage: stage, mode: mode, share: share, auto: auto, dir: dir,
+             rate: rate, hint: mode !== 'auto' && share < auto };
+  }
+
+  /* picked を作り直す。**問題数は絶対に減らさない。**
+     dir='floor' … 必修が目標に足りなければ、他と入れ替えて増やす
+     dir='cap'   … 必修が目標より多ければ、他と入れ替えて減らす
+     どちらも、入れ替える相手が pool に無ければ何もしない（数を削らない）。 */
+  function applyHissuQuota(picked, pool, count, share, seed, dir) {
+    if (!(share > 0) || !picked.length) { return picked; }
+    var target = Math.round(picked.length * share);
+    var his = picked.filter(function (c) { return c.hissu; });
+    var oth = picked.filter(function (c) { return !c.hissu; });
+    var inQ = {};
+    picked.forEach(function (c) { inQ[c.q_id] = 1; });
+    var out = null;
+    if (dir === 'cap') {
+      if (his.length <= target) { return picked; }
+      var spareO = shuffle(pool.filter(function (c) { return !c.hissu && !inQ[c.q_id]; }), seed);
+      var cut = Math.min(his.length - target, spareO.length);
+      if (!cut) { return picked; }
+      out = oth.concat(spareO.slice(0, cut)).concat(shuffle(his, seed).slice(0, his.length - cut));
+    } else {
+      if (his.length >= target) { return picked; }
+      var spareH = shuffle(pool.filter(function (c) { return c.hissu && !inQ[c.q_id]; }), seed);
+      var add = Math.min(target - his.length, spareH.length);
+      if (!add) { return picked; }
+      out = his.concat(spareH.slice(0, add)).concat(oth.slice(0, Math.max(0, oth.length - add)));
+    }
+    /* 数が減っていたら、外したぶんから戻して必ず同数にする */
+    if (out.length < picked.length) {
+      picked.forEach(function (c) {
+        if (out.length < picked.length && out.indexOf(c) < 0) { out.push(c); }
+      });
+    }
+    return shuffle(out, seed).slice(0, picked.length);
+  }
+
   /* --- 直前10日モードの並べ替え（V1.30） -------------------------------
    *
    * 【なぜ順番を変えるか】
@@ -1423,6 +1535,30 @@
                 : sorted.slice(0, count);
             }
 
+            /* --- 必修の枠（V1.89） ---
+               新規・ランダムだけ。範囲を選んでいるとき（scope/tag/qIds）は入れない。
+               本日の復習は mode 'review' でここへ来ないので、構造的に触れない。 */
+            var hissuInfo = null;
+            var quota = Promise.resolve(picked);
+            if ((mode === 'random' || mode === 'new') &&
+                !options.scope && !options.tag && !(options.qIds && options.qIds.length) &&
+                options.hissuQuota !== false) {
+              /* atoms は loader が全アトムを返したもの（scope が無いときだけここへ来る）。
+                 読み直さない。 */
+              quota = Promise.resolve(fillFromAtoms(atoms)).then(function (fill) {
+                hissuInfo = resolveHissuShare(meta, fill.rate);
+                hissuInfo.filled = fill;
+                /* 段が変わったときだけ書く。ヒステリシスは前回の段を覚えていないと働かない。 */
+                var save = (hissuInfo.stage !== meta.hissu_stage)
+                  ? S.setMeta('hissu_stage', hissuInfo.stage) : Promise.resolve();
+                return save.then(function () {
+                  return applyHissuQuota(picked, pool, count, hissuInfo.share,
+                                         options.seed, hissuInfo.dir);
+                });
+              });
+            }
+            return quota.then(function (picked2) {
+            picked = picked2;
             var qIds = picked.map(function (c) { return c.q_id; });
             return S.getQuestionsFull(qIds).then(function (questions) {
               var order = {};
@@ -1441,6 +1577,8 @@
                   purged: g.purged || 0,
                   exhausted: !!g.exhausted
                 },
+                hissu: hissuInfo,
+                hissu_count: picked.filter(function (c) { return c.hissu; }).length,
                 priorities: picked.map(function (c) {
                   return {
                     q_id: c.q_id, rank: c.rank, unlearned: c.unlearned,
@@ -1448,6 +1586,7 @@
                   };
                 })
               };
+            });
             });
           });
         });
@@ -2403,6 +2542,16 @@
     examCapMs                : examCapMs,
     examPhase                : examPhase,
     isHissu                  : isHissu,
+    HISSU_SHARE              : HISSU_SHARE,
+    HISSU_DIR                : HISSU_DIR,
+    HISSU_UP                 : HISSU_UP,
+    HISSU_OK                 : HISSU_OK,
+    HISSU_BACK               : HISSU_BACK,
+    getHissuFill             : getHissuFill,
+    fillFromAtoms            : fillFromAtoms,
+    hissuStageOf             : hissuStageOf,
+    resolveHissuShare        : resolveHissuShare,
+    applyHissuQuota          : applyHissuQuota,
     finalScore               : finalScore,
     sortCandidates           : sortCandidates,
     EXAM_CAP_RATIO           : EXAM_CAP_RATIO,

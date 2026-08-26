@@ -2404,6 +2404,7 @@ var QR_MATRIX = [
       });
       /* 自分で入れた図の表示位置（V1.29）。未設定なら既定の after-figure。 */
       refreshExamNote().catch(noop);
+      refreshHissuNote().catch(noop);     /* V1.89 必修の出題比率 */
       refreshExplainMode();
       refreshDrive().catch(noop);
       refreshLicense();
@@ -3394,6 +3395,96 @@ var QR_MATRIX = [
     }).then(function (m) {
       toast(v ? (year + '年の受験で設定しました') : '受験する年を消しました', 2400);
       return m;
+    });
+  }
+
+  /* ================================================================
+   * 必修の出題比率（V1.89）
+   *
+   * 自動が既定。手動は3択の逃げ道で、**手動が自動より弱いときだけ**案内を出す。
+   * 案内は1日1回まで、3回「このまま」を押したら以後出さない（§2-3）。
+   * 文言に％は出さない。合格ラインまでの距離だけを出す（戦略§2-1）。
+   * ================================================================ */
+  var HISSU_LABEL = { auto: '自動', strong: '強め', normal: '本番と同じ' };
+
+  function hissuDistance(fill) {
+    /* 必修50問＝200肢相当ではなく、いま持っている必修の肢で「50問中いくつ相当か」に直す。
+       ％を出さないための換算で、母数が変わっても意味が変わらない。 */
+    var got = Math.round((fill.rate || 0) * 50);
+    return { got: got, gap: Math.max(0, 40 - got) };
+  }
+
+  function refreshHissuNote() {
+    var box = $('#hissu-note');
+    return K.getHissuFill().then(function (fill) {
+      return S.loadMeta().then(function (meta) {
+        var r = K.resolveHissuShare(meta, fill.rate);
+        var d = hissuDistance(fill);
+        $$('#set-hissu .seg-btn').forEach(function (b) {
+          b.classList.toggle('is-active', b.dataset.hissu === r.mode);
+        });
+        if (box) {
+          box.textContent = fill.atoms
+            ? ('必修は いま ' + d.got + '/50 相当'
+               + (d.gap ? '（合格ラインまで −' + d.gap + '）' : '（合格ラインに乗っています）')
+               + '　いまの比率 ' + Math.round(r.share * 100) + '%'
+               + (r.mode === 'auto' ? '（自動）' : '（' + HISSU_LABEL[r.mode] + '）'))
+            : '必修の問題がまだありません。';
+        }
+        return r;
+      });
+    });
+  }
+
+  function setHissuMode(mode) {
+    if (['auto', 'strong', 'normal'].indexOf(mode) < 0) { return Promise.resolve(null); }
+    return S.setMeta('hissu_mode', mode).then(function () {
+      return S.loadMeta();
+    }).then(function (meta) {
+      M.state.meta = meta;
+      return refreshHissuNote();
+    }).then(function (r) {
+      toast(mode === 'auto'
+        ? '必修の比率を自動で決めます'
+        : ('必修の比率を「' + HISSU_LABEL[mode] + '」に固定しました'), 2800);
+      return r;
+    });
+  }
+
+  /* 起動時に1回だけ呼ぶ。出す条件は「手動 かつ 自動より弱い」。 */
+  function maybeHissuHint() {
+    return S.loadMeta().then(function (meta) {
+      if ((meta.hissu_hint_no || 0) >= 3) { return false; }
+      /* 案内は「手動で弱めている人を自動へ戻す」ためだけにある。
+         自動のままの人には出しようがない。ここで先に降りないと、
+         既定の人まで起動直後に全アトムを読むことになり、
+         起動が重くなる（画面が滑って押し損ねるところまで実測した）。 */
+      if (((meta.hissu_mode || 'auto') === 'auto')) { return false; }
+      var today = new Date(); today.setHours(0, 0, 0, 0);
+      if ((meta.hissu_hint_at || 0) >= today.getTime()) { return false; }
+      return K.getHissuFill().then(function (fill) {
+        if (!fill.atoms) { return false; }
+        var r = K.resolveHissuShare(meta, fill.rate);
+        if (!r.hint) { return false; }
+        var d = hissuDistance(fill);
+        setHtml('#hissu-hint-body',
+          '必修は いま <b>' + d.got + '/50 相当</b>（合格ラインまで −' + d.gap + '）。<br>' +
+          '自動に戻すと、新規・ランダムに必修が出る割合が ' +
+          Math.round(r.share * 100) + '% → <b>' + Math.round(r.auto * 100) + '%</b> に増えます。<br>' +
+          '<small>本日の復習は変わりません。</small>');
+        openModal('#modal-hissu-hint');
+        return S.setMeta('hissu_hint_at', Date.now()).then(function () { return true; });
+      });
+    }).catch(function () { return false; });
+  }
+
+  function hissuHintAnswer(toAuto) {
+    closeModals();
+    if (toAuto) {
+      return S.setMeta('hissu_hint_no', 0).then(function () { return setHissuMode('auto'); });
+    }
+    return S.loadMeta().then(function (meta) {
+      return S.setMeta('hissu_hint_no', (meta.hissu_hint_no || 0) + 1);
     });
   }
 
@@ -4914,6 +5005,9 @@ var QR_MATRIX = [
     refreshSyncBadge: refreshSyncBadge,
     openDashboard: openDashboard,        renderDashboard: renderDashboard,
     setPreferFrequent: setPreferFrequent,
+    refreshHissuNote: refreshHissuNote, setHissuMode: setHissuMode,
+    maybeHissuHint: maybeHissuHint, hissuHintAnswer: hissuHintAnswer,
+    hissuDistance: hissuDistance,
     openSearch: openSearch,              runSearch: runSearch,
     startSearchDrill: startSearchDrill,  renderConceptRanking: renderConceptRanking,
     showTop3Popin: showTop3Popin,
@@ -5315,6 +5409,12 @@ var QR_MATRIX = [
     on($('#btn-drive-logout'),  'click', function () { driveLogout(); });
     on($('#btn-drive-sync'),    'click', function () { driveSync(); });
     on($('#set-exam-year'), 'change', function (ev) { setExamYear(ev.target.value); });
+    on($('#set-hissu'), 'click', function (ev) {
+      var b = ev.target.closest ? ev.target.closest('.seg-btn') : null;
+      if (b && b.dataset.hissu) { setHissuMode(b.dataset.hissu); }
+    });
+    on($('#hissu-hint-auto'), 'click', function () { hissuHintAnswer(true); });
+    on($('#hissu-hint-keep'), 'click', function () { hissuHintAnswer(false); });
     on($('#set-explain-mode'), 'click', function (ev) {
       var b = ev.target.closest('.seg-btn');
       if (b) { setExplainMode(b.getAttribute('data-explain')); }

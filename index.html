@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.88">
+<link rel="stylesheet" href="./styles.css?v=1.89">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.88",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.89",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.88",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.89",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.88",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.89",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.88",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.89",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=1.88",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=1.89",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -420,7 +420,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260826_Omoidasu_V1.88</p>
+        <p class="build-stamp">20260826_Omoidasu_V1.89</p>
       </div>
     </section>
 
@@ -836,6 +836,22 @@
             </div>
             <p class="set-note" id="exam-note">まだ入っていません。</p>
           </div>
+
+          <!-- V1.89：必修の出題比率。
+               必修は絶対基準80%で1問も吸収されない。一般・状況は相対基準で
+               取りこぼしをボーダーが吸収する。この非対称があるので、
+               必修が足りていないうちは新規・ランダムに必修を多めに混ぜる。
+               **本日の復習には一切入れない**（期日は測定の結果なので歪めない）。 -->
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>必修の出題比率</b>
+              <small>新規・ランダムに必修をどれだけ混ぜるか。本日の復習は変わりません</small></span>
+            <div class="seg-group" id="set-hissu" role="group" aria-label="必修の出題比率">
+              <button type="button" class="seg-btn is-active" data-hissu="auto">自動</button>
+              <button type="button" class="seg-btn" data-hissu="strong">強め</button>
+              <button type="button" class="seg-btn" data-hissu="normal">本番と同じ</button>
+            </div>
+            <p class="set-note" id="hissu-note">—</p>
+          </div>
         </section>
 
         <section class="set-block">
@@ -1197,7 +1213,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260826_Omoidasu_V1.88 / cache v1.76.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260826_Omoidasu_V1.89 / cache v1.77.0</p>
         </section>
       </div>
     </section>
@@ -1584,6 +1600,18 @@
     </div>
   </div>
 
+  <!-- V1.89：必修の比率を手で弱くしているのに、必修が足りていないときの案内。
+       %は出さない。合格ラインまでの距離だけを出す（戦略§2-1）。
+       煽らない。1日1回まで、3回断ったら以後出さない（§2-3）。 -->
+  <div class="modal-card" id="modal-hissu-hint" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title" id="hissu-hint-title">必修がまだ合格ラインに届いていません</h3>
+    <p class="modal-body" id="hissu-hint-body"></p>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="hissu-hint-auto">自動に戻す</button>
+      <button type="button" class="btn-secondary" id="hissu-hint-keep">このままにする</button>
+    </div>
+  </div>
+
   <!-- 模試結果 -->
   <div class="modal-card" id="modal-exam-result" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title" id="exam-result-title">採点結果</h3>
@@ -1713,12 +1741,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.88"></script>
-<script src="./storage.js?v=1.88"></script>
-<script src="./scheduler.js?v=1.88"></script>
+<script src="./questions.js?v=1.89"></script>
+<script src="./storage.js?v=1.89"></script>
+<script src="./scheduler.js?v=1.89"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=1.88"></script>
-<script src="./license.js?v=1.88"></script>
+<script src="./drive.js?v=1.89"></script>
+<script src="./license.js?v=1.89"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

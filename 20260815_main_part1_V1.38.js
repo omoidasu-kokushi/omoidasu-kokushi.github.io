@@ -480,6 +480,14 @@
             /* 起動のダイアログが片付いたら、保留していた更新の案内を出す。 */
             if (state.swUpdatePending) {
               global.setTimeout(function () { offerUpdate(); }, 900);
+              return r;
+            }
+            /* V1.89：必修の比率を手で弱くしているのに必修が足りていないときだけ、
+               1日1回・最大3回まで案内する。更新の案内と重ならないよう、
+               保留がある日は出さない（2枚重ねると両方読まれない）。 */
+            var H2b = global.Half2Impl;
+            if (H2b && H2b.maybeHissuHint) {
+              global.setTimeout(function () { H2b.maybeHissuHint().catch(noop); }, 1200);
             }
             return r;
           });

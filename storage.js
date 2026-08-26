@@ -148,6 +148,14 @@
     theme                   : 'light',
     visual_theme            : 'challenge',
     prefer_frequent         : true,          /* 「頻出問題を優先する」トグル */
+    /* --- 必修の出題比率（V1.89） ---
+       hissu_mode  'auto'（既定）／'strong'（常に強め）／'normal'（常に本番比率）
+       hissu_stage 自動のときの現在段（boost/mid/normal）。ヒステリシスに使う。
+       hissu_hint_* 手動が自動より弱いときの案内。1日1回まで、3回断ったら出さない。 */
+    hissu_mode              : 'auto',
+    hissu_stage             : null,
+    hissu_hint_at           : 0,
+    hissu_hint_no           : 0,
 
     /* --- 単元番号の採番テーブル（num_codeの安定生成用） --- */
     unit_index_map          : {},
