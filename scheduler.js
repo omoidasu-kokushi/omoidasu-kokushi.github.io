@@ -814,6 +814,14 @@
       return S.getMeta('total_questions_answered', 0).then(function (total) {
         return S.setMeta('total_questions_answered', (total || 0) + 1);
       }).then(function () {
+        /* V1.92：今日の実績。上限の自動計算の材料でもある。 */
+        return S.loadMeta().then(function (meta) {
+          var patch = bumpDaily(meta, nowMs(), meta.day_boundary_hour);
+          return S.setMeta('daily_key', patch.daily_key)
+            .then(function () { return S.setMeta('daily_count', patch.daily_count); })
+            .then(function () { return S.setMeta('daily_log', patch.daily_log); });
+        });
+      }).then(function () {
         return S.recordScanProgress(qId);
       }).then(function (scan) {
         return S.pushGuard(qId, tags).then(function () {
@@ -1315,6 +1323,75 @@
   /* --- 本日の復習（第5章①） ---
      期日を迎えたアトムを「次回指定インターバルが短い順」の緊急度昇順で出す。
      due_date 昇順ではなく interval_code 昇順が正であることに注意。 */
+  /* ======================================================================
+   * 復習の1日上限「今日の分」（V1.92）
+   *
+   * 【なぜ要るか】
+   * 本日の復習には上限がありませんでした。3日休むと期日の問題が一気に積み上がり、
+   * カードに 200 と出ます。**その数字そのものが、始められない理由になります。**
+   * 間隔反復のアプリが捨てられるいちばん多い理由がこれです。
+   *
+   * 上限を入れても学習は壊れません。出す順は緊急度（interval_code）の昇順のままで、
+   * **最も差し迫ったものから出す**ので、切られるのは常に「いちばん後回しでよいもの」です。
+   *
+   * 【隠さない】
+   * 溜まっていることは必ず数で見せます。上限は先送りであって、帳消しではありません。
+   * ただし**溜まっていない人の画面には1文字も足しません**（§V1.17：カードに出すのは
+   * タイトルと件数だけ、という決定を壊さない）。
+   *
+   * 【上限の決め方】
+   * 自動＝直近14日のうち**解いた日**の中央値 × 1.5（30〜200でクランプ）。
+   * 記録が7日に満たなければ 60。
+   *
+   * **休んだ日を0として混ぜません。** 週3日に100問ずつ解く人の中央値が0になり、
+   * 上限が30まで落ちて二度と追いつけなくなります。逆に、しばらく休んだ人が
+   * 戻ってきたときは「その人がいつもやっている量」がそのまま上限になります。
+   * これがこの仕組みのいちばん効かせたい場面です。
+   * ====================================================================== */
+  var CAP_MIN = 30, CAP_MAX = 200, CAP_DEFAULT = 60;
+  var CAP_MULT = 1.5, CAP_MIN_DAYS = 7, DAILY_KEEP = 14;
+
+  function medianOf(nums) {
+    var a = (nums || []).slice().sort(function (x, y) { return x - y; });
+    if (!a.length) { return 0; }
+    var m = Math.floor(a.length / 2);
+    return (a.length % 2) ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  function autoReviewCap(log) {
+    var ns = (log || []).map(function (x) { return x && x.n; })
+      .filter(function (n) { return isNum(n) && n > 0; });
+    if (ns.length < CAP_MIN_DAYS) { return CAP_DEFAULT; }
+    return clamp(Math.round(medianOf(ns) * CAP_MULT), CAP_MIN, CAP_MAX);
+  }
+
+  /* 0（上限なし）は「未設定」と区別する。ここを曖昧にすると、
+     上限なしを選んだ人に自動の上限が戻ってくる。 */
+  function resolveReviewCap(meta) {
+    var m = meta ? meta.review_cap : undefined;
+    if (m === 0 || m === '0' || m === 'off') { return { cap: 0, mode: 'off' }; }
+    var n = Number(m);
+    if (isNum(n) && n > 0) { return { cap: Math.round(n), mode: 'manual' }; }
+    return { cap: autoReviewCap(meta && meta.daily_log), mode: 'auto' };
+  }
+
+  /* 今日の実績を1つ進める。日が変わっていたら、前日ぶんを台帳へ送る。
+     純関数。書き込みは呼び出し側で1回だけ行う。 */
+  function bumpDaily(meta, now, boundaryHour) {
+    var h = isNum(boundaryHour) ? boundaryHour : 4;
+    var key = S.util.dayStart(isNum(now) ? now : nowMs(), h);
+    var log = (meta && meta.daily_log) ? meta.daily_log.slice() : [];
+    var count = (meta && isNum(meta.daily_count)) ? meta.daily_count : 0;
+    if (meta && meta.daily_key !== key) {
+      if (isNum(meta.daily_key) && count > 0) {
+        log.push({ k: meta.daily_key, n: count });
+        if (log.length > DAILY_KEEP) { log = log.slice(log.length - DAILY_KEEP); }
+      }
+      count = 0;
+    }
+    return { daily_key: key, daily_count: count + 1, daily_log: log };
+  }
+
   function getReviewQueue(limit) {
     var now = nowMs();
     return S.getDueAtoms(now).then(function (atoms) {
@@ -1334,7 +1411,9 @@
         dueByQ[a.q_id].push(a.atom_id);
         if (!seen[a.q_id]) { seen[a.q_id] = 1; qIds.push(a.q_id); }
       });
+      var all = qIds.length;
       if (isNum(limit) && limit > 0) { qIds = qIds.slice(0, limit); }
+      var rest = Math.max(0, all - qIds.length);
 
       return S.getQuestionsFull(qIds).then(function (questions) {
         var rank = {};
@@ -1347,6 +1426,9 @@
           due_by_question: dueByQ,
           due_atoms: sorted.length,
           due_questions: qIds.length,
+          /* 上限で切ったぶん。**必ず返す。** 先送りであって帳消しではない。 */
+          due_questions_all: all,
+          due_rest: rest,
           guard: { disabled: true, reason: '本日の復習ではトピックガードを適用しません' }
         };
       });
@@ -1417,7 +1499,20 @@
     var mode = options.mode || 'random';
     var count = isNum(options.count) && options.count > 0 ? options.count : 10;
 
-    if (mode === 'review') { return getReviewQueue(count); }
+    if (mode === 'review') {
+      /* count を**明示していれば**従う（テストと、続きを解くときの経路）。
+         count には既定値10が入っているので、resolve 後の変数を見てはいけない。
+         options を直接見る。ここを間違えると、上限が常に10になる（実測）。 */
+      if (isNum(options.count) && options.count > 0) { return getReviewQueue(options.count); }
+      if (options.reviewCap === false) { return getReviewQueue(null); }
+      return S.loadMeta().then(function (meta) {
+        var rc = resolveReviewCap(meta);
+        return getReviewQueue(rc.cap > 0 ? rc.cap : null).then(function (q) {
+          q.review_cap = rc.cap; q.review_cap_mode = rc.mode;
+          return q;
+        });
+      });
+    }
 
     return S.loadMeta().then(function (meta) {
       var preferFrequent = (options.preferFrequent !== undefined && options.preferFrequent !== null)
@@ -2439,6 +2534,16 @@
       return S.getAllAtoms();
     }).then(function (allAtoms) {
       var unlearnedList = allAtoms.filter(function (a) { return a._unlearned === 1; });
+      /* --- 期日を「問題の数」でも数えておく（V1.92） ---
+         getDueCount が返すのは**肢の数**。ところが逆算プランナーは
+         それを「復習 ◯問」と表示していた（V1.50 からずっと）。
+         4肢の問題1つが「4問」に見えていたことになる。
+         読み直さずに、いま手元にある全アトムから数える（§6-7）。 */
+      var nowT = nowMs(), dueSeen = {}, dueQ = 0;
+      allAtoms.forEach(function (a) {
+        if (!isNum(a.due_date) || a.due_date > nowT) { return; }
+        if (!dueSeen[a.q_id]) { dueSeen[a.q_id] = 1; dueQ++; }
+      });
       return Promise.all([
         S.getDueCount(),
         computeLevel(allAtoms),
@@ -2447,7 +2552,8 @@
         Promise.resolve(unlearnedList.length),
         S.countQuestions(),
         S.loadMeta(),
-        Promise.resolve(unlearnedList)
+        Promise.resolve(unlearnedList),
+        Promise.resolve(dueQ)
       ]);
     }).then(function (r) {
       var dueCount = r[0];
@@ -2483,6 +2589,13 @@
 
       var boundary2 = isNum(meta.day_boundary_hour) ? meta.day_boundary_hour : 4;
 
+      /* --- 今日の分（V1.92） ---
+         上限は先送りであって帳消しではないので、残りは必ず数で返す。 */
+      var dueQuestions = r[8] || 0;
+      var rc = resolveReviewCap(meta);
+      var dueToday = (rc.cap > 0) ? Math.min(dueQuestions, rc.cap) : dueQuestions;
+      var dueRest = Math.max(0, dueQuestions - dueToday);
+
       /* --- 解いた問題数の到達点（V1.53・無料枠の物差し） ---
          いま解けている数ではなく【これまでに到達した最大】で持つ。
          いまの数で見ると、全初期化や問題の追加で数が戻り、
@@ -2501,10 +2614,20 @@
         /* 逆算プランナー（V1.50）。ホーム最上部に1行で出す。 */
         /* プランナーの分母も本体プールだけ。模試待ちを入れると
            「今日はあと◯問」がやっても減らない数になる（V1.56）。 */
-        plan: buildPlan(meta, dueCount, unlearnedMain, boundary2, nowMs()),
-        /* App Badging API には必ず整数を渡す（文字列を渡すと型エラーで落ちる） */
-        badge_value: Math.min(dueCount, 99),
-        badge_text: dueCount > 99 ? '99+' : String(dueCount),
+        /* プランナーへ渡すのは**問題の数**（V1.92 で肢数から直した）。 */
+        plan: buildPlan(meta, dueToday, unlearnedMain, boundary2, nowMs()),
+        /* App Badging API には必ず整数を渡す（文字列を渡すと型エラーで落ちる）。
+           出すのは「今日の分」。押したら出てくる数と、バッジの数を揃える。
+           ここが食い違うと「128と出ていたのに40問で終わった」になる。 */
+        badge_value: Math.min(dueToday, 99),
+        badge_text: dueToday > 99 ? '99+' : String(dueToday),
+        due_questions: dueQuestions,
+        due_today: dueToday,
+        due_rest: dueRest,
+        review_cap: rc.cap,
+        review_cap_mode: rc.mode,
+        daily_count: (meta.daily_key === S.util.dayStart(nowMs(), boundary2))
+          ? (meta.daily_count || 0) : 0,
         level: level,
         scan: scan,
         unlocks: unlocks.unlocks,
@@ -2679,6 +2802,11 @@
     weightedPick    : weightedPick,
     CONQUER_BAND    : CONQUER_BAND,
     getReviewQueue  : getReviewQueue,
+    CAP_MIN         : CAP_MIN,          CAP_MAX        : CAP_MAX,
+    CAP_DEFAULT     : CAP_DEFAULT,      CAP_MULT       : CAP_MULT,
+    CAP_MIN_DAYS    : CAP_MIN_DAYS,     DAILY_KEEP     : DAILY_KEEP,
+    medianOf        : medianOf,         autoReviewCap  : autoReviewCap,
+    resolveReviewCap: resolveReviewCap, bumpDaily      : bumpDaily,
     getKnockQueue   : getKnockQueue,
     applyTopicGuard : applyTopicGuard,
     sortCandidates  : sortCandidates,

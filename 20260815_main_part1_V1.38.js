@@ -965,6 +965,20 @@
       }
       /* 説明文（#review-sub）は V1.17 で撤去した。件数は右上のバッジが出す。 */
 
+      /* --- 溜まっているときだけ出す1行（V1.92） ---
+         上限は先送りであって帳消しではない。隠すと、定着率だけが良く見える
+         嘘の画面になる。逆に、溜まっていない人には1文字も足さない。 */
+      var rest = $('#review-rest');
+      if (rest) {
+        if (h.due_rest > 0) {
+          rest.textContent = '期日の問題は ' + h.due_questions + '問あります。'
+            + '今日は ' + h.due_today + '問だけ出します（残り ' + h.due_rest + '問は明日以降）。';
+          rest.hidden = false;
+        } else {
+          rest.hidden = true;
+        }
+      }
+
       /* --- 逆算プランナー（V1.50） --- */
       renderPlan(h.plan);
 
@@ -2793,6 +2807,18 @@
       .then(function () {
         if (mode === 'review') {
           setText('#done-count', solved);
+          /* V1.92：上限で先送りしたぶんがあるなら隠さない。
+             ただし既定は「今日はここまで」。続ける道だけ開けておく。 */
+          var h2 = state.homeState || {};
+          var restEl = $('#done-rest'), moreEl = $('#done-more');
+          var hasRest = (h2.due_rest || 0) > 0;
+          if (restEl) {
+            restEl.textContent = hasRest
+              ? ('期日の問題はあと ' + h2.due_rest + '問ありますが、明日にまわして大丈夫です。')
+              : '';
+            restEl.hidden = !hasRest;
+          }
+          if (moreEl) { moreEl.hidden = !hasRest; }
           openModal('#modal-review-done');
           fireConfetti();
           /* ダイアログを閉じたあとの TOP3 ポップインは後半が担当する */
@@ -3333,6 +3359,12 @@
     on($('#done-next'), 'click', function () {
       closeModals();
       Half2.showTop3Popin();
+    });
+    /* V1.92：先送りしたぶんを、いま続けたい人のための道。
+       上限は「やめてよい」ための仕組みで、禁止ではない。 */
+    on($('#done-more'), 'click', function () {
+      closeModals();
+      startSession({ mode: 'review', reviewCap: false });
     });
     on($('#nag-review'), 'click', function () {
       closeModals();

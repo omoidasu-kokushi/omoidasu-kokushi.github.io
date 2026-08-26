@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.91">
+<link rel="stylesheet" href="./styles.css?v=1.92">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.91",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=1.92",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.91",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=1.92",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.91",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=1.92",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.91",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=1.92",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=1.91",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=1.92",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -343,6 +343,12 @@
           <span class="hero-arrow" aria-hidden="true"></span>
         </button>
 
+        <!-- V1.92：溜まっているときだけ出す1行。
+             溜まっていない人の画面には1文字も足さない（カードに出すのは
+             タイトルと件数だけ、という V1.17 の決定を壊さないため）。
+             上限は先送りであって帳消しではないので、残りは必ず数で見せる。 -->
+        <p class="review-rest" id="review-rest" hidden></p>
+
         <!-- サブ動線：3大サブカード -->
         <div class="sub-grid">
           <button type="button" class="sub-card is-pulse" id="card-knock" data-action="go-knock">
@@ -420,7 +426,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260826_Omoidasu_V1.91</p>
+        <p class="build-stamp">20260826_Omoidasu_V1.92</p>
       </div>
     </section>
 
@@ -852,6 +858,24 @@
             </div>
             <p class="set-note" id="hissu-note">—</p>
           </div>
+
+          <!-- V1.92：復習の1日上限「今日の分」。
+               上限が無いと、3日休んだだけでカードに200と出て、
+               その数字そのものが始められない理由になる。
+               出す順は緊急度の昇順のままなので、切られるのは常に
+               「いちばん後回しでよいもの」。残りは必ず数で見せる。 -->
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>復習の1日上限</b>
+              <small>本日の復習で1日に出す問題数の上限。差し迫ったものから順に出します</small></span>
+            <div class="seg-group" id="set-cap" role="group" aria-label="復習の1日上限">
+              <button type="button" class="seg-btn is-active" data-cap="auto">自動</button>
+              <button type="button" class="seg-btn" data-cap="40">40問</button>
+              <button type="button" class="seg-btn" data-cap="60">60問</button>
+              <button type="button" class="seg-btn" data-cap="100">100問</button>
+              <button type="button" class="seg-btn" data-cap="0">なし</button>
+            </div>
+            <p class="set-note" id="cap-note">—</p>
+          </div>
         </section>
 
         <section class="set-block">
@@ -1213,7 +1237,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260826_Omoidasu_V1.91 / cache v1.79.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260826_Omoidasu_V1.92 / cache v1.80.0</p>
         </section>
       </div>
     </section>
@@ -1381,7 +1405,11 @@
   <div class="modal-card modal-celebrate" id="modal-review-done" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">本日の復習タスク完了！🎉</h3>
     <p class="modal-body"><b id="done-count">0</b> 件の復習を終えました。</p>
+    <!-- V1.92：上限で先送りしたぶんがあるときだけ出す。
+         既定は「やめてよい」。続けたい人のために道は開けておく。 -->
+    <p class="modal-body done-rest" id="done-rest" hidden></p>
     <div class="modal-actions">
+      <button type="button" class="btn-ghost" id="done-more" hidden>続ける</button>
       <button type="button" class="btn-primary" id="done-next">閉じる</button>
     </div>
   </div>
@@ -1741,12 +1769,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.91"></script>
-<script src="./storage.js?v=1.91"></script>
-<script src="./scheduler.js?v=1.91"></script>
+<script src="./questions.js?v=1.92"></script>
+<script src="./storage.js?v=1.92"></script>
+<script src="./scheduler.js?v=1.92"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=1.91"></script>
-<script src="./license.js?v=1.91"></script>
+<script src="./drive.js?v=1.92"></script>
+<script src="./license.js?v=1.92"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

@@ -2404,7 +2404,8 @@ var QR_MATRIX = [
       });
       /* 自分で入れた図の表示位置（V1.29）。未設定なら既定の after-figure。 */
       refreshExamNote().catch(noop);
-      refreshHissuNote().catch(noop);     /* V1.89 必修の出題比率 */
+      refreshHissuNote().catch(noop);
+    refreshCapNote().catch(noop);     /* V1.89 必修の出題比率 */
       refreshExplainMode();
       refreshDrive().catch(noop);
       refreshLicense();
@@ -3433,6 +3434,48 @@ var QR_MATRIX = [
         }
         return r;
       });
+    });
+  }
+
+  /* ================================================================
+   * 復習の1日上限「今日の分」（V1.92）
+   * 上限は先送りであって帳消しではない。設定にも残数を出す。
+   * ================================================================ */
+  function refreshCapNote() {
+    var box = $('#cap-note');
+    return K.getHomeState().then(function (h) {
+      var mode = h.review_cap_mode;
+      $$('#set-cap .seg-btn').forEach(function (b) {
+        var v = b.dataset.cap;
+        var on = (mode === 'auto') ? (v === 'auto')
+               : (mode === 'off')  ? (v === '0')
+               : (Number(v) === h.review_cap);
+        b.classList.toggle('is-active', on);
+      });
+      if (box) {
+        box.textContent = (h.review_cap > 0)
+          ? ('いまの上限 ' + h.review_cap + '問'
+             + (mode === 'auto' ? '（自動：ここ2週間で解いた日の中央値から）' : '（手動）')
+             + '　期日の問題は ' + h.due_questions + '問'
+             + (h.due_rest ? '（うち ' + h.due_rest + '問は明日以降）' : ''))
+          : ('上限なし。期日の問題は ' + h.due_questions + '問すべて出ます。');
+      }
+      return h;
+    });
+  }
+
+  function setReviewCap(v) {
+    var val = (v === 'auto') ? 'auto' : Number(v);
+    if (val !== 'auto' && !(val >= 0)) { return Promise.resolve(null); }
+    return S.setMeta('review_cap', val).then(function () {
+      return S.loadMeta();
+    }).then(function (meta) {
+      M.state.meta = meta;
+      return refreshCapNote();
+    }).then(function (h) {
+      toast(val === 'auto' ? '復習の1日上限を自動で決めます'
+          : (val === 0 ? '復習の上限をなくしました' : ('復習の1日上限を ' + val + '問にしました')), 2800);
+      return M.refreshHome().then(function () { return h; });
     });
   }
 
@@ -5006,6 +5049,7 @@ var QR_MATRIX = [
     openDashboard: openDashboard,        renderDashboard: renderDashboard,
     setPreferFrequent: setPreferFrequent,
     refreshHissuNote: refreshHissuNote, setHissuMode: setHissuMode,
+    refreshCapNote: refreshCapNote, setReviewCap: setReviewCap,
     maybeHissuHint: maybeHissuHint, hissuHintAnswer: hissuHintAnswer,
     hissuDistance: hissuDistance,
     openSearch: openSearch,              runSearch: runSearch,
@@ -5409,6 +5453,10 @@ var QR_MATRIX = [
     on($('#btn-drive-logout'),  'click', function () { driveLogout(); });
     on($('#btn-drive-sync'),    'click', function () { driveSync(); });
     on($('#set-exam-year'), 'change', function (ev) { setExamYear(ev.target.value); });
+    on($('#set-cap'), 'click', function (ev) {
+      var b = ev.target.closest('.seg-btn');
+      if (b && b.dataset.cap !== undefined) { setReviewCap(b.dataset.cap); }
+    });
     on($('#set-hissu'), 'click', function (ev) {
       var b = ev.target.closest ? ev.target.closest('.seg-btn') : null;
       if (b && b.dataset.hissu) { setHissuMode(b.dataset.hissu); }
