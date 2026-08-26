@@ -345,6 +345,7 @@
       selected: [],        /* original_num の配列 */
       eliminated: {},      /* atom_id -> true（根拠あり／消去完了トグル） */
       graded: false,
+      committed: false,    /* 正規に記録済みか（V1.93・書き置きの二重取り防止） */
       answeredRight: null,
       evals: {},           /* atom_id -> 'hard'|'normal'|'easy'|'master' */
       touched: {},         /* 自分で選び直した肢。推奨のままと区別する */
@@ -465,6 +466,11 @@
            照合に失敗しても学習は止めない（未購入として扱うだけ）。 */
         return (global.NurseLicense ? global.NurseLicense.load().catch(noop)
                                     : Promise.resolve(null));
+      })
+      .then(function () {
+        /* V1.93：前回、解説を読んでいる途中で閉じられた1問を先に記録する。
+           refreshHome より前でないと、その1問が反映されない数字が一瞬出る。 */
+        return flushPendingAnswer();
       })
       .then(function () {
         return refreshHome();
@@ -1338,6 +1344,8 @@
       selected: [],
       eliminated: {},
       graded: false,
+      /* V1.93：この1問が正規に記録されたか。書き置きの二重取りを防ぐ印。 */
+      committed: false,
       answeredRight: null,
       evals: {},
       touched: {},
@@ -2658,6 +2666,11 @@
     var btn = $('#btn-next');
     if (btn) { btn.disabled = true; }
 
+    /* V1.93：これから正規に記録する。書き置きは役目を終える。
+       先に消しておかないと、記録の直後に閉じられたときへ二重に入る。 */
+    cur.committed = true;
+    pendingClear();
+
     var mode = state.session.mode;
 
     /* 単語自由検索の演習は、忘却スケジュールも弱点ptも一切更新しない */
@@ -3420,10 +3433,99 @@
          自動同期はホームへ来た8秒後にしか走らないので、
          「学習を終える→ホーム→すぐ閉じる」がまるごと未同期だった。
          ここが最後の機会になる。await はしない（できない）。 */
-      if (doc.visibilityState === 'hidden' && state.booted) { syncOnHide(); }
+      if (doc.visibilityState === 'hidden' && state.booted) {
+        stashPendingAnswer();      /* V1.93：同期。必ず syncOnHide より先。 */
+        syncOnHide();
+      }
     });
     /* visibilitychange が来ない環境のための二重の網（§4-14 と同じ考え方）。 */
-    on(global, 'pagehide', function () { if (state.booted) { syncOnHide(); } });
+    on(global, 'pagehide', function () {
+      if (state.booted) { stashPendingAnswer(); syncOnHide(); }
+    });
+  }
+
+  /* ======================================================================
+   * 解いたのに残らない、を無くす（V1.93）
+   *
+   * 【何が起きていたか】
+   * 記録が書かれるのは `nextQuestion()` の中だけ。つまり
+   * **解答を確定して解説を読んでいる途中でアプリを閉じると、その1問は消える。**
+   * 利用者から見ると「解いたのに残っていない」。いちばん報告されやすい壊れ方。
+   *
+   * 【なぜ localStorage なのか】
+   * 閉じる直前に走れるのは**同期の処理だけ**。IndexedDB は非同期なので、
+   * `pagehide` の中から書いても最後まで走りきる保証がない。
+   * localStorage は同期に書けるので、ここだけは使う。
+   *
+   * 設定を localStorage に置かない方針（§14-3）とは矛盾しません。
+   * ここに置くのは**次の起動で本棚へ移すまでの一時置き場**であって、
+   * 利用者のデータの置き場所ではない。バックアップの対象にもしない。
+   *
+   * 【二重に記録しない】
+   * 記録した鍵（q_id と解答時刻）を meta に残し、同じ鍵は二度と流し込まない。
+   * 復元は解答した**当時の時刻**で行う（`ctx.now`）。
+   * 3日後に開き直したときに「10分後」が「3日後の10分後」になっては意味がない。
+   * ====================================================================== */
+  var PENDING_KEY = 'omoidasu.pending.v1';
+
+  function pendingRead() {
+    try {
+      var raw = global.localStorage && global.localStorage.getItem(PENDING_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function pendingClear() {
+    try { global.localStorage && global.localStorage.removeItem(PENDING_KEY); }
+    catch (e) { /* 使えない環境（プライベートモード等）では黙って諦める */ }
+  }
+
+  /* 解説を読んでいる途中で閉じられたときに、その1問を書き置きする。
+     **同期で終わること**が唯一の要件。ここで await してはいけない。 */
+  function stashPendingAnswer() {
+    var cur = state.current, s = state.session;
+    if (!cur || !s || !cur.question || !cur.graded || cur.committed) { return false; }
+    if (s.mode === 'search' || s.mode === 'knock') { return false; }
+    var evaluations = cur.atoms.map(function (a) {
+      var picked = cur.selected.indexOf(a.original_num) >= 0;
+      var forgot = !!(cur.forgot && cur.forgot[a.atom_id]);
+      return {
+        atom_id: a.atom_id,
+        eval: cur.evals[a.atom_id] || 'normal',
+        is_correct: forgot ? false : (picked === !!a.is_correct)
+      };
+    });
+    if (!evaluations.length) { return false; }
+    try {
+      global.localStorage.setItem(PENDING_KEY, JSON.stringify({
+        q_id: cur.question.q_id, evaluations: evaluations,
+        mode: s.mode, sessionId: s.sessionId,
+        at: Date.now(), thinkMs: cur.thinkMs || null,
+        boundaryHour: state.meta ? state.meta.day_boundary_hour : 4
+      }));
+      return true;
+    } catch (e) { return false; }
+  }
+
+  /* 起動時に、書き置きがあれば本棚へ移す。
+     ここで失敗しても学習は止めない（書き置きは残したまま次の起動に賭ける）。 */
+  function flushPendingAnswer() {
+    var p = pendingRead();
+    if (!p || !p.q_id || !p.evaluations || !p.evaluations.length) { return Promise.resolve(null); }
+    var key = p.q_id + '|' + p.at;
+    return S.getMeta('pending_flushed_key', null).then(function (last) {
+      if (last === key) { pendingClear(); return null; }   /* 同じものは二度入れない */
+      return K.applyQuestionEvaluations(p.q_id, p.evaluations, {
+        mode: p.mode, sessionId: p.sessionId, now: p.at,
+        boundaryHour: p.boundaryHour, thinkMs: p.thinkMs
+      }).then(function (r) {
+        return S.setMeta('pending_flushed_key', key).then(function () {
+          pendingClear();
+          toast('前回の解答を記録しました', 2600);
+          return r;
+        });
+      });
+    }).catch(function () { return null; });
   }
 
   /* 画面を閉じる直前の同期。後半モジュールが持っているので、無ければ何もしない。 */
@@ -3671,6 +3773,9 @@
     armInterlock  : armInterlock,
     confirmAnswer : confirmAnswer,
     renderReview  : renderReview,
+    stashPendingAnswer: stashPendingAnswer,
+    flushPendingAnswer: flushPendingAnswer,
+    PENDING_KEY   : PENDING_KEY,
     toggleDetail  : toggleDetail,
     showVerdictPopup: showVerdictPopup,
     hideVerdictPopup: hideVerdictPopup,

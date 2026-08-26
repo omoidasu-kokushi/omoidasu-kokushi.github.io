@@ -175,6 +175,10 @@
     /* --- 表示設定 --- */
     verdict_popup_enabled   : true,          /* 正誤ポップアップ */
 
+    /* 書き置き（解説を読んでいる途中で閉じられた1問）を流し込んだ最後の鍵。
+       同じものを二度入れないための印（V1.93）。 */
+    pending_flushed_key     : null,
+
     /* --- インポート履歴 --- */
     last_import_at          : null,
     last_import_report      : null,
