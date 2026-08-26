@@ -1673,6 +1673,9 @@
     /* --- BLOCK C：評価サマリー --- */
     renderSummary();
 
+    /* V1.91：評価の回数。画面を止めてまで待たない（枠は先に置いてある）。 */
+    loadEvalHistory().catch(noop);
+
     /* 単語自由検索の演習は評価入力をスキップする（第12章①） */
     var isSearchMode = (state.session.mode === 'search');
     $$('#rv-choices .eval-group').forEach(function (g) { g.hidden = isSearchMode; });
@@ -1914,7 +1917,11 @@
       /* 期日前の肢は評価ボタンごと差し替える（disabled で並べない） */
       var evalArea = (dec.commit && !dec.demote)
         ? '<div class="eval-group" role="group" aria-label="選択肢' + a.original_num +
-          'の評価">' + evals + '</div>'
+          'の評価">' + evals + '</div>' +
+          /* V1.91：この肢で同じ評価を過去に何回押したか。中身は非同期で後から入れる。
+             ここで枠だけ作っておくのは、あとから差し込むと高さが動いて
+             読んでいる場所がずれるため。 */
+          '<p class="eval-count" data-atom-id="' + escapeHtml(a.atom_id) + '" hidden></p>'
         : lockedPanelHtml(a, dec);
 
       /* 解答前の到達度で存在感を決める。易・マスターまで来ている肢は
@@ -2533,7 +2540,55 @@
         toggleClass(b2, 'is-active', b2.getAttribute('data-eval') === evalKey);
       });
     }
+    renderEvalCounts();          /* V1.91：押した評価の回数へ出し替える */
     renderSummary();
+  }
+
+  /* --- 評価の回数表示（V1.91） --------------------------------------
+   * 「普通」は『簡単』を押すまで1週間ループを続ける（§4-4）ので、
+   * 押し続けているかぎりその肢は卒業しない。**止まっていることが見えない。**
+   * 数字だけ出す。煽らない。ただし「同じ評価が続いていて、しかも
+   * その間ずっと正解している」ときだけは、記録から読める事実として伝える。
+   *
+   * 描画を止めてまで待たない。先に画面を出して、履歴は後から入れる。
+   * 枠（hidden の <p>）は先に置いてあるので、入っても高さは動かない。 */
+  var EVAL_JA = { hard: '難しい', normal: '普通', easy: '易しい', master: 'マスター' };
+
+  function loadEvalHistory() {
+    var cur = state.current;
+    if (!cur || !cur.atoms) { return Promise.resolve(); }
+    cur.hist = cur.hist || {};
+    var ids = cur.atoms.map(function (a) { return a.atom_id; });
+    return Promise.all(ids.map(function (id) {
+      return K.getEvalHistory(id).then(function (h) { cur.hist[id] = h; })
+        .catch(function () { cur.hist[id] = null; });
+    })).then(function () { renderEvalCounts(); });
+  }
+
+  function renderEvalCounts() {
+    var cur = state.current;
+    if (!cur || !cur.hist) { return; }
+    $$('#rv-choices .eval-count').forEach(function (el) {
+      var id = el.getAttribute('data-atom-id');
+      var h = cur.hist[id];
+      var atom = cur.atoms.filter(function (a) { return a.atom_id === id; })[0];
+      var key = cur.evals[id] || 'normal';
+      if (!h || !atom) { el.hidden = true; return; }
+      /* いまの1回はまだ記録されていない。記録される予定なら足して数える。 */
+      var dec = commitDecisionFor(atom);
+      var willCount = !!(dec.commit && !dec.demote);
+      var n = (h.counts[key] || 0) + (willCount ? 1 : 0);
+      if (n <= 0) { el.hidden = true; return; }
+      var txt = (EVAL_JA[key] || key) + ' ' + n + '回目';
+      var hint = K.evalStepUpHint(h, key);
+      if (hint) {
+        txt += ' ・' + h.streak + '回続けて正解しています。［' +
+               hint.label + '］でも大丈夫かもしれません';
+      }
+      el.textContent = txt;
+      toggleClass(el, 'is-hint', !!hint);
+      el.hidden = false;
+    });
   }
 
   function setStarButton(sel, on) {

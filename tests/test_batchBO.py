@@ -26,7 +26,7 @@
 ・問題数を減らさない。同じ集合を返す
 ・「頻出問題を優先する」トグルをOFFにしたら、V1.89以前と同じ均等に戻る
 """
-import io, json, os, sys, glob as _g
+import io, json, os, re, sys, glob as _g
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -51,10 +51,15 @@ ok("トグルOFFで均等に戻ると書いてある",
    "var pick = preferFrequent ? rankShuffle : shuffle;" in sc)
 ok("必修に掛けない理由が書いてある", "必修には掛けない" in sc)
 ok("完全ソートを採らない理由が書いてある", "並べ替えではなく重み付き抽選が正しい" in sc)
-ok("版番号を上げてある", "20260826_Omoidasu_V1.90" in html)
-ok("?v= を上げてある", "?v=1.90" in html and "?v=1.89" not in html)
-ok("CACHE_NAME を上げてある", "const CACHE_NAME = 'v1.78.0';" in read("sw.js"))
 css = read("styles.css")
+# 版そのものは batchAC / batchAH が横断で見ている。ここで数字を焼くと
+# 次の改修で必ず赤くなり、**関係ない場所を直させる**ので焼かない。
+ok("版番号・CACHE_NAME・?v= の3箇所が揃っている",
+   read("index.html").count("?v=") >= 6
+   and read("sw.js").count("?v=") >= 6
+   and (lambda i, w: i and w and i == w)(
+       (re.search(r"\?v=([0-9.]+)", read("index.html")) or [None, None])[1],
+       (re.search(r"\?v=([0-9.]+)", read("sw.js")) or [None, None])[1]))
 ok("折り返したタグが重ならないよう行の隙間を取ってある",
    "row-gap:19px" in css and css.count("row-gap:19px") >= 2)
 

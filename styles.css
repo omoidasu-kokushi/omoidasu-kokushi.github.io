@@ -1205,6 +1205,19 @@ small{ font-size:var(--fs-xs); }
 .atom-note-flag.is-wrong{ background:color-mix(in srgb, var(--c-hard) 16%, transparent); color:var(--c-hard); }
 .atom-note-text{ font-weight:700; font-size:var(--fs-md); margin-bottom:4px; }
 .atom-note-exp{ font-size:var(--fs-md); color:var(--text-sub); }
+/* 評価の回数（V1.91）。数字は事実として静かに置く。
+   is-hint は「同じ評価が続いていて、その間ずっと正解している」ときだけ。
+   煽りではなく、記録から読める事実を伝えるための色。 */
+.eval-count{
+  margin-top:5px;
+  font-size:var(--fs-xs); font-weight:700;
+  color:var(--text-sub);
+  line-height:1.5;
+}
+.eval-count.is-hint{
+  color:var(--c-easy);
+}
+
 .atom-tags{ display:flex; flex-wrap:wrap; column-gap:5px; row-gap:19px; margin-top:7px; }
 /* row-gap を 19px にしてあるのは見た目のためではない（V1.90）。
    .tag-pill::after が上下へ 9px ずつ出ているので、行の隙間が 5px だと

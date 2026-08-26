@@ -520,6 +520,61 @@
     };
   }
 
+  /* --- 評価の履歴（V1.91） ------------------------------------------
+   *
+   * 【なぜ要るか】
+   * 「普通」は 初見1h → 1d → **以降『簡単』を押すまで1週間固定ループ**（§4-4）。
+   * つまり押し続けているかぎり、その肢は永久に卒業しません。
+   * ところが画面には「いま何回目か」がどこにも出ていないので、
+   * **止まっていること自体が見えません。**
+   *
+   * 【何を出すか／何を出さないか】
+   * 出すのは**数字だけ**。「◯回も押している」と煽らない。
+   * 自己評価は本人の観測で、外から上書きするものではありません。
+   *
+   * ただし1つだけ例外を置きます。
+   * **同じ評価が続いていて、しかもその間ずっと正解している**とき。
+   * これは「解けているのに自分を低く見積もっている」という、
+   * 記録から読み取れる事実です。事実なので伝えます。
+   * 逆に、間違えながら「普通」を押している人には何も言いません。
+   * そちらは正しい自己評価で、押し上げると予定が嘘になります。
+   * ------------------------------------------------------------------ */
+  var EVAL_STREAK_HINT = 4;   /* この回数続いたら声をかける（設計値） */
+
+  function evalHistoryFromLogs(logs) {
+    var list = (logs || []).filter(function (l) { return !!l.eval; })
+      .sort(function (a, b) { return (a.answered_at || 0) - (b.answered_at || 0); });
+    var counts = { hard: 0, normal: 0, easy: 0, master: 0 };
+    list.forEach(function (l) {
+      if (counts[l.eval] !== undefined) { counts[l.eval]++; }
+    });
+    var last = list.length ? list[list.length - 1].eval : null;
+    var n = 0, allCorrect = true, i;
+    for (i = list.length - 1; i >= 0; i--) {
+      if (list[i].eval !== last) { break; }
+      n++;
+      if (list[i].is_correct === false) { allCorrect = false; }
+    }
+    return {
+      counts: counts, total: list.length,
+      last_eval: last, streak: n,
+      streak_all_correct: (n > 0) && allCorrect
+    };
+  }
+
+  function getEvalHistory(atomId) {
+    return S.getLogsByAtom(atomId).then(evalHistoryFromLogs);
+  }
+
+  /* 声をかけてよいか。掛ける先は「1つ上」だけ。飛び級はさせない。 */
+  function evalStepUpHint(hist, evalKey) {
+    if (!hist || hist.last_eval !== evalKey) { return null; }
+    if (hist.streak < EVAL_STREAK_HINT || !hist.streak_all_correct) { return null; }
+    if (evalKey === 'hard')   { return { to: 'normal', label: '普通' }; }
+    if (evalKey === 'normal') { return { to: 'easy',   label: '易しい' }; }
+    return null;
+  }
+
   function computeWeaknessForAtom(atomId) {
     return Promise.all([S.getAtom(atomId), S.getLogsByAtom(atomId)]).then(function (r) {
       return computeWeaknessFromLogs(r[1], r[0]);
@@ -2550,6 +2605,10 @@
     STREAK_MULTIPLIER: STREAK_MULTIPLIER,
     RANK_WEIGHT      : RANK_WEIGHT,
     rankShuffle      : rankShuffle,
+    EVAL_STREAK_HINT : EVAL_STREAK_HINT,
+    evalHistoryFromLogs: evalHistoryFromLogs,
+    getEvalHistory   : getEvalHistory,
+    evalStepUpHint   : evalStepUpHint,
     LEVEL_DEFS       : LEVEL_DEFS,
     VISUAL_BY_LEVEL  : VISUAL_BY_LEVEL,
     SCAN_MODEL_SIZE  : SCAN_MODEL_SIZE,
