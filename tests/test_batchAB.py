@@ -228,8 +228,11 @@ def runtime_checks():
             after1 = pg.evaluate("async () => (await window.Storage.getAllAtoms()).filter(a=>a.answer_count>0).length")
             ok("1タップでは消えない（確認が挟まる）", after1 == before and before > 0,
                "before=%s after=%s" % (before, after1))
+            # V1.86：data-medium は「単元＋大項目＋中項目」の複合キーになった。
+            # 確認本文には区切り文字ではなくパンくずが出る。名前が出ていることを見る。
+            leaf = target.split("\u001f")[-1]
             ok("確認に対象名が出る",
-               target in pg.inner_text("#reset-medium-confirm-body"))
+               leaf in pg.inner_text("#reset-medium-confirm-body"), "target=%r" % (target,))
             pg.click("#reset-medium-go")
             pg.wait_for_timeout(1200)
             after2 = pg.evaluate("async () => (await window.Storage.getAllAtoms()).filter(a=>a.answer_count>0).length")

@@ -2505,6 +2505,16 @@ var QR_MATRIX = [
                    '表記ゆれのまま取り込むと単元ツリーが分裂します。例：' +
                    esc((rep.tax_examples || []).join(' ／ ')) + '</small>');
       }
+      /* 概念タグのガード（V1.88）。分類と同じ理由で必ず出す。
+         74マスタから外れたタグは、理解率にもノックにもTOP3にも出てこない。
+         **どこにもエラーが出ないまま、その機能だけが静かに死ぬ。** */
+      if (rep.tag_bad) {
+        lines.push('<b>⚠ 74テーマに無いタグ ' + rep.tag_bad + ' 件（' +
+                   (rep.tag_bad_rows || 0) + ' 問）</b>');
+        lines.push('<small>このタグは74概念の理解率にも、概念別弱点ノックにも、' +
+                   '最優先克服概念にも出てきません。例：' +
+                   esc((rep.tag_examples || []).join(' ／ ')) + '</small>');
+      }
       if (rep.skipped) {
         lines.push('<b>スキップ ' + rep.skipped + ' 行</b>（うち正解判定の不一致 ' + rep.mismatch + ' 行）');
       }
@@ -2796,15 +2806,21 @@ var QR_MATRIX = [
       var qs = r[0], atoms = r[1];
       if (!qs.length) { toast('データがありません'); return null; }
 
+      /* V1.86：中項目は「単元＋大項目＋中項目」でまとめる。
+         名前だけでまとめると、成人看護学の「C. 検査を受ける患者の看護」
+         12件が1行に潰れ、パンくずは最初に当たった1件しか出ないのに、
+         押すと12件ぶん消える。表示と実害が食い違う。 */
       var order = [], byMedium = {};
       qs.forEach(function (q) {
-        if (!byMedium[q.medium]) {
-          byMedium[q.medium] = { key: q.medium, unit: q.unit, major: q.major, atoms: 0, learned: 0 };
-          order.push(q.medium);
+        var k = S.scopeKey(q.unit, q.major, q.medium);
+        if (!byMedium[k]) {
+          byMedium[k] = { key: k, label: q.medium, unit: q.unit, major: q.major,
+                          atoms: 0, learned: 0 };
+          order.push(k);
         }
       });
       atoms.forEach(function (a) {
-        var m = byMedium[a.medium];
+        var m = byMedium[S.scopeKey(a.unit, a.major, a.medium)];
         if (!m) { return; }
         m.atoms++;
         if (a.answer_count > 0) { m.learned++; }
@@ -2816,7 +2832,7 @@ var QR_MATRIX = [
         return '<button type="button" class="medium-row' + (dead ? ' is-empty' : '') +
                '" data-medium="' + esc(k) + '"' + (dead ? ' disabled' : '') + '>' +
                '<span class="medium-main">' +
-               '<span class="medium-name">' + esc(k) + '</span>' +
+               '<span class="medium-name">' + esc(m.label) + '</span>' +
                '<span class="medium-path">' + esc(m.unit) + ' ＞ ' + esc(m.major) + '</span></span>' +
                '<span class="medium-count">' +
                (dead ? '記録なし' : '学習済 ' + m.learned + ' / ' + m.atoms + ' 肢') +
@@ -2827,13 +2843,22 @@ var QR_MATRIX = [
     });
   }
 
+  /* medium には「単元＋大項目＋中項目」の複合キーが来る（V1.86）。
+     古い形（中項目名だけ）が来ても storage 側が受け取れるようにしてあるが、
+     その場合は同名の中項目を全部巻き込むので、ここでは必ず複合キーを渡す。 */
+  function mediumLabel(key) { return S.splitScope(key).leaf || String(key || ''); }
+  function mediumPath(key) {
+    var sc = S.splitScope(key);
+    return sc.unit ? (sc.unit + ' ＞ ' + sc.major + ' ＞ ' + sc.leaf) : sc.leaf;
+  }
+
   function confirmResetMedium(medium) {
     if (!medium) { return Promise.resolve(null); }
     return S.getAtomsByScope('medium', medium).then(function (atoms) {
       var learned = atoms.filter(function (a) { return a.answer_count > 0; }).length;
       st.resetMedium = medium;
       setHtml('#reset-medium-confirm-body',
-        '<b>' + esc(medium) + '</b> の学習記録 <b>' + learned + '</b> 件を消します。<br>' +
+        '<b>' + esc(mediumPath(medium)) + '</b> の学習記録 <b>' + learned + '</b> 件を消します。<br>' +
         '問題文・選択肢・解説はそのまま残り、評価・復習期日・弱点ptだけが未学習の状態に戻ります。' +
         '<br>この操作は取り消せません。');
       openModal('#modal-reset-medium-confirm');
@@ -2846,7 +2871,7 @@ var QR_MATRIX = [
     if (!medium) { return Promise.resolve(null); }
     closeModals();
     return S.resetProgressByScope('medium', medium).then(function (r) {
-      toast('「' + medium + '」の ' + r.atoms + ' 肢を未学習に戻しました', 4000);
+      toast('「' + mediumLabel(medium) + '」の ' + r.atoms + ' 肢を未学習に戻しました', 4000);
       st.resetMedium = null;
       return K.refreshAll({ recomputeWeakness: true });
     }).then(function () { return M.refreshHome(); });
@@ -4924,6 +4949,7 @@ var QR_MATRIX = [
     openHelp: openHelp,                  HELP: HELP,
     HELP_COLS: HELP_COLS,
     confirmResetMedium: confirmResetMedium, runResetMedium: runResetMedium,
+    mediumLabel: mediumLabel, mediumPath: mediumPath,
     renderHomeTips: renderHomeTips,      advanceHomeTip: advanceHomeTip,
     HOME_TIPS: HOME_TIPS,                showWelcome: showWelcome,
     openOneQSheet: openOneQSheet,        renderOneQ: renderOneQ,

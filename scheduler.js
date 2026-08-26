@@ -1927,12 +1927,20 @@
         return S.getLogMapByAtoms(ids).then(function (logMap) {
           var groups = {}, order = [];
 
+          /* V1.86：中項目・小項目は名前が単元をまたいで重複する。
+             名前で束ねると、成人看護学の「C. 検査を受ける患者の看護」12件が
+             1行に潰れ、定着率は12大項目ぶんの平均になり、
+             行に出るパンくずは最初に当たった1件だけになる。
+             §6-1 が求めているのは「各行に階層コードとパンくずを明記」なので、
+             束ねる単位のほうを直す。 */
+          var deep = (level === 'medium' || level === 'sub_item');
           atoms.forEach(function (a) {
-            var key = a[level];
-            if (key === undefined || key === null) { key = '(未分類)'; }
+            var leaf = a[level];
+            if (leaf === undefined || leaf === null) { leaf = '(未分類)'; }
+            var key = deep ? S.scopeKey(a.unit, a.major, leaf) : leaf;
             if (!groups[key]) {
               groups[key] = {
-                key: key, label: key,
+                key: key, label: leaf,
                 unit: a.unit, major: a.major, medium: a.medium, sub_item: a.sub_item,
                 num_code: a.num_code, rank: a.rank,
                 total: 0, evaluated: 0, unlearned: 0,

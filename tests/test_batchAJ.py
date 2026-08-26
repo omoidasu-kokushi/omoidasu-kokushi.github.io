@@ -165,7 +165,9 @@ def runtime_checks():
           const S = window.Storage, K = window.Scheduler;
           const un = await K.refreshUnlocks();
           const dash = await K.buildDashboard({ level:"medium" });
-          const row = dash.rows.filter(x => x.key === 'A. 人口静態・人口動態')[0];
+          /* V1.86：中項目の行キーは「単元＋大項目＋中項目」の複合キー。
+             表示名で引くので label を見る（同名の中項目が別行になったため）。 */
+          const row = dash.rows.filter(x => (x.label || x.key) === 'A. 人口静態・人口動態')[0];
           const tree = await S.countUnlearnedByScope();
           const lv = await K.computeLevel();
           return { unlockDenom: un.stats.total_questions,

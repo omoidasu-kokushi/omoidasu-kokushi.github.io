@@ -1364,6 +1364,45 @@
     }
   }
 
+  /* --- 概念タグも同じ扱いにする（V1.88） ---
+     分類は「出題基準に無い」と言えるのに、タグは何を書いても黙って通っていた。
+     タグが74マスタから外れると、
+       ・74概念理解率（§12-2）の対象にならない
+       ・概念別弱点ノック（§7）に球が出ない
+       ・最優先克服概念TOP3（§12-3）に出てこない
+     どれも「出ない」だけなので、**画面のどこにもエラーが出ない**。
+     気づけるのは「ノックを押しても問題が来ない」と思ったときで、
+     そのときにはもう原因の見当がつかない。
+
+     実測（同梱453問）：タグ 1,365個のうち 1,344個（98.5%）がマスタ外。
+     74テーマのうち球があるのは14テーマ、最大4肢。ここは誰も見ていなかった。 */
+  var _tagSet = null;
+  function tagKnown(tag) {
+    var master = (typeof global !== 'undefined' && global.CONCEPT_TAGS_MASTER) || null;
+    if (!master || !master.length) { return true; }   /* マスター不在なら検査しない */
+    if (!_tagSet) {
+      _tagSet = {};
+      for (var i = 0; i < master.length; i++) { _tagSet[master[i].tag] = 1; }
+    }
+    return !!_tagSet[tag];
+  }
+
+  function tagCheckInto(report, atoms, lineNo) {
+    var seen = {};
+    (atoms || []).forEach(function (a) {
+      (a.tags || []).forEach(function (t) {
+        if (!t || tagKnown(t)) { return; }
+        report.tag_bad = (report.tag_bad || 0) + 1;
+        if (!seen[t]) { seen[t] = 1; }
+        if (report.tag_examples.length < 5 &&
+            report.tag_examples.indexOf(t) < 0) { report.tag_examples.push(t); }
+      });
+    });
+    if (Object.keys(seen).length) {
+      report.tag_bad_rows = (report.tag_bad_rows || 0) + 1;
+    }
+  }
+
   function importText(text, options) {
     options = options || {};
     var raw = String(text == null ? '' : text)
@@ -1404,6 +1443,7 @@
         total_lines: 0, parsed: 0, imported: 0, updated: 0,
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
         tax_bad: 0, tax_examples: [],
+        tag_bad: 0, tag_bad_rows: 0, tag_examples: [],
         errors: [], warnings: [], messages: []
       };
 
@@ -1445,6 +1485,7 @@
 
         report.parsed++;
         taxCheckInto(report, built.question, i + 1);
+        tagCheckInto(report, built.atoms, i + 1);
         if (built.question.verify_status === 'unverified') { report.unverified++; }
         (built.warnings || []).forEach(function (w) {
           report.warnings.push({ line: i + 1, message: (i + 1) + '行目：' + w });
@@ -1493,6 +1534,7 @@
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
         pool_main: 0, pool_mock: 0,
         tax_bad: 0, tax_examples: [],
+        tag_bad: 0, tag_bad_rows: 0, tag_examples: [],
         errors: [], warnings: [], messages: []
       };
 
@@ -1561,6 +1603,7 @@
 
         report.parsed++;
         taxCheckInto(report, qq, idx + 1);
+        tagCheckInto(report, atoms, idx + 1);
         /* 取り込み結果にプールの内訳を出す（V1.56）。
            出さないと「模試用のつもりが本体へ入っていた」に気づけない。
            気づけるのは、模試を受けたときか、ランダムに予想問題が
@@ -1700,14 +1743,55 @@
     return getAll(STORE.ATOMS, 'tags', IDBKeyRange.only(tag));
   }
 
+  /* --- 範囲指定は「名前だけ」では足りない（V1.86） ---
+     中項目の名前は単元をまたいで重複する。実測で 458キー中 68キーが同名で、
+     成人看護学の「C. 検査を受ける患者の看護」だけで 12大項目ぶんある。
+     過去問1,200問を入れると 139問（12%）が同名の中項目に属する。
+
+     名前だけで範囲を指すと、
+       ・中項目別リセットが、消すつもりのない11個の中項目まで一緒に消す
+       ・中項目からのランダム出題に、別の大項目の問題が混ざる
+       ・未学習バッジが同名ぶん合算されて水増しされる
+     という3つが同時に起きる。いちばん重いのは消える側。
+
+     索引は今までどおり葉の名前で引き（速いので）、
+     単元・大項目が付いていればそこで絞り込む。
+     索引を増やすとDBの版を上げることになり、既存の利用者に
+     再構築を強いるので、絞り込みで済ませる。 */
+  var SCOPE_SEP = '\u001f';
+
+  function scopeKey(unit, major, leaf) {
+    return [unit || '', major || '', leaf == null ? '' : leaf].join(SCOPE_SEP);
+  }
+
+  function splitScope(value) {
+    var s = String(value == null ? '' : value);
+    if (s.indexOf(SCOPE_SEP) < 0) { return { unit: null, major: null, leaf: s }; }
+    var p = s.split(SCOPE_SEP);
+    return { unit: p[0] || null, major: p[1] || null, leaf: p[2] == null ? '' : p[2] };
+  }
+
+  function narrowScope(list, sc) {
+    if (!sc.unit && !sc.major) { return list; }
+    return list.filter(function (x) {
+      return (!sc.unit || x.unit === sc.unit) && (!sc.major || x.major === sc.major);
+    });
+  }
+
   function getQuestionsByScope(field, value) {
     if (!field || value == null) { return getAllQuestions(); }
-    return getAll(STORE.QUESTIONS, field, IDBKeyRange.only(value));
+    var sc = splitScope(value);
+    return getAll(STORE.QUESTIONS, field, IDBKeyRange.only(sc.leaf)).then(function (list) {
+      return narrowScope(list, sc);
+    });
   }
 
   function getAtomsByScope(field, value) {
     if (!field || value == null) { return getAllAtoms(); }
-    return getAll(STORE.ATOMS, field, IDBKeyRange.only(value));
+    var sc = splitScope(value);
+    return getAll(STORE.ATOMS, field, IDBKeyRange.only(sc.leaf)).then(function (list) {
+      return narrowScope(list, sc);
+    });
   }
 
   /* 問題本体とアトムを1つに組み立てて返す（画面描画用） */
@@ -1997,13 +2081,23 @@
         DB_VERSION を上げることになり、既存利用者の移行を伴う。 */
   function countBadgesByScope() {
     return getAll(STORE.ATOMS).then(function (list) {
-      var mk = function () { return { unit: {}, major: {}, medium: {}, sub_item: {}, total: 0 }; };
+      var mk = function () { return { unit: {}, major: {}, medium: {}, sub_item: {},
+                                      medium_key: {}, sub_item_key: {}, total: 0 }; };
       var hard = mk(), unlearned = mk();
+      /* V1.86：中項目・小項目は名前が重複するので、
+         単元＋大項目まで込みで数える。名前だけで数えると
+         「成人看護学 ＞ 8. 呼吸機能障害 ＞ C. 検査を受ける患者の看護」の
+         バッジに、循環も消化も内分泌も全部足された数が出る。
+         名前だけの表も残す（古い呼び出しが落ちないように）。 */
       var bump = function (acc, a) {
         acc.unit[a.unit]         = (acc.unit[a.unit] || 0) + 1;
         acc.major[a.major]       = (acc.major[a.major] || 0) + 1;
         acc.medium[a.medium]     = (acc.medium[a.medium] || 0) + 1;
         acc.sub_item[a.sub_item] = (acc.sub_item[a.sub_item] || 0) + 1;
+        var mk = scopeKey(a.unit, a.major, a.medium);
+        var sk = scopeKey(a.unit, a.major, a.sub_item);
+        acc.medium_key[mk]   = (acc.medium_key[mk] || 0) + 1;
+        acc.sub_item_key[sk] = (acc.sub_item_key[sk] || 0) + 1;
         acc.total++;
       };
       list.forEach(function (a) {
@@ -2058,8 +2152,14 @@
         var mj = u.children[q.major];
         mj.count++;
         if (!mj.children[q.medium]) {
-          mj.children[q.medium] = { key: q.medium, label: q.medium,
-                                    unlearned: badge.medium[q.medium] || 0, hard: hard.medium[q.medium] || 0, count: 0, q_ids: [] };
+          /* V1.86：中項目の key は「単元＋大項目＋中項目」。
+             名前だけを key にすると、同名の中項目が1行に潰れ、
+             そこから出題・リセットすると別の大項目まで巻き込む。 */
+          var mkey = scopeKey(q.unit, q.major, q.medium);
+          mj.children[q.medium] = { key: mkey, label: q.medium,
+                                    unit: q.unit, major: q.major, medium: q.medium,
+                                    unlearned: badge.medium_key[mkey] || 0,
+                                    hard: hard.medium_key[mkey] || 0, count: 0, q_ids: [] };
           mj.order.push(q.medium);
         }
         var md = mj.children[q.medium];
@@ -3342,6 +3442,8 @@
     getAtomsByQuestion : getAtomsByQuestion,
     getAtomsByTag      : getAtomsByTag,
     getAtomsByScope    : getAtomsByScope,
+    scopeKey           : scopeKey,
+    splitScope         : splitScope,
     getDueAtoms        : getDueAtoms,
     getDueCount        : getDueCount,
     getUnlearnedAtoms  : getUnlearnedAtoms,
