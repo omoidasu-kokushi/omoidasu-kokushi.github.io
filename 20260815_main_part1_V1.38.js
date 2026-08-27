@@ -1539,11 +1539,39 @@
       '<button type="button" class="choice-body"><span class="choice-text ox-mark">× 誤り</span></button></li>');
   }
 
+  /* --- 何個選ばせるかは、**正解の数**から決める（V2.03） -------------
+   *
+   * 【何が起きていたか】
+   * `select_count` は正解数の**写し**（非正規化）で、`question_type` も同じく写し。
+   * 写しが古いまま残ると、
+   *   「2つ選べ」と書いてあるのに `select_count` が 1 →
+   *   2つ選ぶと確定が押せず、ボタンに **「-1つ選んでください」** と負の数が出る
+   * という、先へ進めない詰みが起きる（実機で発生）。
+   *
+   * 取り込みの入口では `crossCheckJsonQuestion` が弾いています（V1.45）。
+   * **ところが、すでにDBへ入っているものは誰も見ていませんでした。**
+   * 検査を入口にだけ置くと、入口ができる前に入ったものが永久に残ります。
+   *
+   * 【直し方】
+   * **写しではなく本体を見る。** 正解の数は `atoms[].is_correct` が唯一の真実で、
+   * それはこの画面に必ず読み込まれています。`select_count` は参照しません。
+   * 2つ以上正解があれば複数選択、1つなら単一選択。
+   * 正解が0の壊れたデータでも、最低1つは選べるようにして詰ませない。
+   * ------------------------------------------------------------------ */
+  function needCount(atoms) {
+    var n = (atoms || []).filter(function (a) { return !!a.is_correct; }).length;
+    return Math.max(1, n);
+  }
+
+  function isMultiPick(atoms) { return needCount(atoms) >= 2; }
+
   function renderChoices(atoms, q) {
     hide('#numeric-wrap');
     show('#choice-list');
-    setText('#q-instruction', q.question_type === 'multiple'
-      ? '選択肢を ' + (q.select_count || 2) + ' つ選んでください。'
+    /* V2.03：写し（select_count / question_type）ではなく、正解の数そのものを見る。 */
+    var needN = needCount(atoms);
+    setText('#q-instruction', needN >= 2
+      ? '選択肢を ' + needN + ' つ選んでください。'
       : '選択肢を1つ選んでください。');
 
     var exam = isExamMode();
@@ -1619,7 +1647,8 @@
     var sel = state.current.selected;
     var at = sel.indexOf(num);
 
-    if (q.question_type === 'multiple') {
+    /* V2.03：複数選択かどうかも、正解の数から決める（写しを信じない） */
+    if (isMultiPick(state.current.atoms)) {
       if (at >= 0) { sel.splice(at, 1); }
       else { sel.push(num); }
     } else {
@@ -1631,13 +1660,16 @@
       toggleClass(c, 'is-selected', state.current.selected.indexOf(n) >= 0);
     });
 
-    var need = (q.question_type === 'multiple') ? (q.select_count || 2) : 1;
+    var need = needCount(state.current.atoms);
     var btn = $('#btn-confirm');
     if (btn) {
-      btn.disabled = state.current.selected.length !== need;
-      btn.textContent = state.current.selected.length === need
-        ? '解答を確定する'
-        : (need - state.current.selected.length) + 'つ選んでください';
+      var left = need - state.current.selected.length;
+      btn.disabled = (left !== 0);
+      /* **負の数を出さない。** 出た時点で利用者には意味不明で、
+         しかも「押せない理由」が分からないまま詰む。 */
+      btn.textContent = (left === 0) ? '解答を確定する'
+        : (left > 0) ? (left + 'つ選んでください')
+        : ((-left) + 'つ多いです');
       if (!btn.disabled) { Half2.tip('confirm'); }
     }
   }
@@ -3889,6 +3921,8 @@
     armInterlock  : armInterlock,
     confirmAnswer : confirmAnswer,
     renderReview  : renderReview,
+    needCount     : needCount,
+    isMultiPick   : isMultiPick,
     renderExamForecast: renderExamForecast,
     weekStudyDays : weekStudyDays,
     stashPendingAnswer: stashPendingAnswer,
