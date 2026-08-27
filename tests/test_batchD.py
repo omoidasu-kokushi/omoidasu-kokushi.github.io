@@ -69,8 +69,13 @@ with sync_playwright() as p:
             return out; }""", {"lv": lv, "stats": stats})
 
     r2 = level_probe(2, {"total_answered_questions": 46})
-    ok("Lv2 1行目：学習日数・連続起動・累計",
-       "学習1日目" in r2["facts"] and "連続起動1日目" in r2["facts"] and "累計解答46問" in r2["facts"], r2["facts"])
+    # V1.97：連続日数の表示をやめ、週表示にした（判断待ちの「案B」）。
+    # 連続は1日抜けるとゼロに戻り、**復帰しようとしている人の動機を折る**。
+    # open_streak は meta に残してある（上で確認済み）。出すのをやめただけ。
+    ok("Lv2 1行目：学習日数・累計",
+       "学習1日目" in r2["facts"] and "累計解答46問" in r2["facts"], r2["facts"])
+    ok("**連続日数はもう出さない（V1.97）**",
+       "連続起動" not in r2["facts"], r2["facts"])
     ok("Lv2 2行目：残り54問 / 100問",
        "残り 54問" in r2["note"] and "100問" in r2["note"], r2["note"])
     ok("Lv2：肩書きが出ない（level-name撤去）",

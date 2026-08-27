@@ -1155,13 +1155,39 @@
     return state;
   }
 
+  /* --- 直近7日で何日やったか（V1.97・判断待ちの「案B」） ---
+     台帳（daily_log・V1.92）から数える。**解いた日だけ**が入っているので、
+     そのまま「勉強した日」になる。今日ぶんは daily_key を見て足す。
+     V1.92 より前の記録には台帳が無いので、1週間かけて埋まる。 */
+  function weekStudyDays(meta) {
+    var m = meta || state.meta || {};
+    var h = (typeof m.day_boundary_hour === 'number') ? m.day_boundary_hour : 4;
+    var today = S.util.dayStart(Date.now(), h);
+    var from = today - 6 * 86400000;          /* 今日を含めて7日 */
+    var seen = {}, n = 0;
+    (m.daily_log || []).forEach(function (x) {
+      if (!x || typeof x.k !== 'number' || !(x.n > 0)) { return; }
+      if (x.k < from || x.k > today) { return; }
+      if (!seen[x.k]) { seen[x.k] = 1; n++; }
+    });
+    if (typeof m.daily_key === 'number' && m.daily_key >= from
+        && m.daily_key <= today && (m.daily_count > 0) && !seen[m.daily_key]) { n++; }
+    return n;
+  }
+
+  /* --- 連続日数は出さない（V1.97） ---
+     「連続起動◯日目」は **1日抜けるとゼロに戻る**。
+     戻った瞬間に、いちばん背中を押してほしい人（復帰しようとしている人）の
+     動機を折る。数字のインパクトは弱くなるが、**壊れない形**にする。
+     open_streak は meta に残す（消さない）。出すのをやめるだけ。 */
   function levelFacts(h) {
     var m = state.meta || {};
     var s = (h.level && h.level.stats) || {};
     var parts = [];
     var d = studyDays();
     if (d > 0) { parts.push('学習' + d + '日目'); }
-    if (m.open_streak > 0) { parts.push('連続起動' + m.open_streak + '日目'); }
+    var w = weekStudyDays(m);
+    if (w > 0) { parts.push('今週' + w + '日'); }
     parts.push('累計解答' + (s.total_answered_questions || 0) + '問');
     return parts.join('　・　');
   }
@@ -3810,6 +3836,7 @@
     confirmAnswer : confirmAnswer,
     renderReview  : renderReview,
     renderExamForecast: renderExamForecast,
+    weekStudyDays : weekStudyDays,
     stashPendingAnswer: stashPendingAnswer,
     flushPendingAnswer: flushPendingAnswer,
     PENDING_KEY   : PENDING_KEY,
