@@ -550,6 +550,7 @@
     var isTag = (st.dashboard.level === 'tag');
     var mSeg = $('#dash-metric'), cSeg = $('#dash-concept');
     if (mSeg) { mSeg.hidden = isTag; }
+    if (isTag) { var h0 = $('#dash-hes'); if (h0) { h0.hidden = true; } }
     if (cSeg) { cSeg.hidden = !isTag; }
     setText('#dash-hint', isTag
       ? 'テーマをタップすると、そのテーマだけの弱点ノックが始まります。'
@@ -575,13 +576,38 @@
       }
       hide('#dash-empty');
 
+      /* V2.02：迷いは「まだ測れていない」ことを先に言う。
+         0%と「測れていない」を同じ見た目にすると、
+         **迷わず解けている**のか**データが無い**のか区別が付かない。 */
+      var hes = $('#dash-hes');
+      if (hes) {
+        if (st.dashboard.metric !== 'hesitation') { hes.hidden = true; }
+        else if (d.hesitation_cut_ms === null || d.hesitation_cut_ms === undefined) {
+          hes.textContent = 'まだ測れていません。あと '
+            + Math.max(0, d.hesitation_min - (d.hesitation_measured || 0))
+            + '問 解くと、「自分の中で時間がかかったところ」が出ます。';
+          hes.hidden = false;
+        } else {
+          hes.textContent = 'あなたの中央値は '
+            + (Math.round(d.hesitation_cut_ms / K.HESITATE_RATIO / 100) / 10) + '秒。'
+            + 'その ' + K.HESITATE_RATIO + '倍（'
+            + (Math.round(d.hesitation_cut_ms / 100) / 10) + '秒）以上かかった問題を「迷い」と数えています。'
+            + '　※ 弱点ptにも復習の予定にも反映していません。';
+          hes.hidden = false;
+        }
+      }
+
       /* 既定は「定着率が低い（苦手な）項目」が最上位に来る昇順ソート */
       setHtml('#bar-chart', d.rows.map(function (r) {
-        var val = (st.dashboard.metric === 'weakness') ? r.priority : r.retention_pct;
-        var width = (st.dashboard.metric === 'weakness')
+        var isHes = (st.dashboard.metric === 'hesitation');
+        var val = isHes ? (r.hesitation_pct === null ? '—' : r.hesitation_pct)
+                : (st.dashboard.metric === 'weakness') ? r.priority : r.retention_pct;
+        var width = isHes ? (r.hesitation_pct === null ? 0 : r.hesitation_pct)
+          : (st.dashboard.metric === 'weakness')
           ? Math.min(100, d.rows[0].priority > 0 ? (r.priority / d.rows[0].priority) * 100 : 0)
           : r.retention_pct;
-        var unit = (st.dashboard.metric === 'weakness') ? 'pt' : '%';
+        var unit = isHes ? (r.hesitation_pct === null ? '' : '%')
+                 : (st.dashboard.metric === 'weakness') ? 'pt' : '%';
         return '<button type="button" class="bar-row" data-scope-field="' +
                esc(st.dashboard.level) + '" data-scope-value="' + esc(r.key) + '">' +
                '<div class="bar-meta">' +
@@ -591,7 +617,10 @@
                '<span class="bar-crumb">' + esc(r.crumb) + '</span>' +
                '</div>' +
                '<div class="bar-track"><div class="bar-fill lv-' + r.band + '" style="width:' + width + '%"></div></div>' +
-               '<div class="bar-sub">定着率 ' + r.retention_pct + '% ／ 弱点 ' + r.weakness_pt + 'pt ／ ' +
+               '<div class="bar-sub">' +
+               (isHes ? ('迷い ' + (r.hesitation_pct === null ? '—' : r.hesitation_pct + '%') +
+                         '（測った問題 ' + r.think_questions + '）／ ') : '') +
+               '定着率 ' + r.retention_pct + '% ／ 弱点 ' + r.weakness_pt + 'pt ／ ' +
                '未学習 ' + r.unlearned_atoms + ' ・ 難 ' + r.hard_atoms + ' ・ マ ' + r.mastered_atoms +
                '（全' + r.total_atoms + '肢）</div></button>';
       }).join(''));

@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.01">
+<link rel="stylesheet" href="./styles.css?v=2.02">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.01",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.02",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.01",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.02",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.01",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.02",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.01",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=2.02",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.01",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.02",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -469,7 +469,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260827_Omoidasu_V2.01</p>
+        <p class="build-stamp">20260827_Omoidasu_V2.02</p>
       </div>
     </section>
 
@@ -688,6 +688,11 @@
              ほぼ空のグラフを見せて「壊れている」と読まれる。 -->
         <p class="dash-scan" id="dash-scan" hidden></p>
 
+        <!-- V2.02：迷いの線が何秒かを必ず出す。
+             0%と「測れていない」を同じ見た目にすると、
+             迷わず解けているのかデータが無いのか区別が付かない。 -->
+        <p class="dash-scan" id="dash-hes" hidden></p>
+
         <div class="dash-controls">
           <!-- 5軸。横に収まらない端末では横スクロールさせる（折り返すと
                2段目の位置が軸の数で変わり、指の当て所が毎回変わるため） -->
@@ -706,6 +711,9 @@
           <div class="seg-group seg-metric" id="dash-metric" role="group" aria-label="表示指標">
             <button type="button" class="seg-btn is-active" data-metric="retention">定着率</button>
             <button type="button" class="seg-btn" data-metric="weakness">弱点スコア</button>
+            <!-- V2.02：think_ms の使い道。**測ったものを見せるだけ**で、
+                 弱点ptにも忘却スケジュールにも反映しない。 -->
+            <button type="button" class="seg-btn" data-metric="hesitation">迷い</button>
           </div>
           <div class="seg-group seg-concept" id="dash-concept" role="group" aria-label="テーマの並び順" hidden>
             <button type="button" class="seg-btn is-active" data-cfilter="low">苦手な順</button>
@@ -1290,7 +1298,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260827_Omoidasu_V2.01 / cache v1.89.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260827_Omoidasu_V2.02 / cache v1.90.0</p>
         </section>
       </div>
     </section>
@@ -1851,12 +1859,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.01"></script>
-<script src="./storage.js?v=2.01"></script>
-<script src="./scheduler.js?v=2.01"></script>
+<script src="./questions.js?v=2.02"></script>
+<script src="./storage.js?v=2.02"></script>
+<script src="./scheduler.js?v=2.02"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.01"></script>
-<script src="./license.js?v=2.01"></script>
+<script src="./drive.js?v=2.02"></script>
+<script src="./license.js?v=2.02"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

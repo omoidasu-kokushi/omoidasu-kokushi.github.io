@@ -2374,6 +2374,49 @@
 
   /* level: 'unit' | 'major' | 'medium' | 'sub_item'
      既定は「定着率が低い（苦手な）項目」が最上位に来る昇順ソート。 */
+  /* --- 迷いの可視化（V2.02・think_ms の使い道） --------------------
+   *
+   * 【think_ms とは】
+   * 選択肢が押せるようになってから最初のタップまでのミリ秒（V1.78）。
+   * 起点は「押せるようになった瞬間」で、思考インターロックの0.5秒は含まない。
+   * **問題単位の値**で、同じ値がその問題の全肢のログに入る。
+   * だから集計は「肢」ではなく **「問題」で行う**（§18）。ここを間違えると
+   * 4肢問題の重みが1肢問題の4倍になる。
+   *
+   * 【なぜ絶対秒数で切らないか】
+   * 読む速さも操作の速さも個人差が大きい。5秒が速い人も遅い人もいる。
+   * **その人自身の中央値で較正する。** 中央値の1.5倍以上かかった問題を「迷い」とする。
+   * こうすると、誰の画面でも「自分の中で時間がかかったところ」が出る。
+   *
+   * 【何に使わないか】
+   * **弱点ptにも忘却スケジュールにも一切反映しない。**
+   * 予定の根拠は「本人の自己申告（評価）」1本に保つ。
+   * 迷いを勝手に加算すると、二重基準になって予定が説明できなくなる。
+   * ここは**測ったものを見せるだけ**。
+   * ------------------------------------------------------------------ */
+  var HESITATE_RATIO = 1.5;   /* 自分の中央値の何倍から「迷い」とみなすか（設計値） */
+  var HESITATE_MIN   = 12;    /* これだけ問題が無いと中央値が安定しない（設計値） */
+
+  /* ログから「問題ごとの think_ms」を1つずつ取り出す。
+     同じ q_id・同じ answered_at のものは1回の解答なので1つに畳む。 */
+  function thinkByQuestion(logs) {
+    var seen = {}, out = [];
+    (logs || []).forEach(function (l) {
+      if (!l || !isNum(l.think_ms) || l.think_ms <= 0) { return; }
+      var k = (l.q_id || '') + '|' + (l.answered_at || 0);
+      if (seen[k]) { return; }
+      seen[k] = 1;
+      out.push({ q_id: l.q_id, atom_id: l.atom_id, ms: l.think_ms });
+    });
+    return out;
+  }
+
+  function hesitationCut(list) {
+    var ms = (list || []).map(function (x) { return x.ms; });
+    if (ms.length < HESITATE_MIN) { return null; }
+    return medianOf(ms) * HESITATE_RATIO;
+  }
+
   function buildDashboard(options) {
     options = options || {};
     var level = options.level || 'sub_item';
@@ -2400,6 +2443,21 @@
         var ids = atoms.map(function (a) { return a.atom_id; });
         return S.getLogMapByAtoms(ids).then(function (logMap) {
           var groups = {}, order = [];
+          /* V2.02：迷いの線は**その人自身の中央値**から決める（自己較正）。
+             logMap は**肢ごと**の一覧なので、4肢の問題は同じ解答が4回出てくる。
+             畳まずに中央値を取ると、肢の多い問題が4倍の重みを持つ
+             （実測で 20問が81件に膨らんだ）。**問題単位まで畳んでから**測る。 */
+          var allThink = [], thinkAllSeen = {};
+          Object.keys(logMap).forEach(function (id) {
+            thinkByQuestion(logMap[id]).forEach(function (t) {
+              var k0 = (t.q_id || '') + '|' + t.ms;
+              if (thinkAllSeen[k0]) { return; }
+              thinkAllSeen[k0] = 1;
+              allThink.push(t);
+            });
+          });
+          var cut = hesitationCut(allThink);
+          var thinkSeen = {};
 
           /* V1.86：中項目・小項目は名前が単元をまたいで重複する。
              名前で束ねると、成人看護学の「C. 検査を受ける患者の看護」12件が
@@ -2419,7 +2477,9 @@
                 num_code: a.num_code, rank: a.rank,
                 total: 0, evaluated: 0, unlearned: 0,
                 normal_plus: 0, hard: 0, mastered: 0,
-                weakness_sum: 0, priority_sum: 0, max_priority: 0
+                weakness_sum: 0, priority_sum: 0, max_priority: 0,
+                /* V2.02：迷い。**問題単位**で数える（think_ms は問題単位の値） */
+                think_q: 0, think_slow: 0
               };
               order.push(key);
             }
@@ -2433,6 +2493,16 @@
               if (a.last_eval === EVAL.NORMAL || a.last_eval === EVAL.EASY || a.last_eval === EVAL.MASTER) {
                 g.normal_plus++;
               }
+            }
+            /* V2.02：迷い。1つの問題を何度も数えないよう q_id|answered_at で畳む。 */
+            if (cut !== null) {
+              thinkByQuestion(logMap[a.atom_id] || []).forEach(function (t) {
+                var k2 = key + '|' + t.q_id + '|' + t.ms;
+                if (thinkSeen[k2]) { return; }
+                thinkSeen[k2] = 1;
+                g.think_q++;
+                if (t.ms >= cut) { g.think_slow++; }
+              });
             }
             var w = computeWeaknessFromLogs(logMap[a.atom_id] || [], a);
             var p = priorityScore(a, w, preferFrequent);
@@ -2459,13 +2529,24 @@
               mastered_atoms: g.mastered,
               retention_pct: Math.round(retention),
               weakness_pt: Math.round(g.weakness_sum * 10) / 10,
+              /* V2.02：迷い率。測れていないときは null（0と区別する） */
+              think_questions: g.think_q,
+              hesitation_pct: g.think_q > 0 ? Math.round((g.think_slow / g.think_q) * 100) : null,
               priority: Math.round(g.priority_sum * 10) / 10,
               max_priority: Math.round(g.max_priority * 10) / 10,
               band: retention >= 90 ? 'top' : retention >= 65 ? 'good' : retention >= 35 ? 'mid' : 'bad'
             };
           });
 
-          if (metric === 'weakness') {
+          if (metric === 'hesitation') {
+            /* 迷いが多い順。測れていない行は後ろへ。 */
+            rows.sort(function (a, b) {
+              var ha = (a.hesitation_pct === null) ? -1 : a.hesitation_pct;
+              var hb = (b.hesitation_pct === null) ? -1 : b.hesitation_pct;
+              if (ha !== hb) { return hb - ha; }
+              return b.priority - a.priority;
+            });
+          } else if (metric === 'weakness') {
             rows.sort(function (a, b) { return b.priority - a.priority; });
           } else {
             rows.sort(function (a, b) {
@@ -2476,6 +2557,10 @@
 
           return {
             level: level, metric: metric, prefer_frequent: preferFrequent,
+            /* V2.02：迷いの線。null なら「まだ測れていない」（問題数が足りない）。 */
+            hesitation_cut_ms: cut,
+            hesitation_measured: allThink.length,
+            hesitation_min: HESITATE_MIN,
             rows: rows, empty: false
           };
         });
@@ -2952,6 +3037,8 @@
     weightedPick    : weightedPick,
     CONQUER_BAND    : CONQUER_BAND,
     getReviewQueue  : getReviewQueue,
+    HESITATE_RATIO  : HESITATE_RATIO,   HESITATE_MIN   : HESITATE_MIN,
+    thinkByQuestion : thinkByQuestion,  hesitationCut  : hesitationCut,
     FORECAST_MIN_DAYS: FORECAST_MIN_DAYS, FORECAST_TARGET: FORECAST_TARGET,
     pacePerDay      : pacePerDay,       forecastUnlock : forecastUnlock,
     unlockRate      : unlockRate,
