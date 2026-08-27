@@ -1152,7 +1152,8 @@
       q_id               : qId,
       unit               : unit,
       target             : target || null,
-      rank               : rank,
+      /* V1.98：ランクは中項目から決まる導出値。表があればそれを正とする。 */
+      rank               : rankFor(unit, major, medium, rank),
       major              : major,
       medium             : medium,
       sub_item           : subItem,
@@ -1601,7 +1602,8 @@
                                     hash6([q.unit, q.major, q.medium, q.sub_item, q.stem].join('|')));
         qq.num_code    = q.num_code || buildNumCode(unitNo, q.major, q.medium, q.sub_item);
         qq.unit_no     = unitNo;
-        qq.rank        = (q.rank || 'B').toUpperCase();
+        /* V1.98：ランクは中項目から決まる導出値。表があればそれを正とする。 */
+        qq.rank        = rankFor(q.unit, q.major, q.medium, q.rank);
         qq.question_type = jsonQtype;
         /* select_count 未指定のJSONは正解数から補う（V1.45）。
            従来は undefined のまま入り、出題側の判定が不定だった。 */
@@ -2631,6 +2633,40 @@
     });
   }
 
+  /* --- 中項目からランクを当てる（V1.98） --------------------------
+   *
+   * 【なぜ取り込みで当てるのか】
+   * 過去問1,200問は作問パイプラインが `rank: "B"` 固定で書き出します。
+   * そのまま入れると **直前モード（S・Aだけを回す模試）が同梱シードしか回さず**、
+   * ランク重み（S2.5/A1.6/B1.0/C0.3・V1.90）も過去問には一切効きません。
+   * 同梱シードを差し替えて過去問だけにすると、**直前モードは0問になります。**
+   *
+   * 【なぜ「データの値より表を優先」してよいのか】
+   * **ランクは中項目から決まる導出値**で、問題ごとの属性ではありません。
+   * 同じ中項目の問題が違うランクを持つのはおかしい
+   * （同梱シードでも100中項目中、割れていたのは1件だけ）。
+   * だから表がある中項目は表を正とし、表に無い中項目だけデータの値を使います。
+   *
+   * 表を直せば、**取り込み直すだけで全部のランクが付け直せます。**
+   * 作問プロンプトを391バッチぶん直す必要はありません。
+   * ------------------------------------------------------------------ */
+  function rankTable() {
+    var g = (typeof window !== 'undefined') ? window : null;
+    return (g && g.RANK_BY_MEDIUM) ? g.RANK_BY_MEDIUM : null;
+  }
+
+  function rankFor(unit, major, medium, given) {
+    var t = rankTable();
+    var fallback = ['S', 'A', 'B', 'C'].indexOf(String(given || '').toUpperCase()) >= 0
+      ? String(given).toUpperCase() : 'B';
+    if (!t || !unit || !major || !medium) { return fallback; }
+    var hit = t[[unit, major, medium].join('|')];
+    /* 表に載っているのは S / A / C だけ。B は既定なので載せていない。
+       「表にある中項目で、載っていない＝B」と「表そのものが無い」は別物なので、
+       ここで取り違えないこと。載っていない中項目は fallback を返す。 */
+    return hit || fallback;
+  }
+
   /* ======================================================================
    * 11. 模試の解禁（永久フラグ ＋ ハイウォーターマーク）
    * ====================================================================== */
@@ -3586,6 +3622,7 @@
     saveConceptScores     : saveConceptScores,
 
     /* --- 解禁・進捗率 --- */
+    rankFor               : rankFor,
     evaluateUnlocks       : evaluateUnlocks,
     unlockEaseFactor      : unlockEaseFactor,
     EXAM_EASE             : EXAM_EASE,

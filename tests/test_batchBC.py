@@ -44,6 +44,21 @@ ok("§2-5 の約束だと明記してある", "§2-5の約束" in js and "§2-5"
 # ---------------------------------------------------------------- 実行時検査
 from playwright.sync_api import sync_playwright
 
+
+# 「2つ選べ」の問題が先頭に来ると、1枚押しただけでは確定が押せない。
+# 必要な枚数まで押す（V1.98：ランク当てでキューの中身が変わり、実際に踏んだ）。
+def fill_choices(pg):
+    pg.evaluate("""() => {
+      for (const c of document.querySelectorAll('#choice-list .choice-card')) {
+        const b = document.getElementById('btn-confirm');
+        if (b && !b.disabled) { break; }
+        const body = c.querySelector('.choice-body') || c;
+        body.click();
+      }
+    }""")
+    pg.wait_for_selector("#btn-confirm:not([disabled])", timeout=10000)
+
+
 with sync_playwright() as p:
     br = p.chromium.launch(args=["--no-sandbox"])
     ctx = br.new_context(viewport={"width": 390, "height": 844})
@@ -65,6 +80,7 @@ with sync_playwright() as p:
     pg.wait_for_selector("#choice-list.is-ready", timeout=15000)
     pg.wait_for_timeout(700)          # 「迷った」ぶんの時間
     pg.click("#choice-list .choice-card:nth-child(2) .choice-body")
+    fill_choices(pg)
     pg.wait_for_timeout(150)
     pg.click("#btn-confirm")
     pg.wait_for_timeout(900)

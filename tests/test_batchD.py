@@ -4,6 +4,21 @@
 import json, re, io, os, sys, subprocess
 from playwright.sync_api import sync_playwright
 
+
+# 「2つ選べ」の問題が先頭に来ると、1枚押しただけでは確定が押せない。
+# 必要な枚数まで押す（V1.98：ランク当てでキューの中身が変わり、実際に踏んだ）。
+def fill_choices(pg):
+    pg.evaluate("""() => {
+      for (const c of document.querySelectorAll('#choice-list .choice-card')) {
+        const b = document.getElementById('btn-confirm');
+        if (b && !b.disabled) { break; }
+        const body = c.querySelector('.choice-body') || c;
+        body.click();
+      }
+    }""")
+    pg.wait_for_selector("#btn-confirm:not([disabled])", timeout=10000)
+
+
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
 R = []
@@ -100,6 +115,7 @@ with sync_playwright() as p:
     # ---- 文字サイズ（全体解説 vs 選択肢の解説）
     pg.wait_for_timeout(700)
     pg.click("#choice-list .choice-card:nth-child(2) .choice-body"); pg.wait_for_timeout(200)
+    fill_choices(pg)
     pg.click("#btn-confirm"); pg.wait_for_timeout(900)
     pg.evaluate("window.Half2Impl.dismissTip()")
     pg.evaluate("document.getElementById('btn-detail').click()")

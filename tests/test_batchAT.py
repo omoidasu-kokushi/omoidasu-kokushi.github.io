@@ -45,6 +45,21 @@ ok("html に px のフォント固定が無い（OS設定追従の前提）",
 # ---------------------------------------------------------------- 実行時検査
 from playwright.sync_api import sync_playwright
 
+
+# 「2つ選べ」の問題が先頭に来ると、1枚押しただけでは確定が押せない。
+# 必要な枚数まで押す（V1.98：ランク当てでキューの中身が変わり、実際に踏んだ）。
+def fill_choices(pg):
+    pg.evaluate("""() => {
+      for (const c of document.querySelectorAll('#choice-list .choice-card')) {
+        const b = document.getElementById('btn-confirm');
+        if (b && !b.disabled) { break; }
+        const body = c.querySelector('.choice-body') || c;
+        body.click();
+      }
+    }""")
+    pg.wait_for_selector("#btn-confirm:not([disabled])", timeout=10000)
+
+
 MEASURE = """() => {
   const clip = [];
   document.querySelectorAll('.eval-btn, #pomodoro-chip, #btn-next, .atom-chip').forEach(el => {
@@ -77,6 +92,7 @@ def probe(p, scale):
         pass
     pg.wait_for_timeout(1600)
     pg.click("#choice-list .choice-card:nth-child(2) .choice-body")
+    fill_choices(pg)
     pg.wait_for_timeout(200)
     pg.click("#btn-confirm")
     pg.wait_for_timeout(900)
