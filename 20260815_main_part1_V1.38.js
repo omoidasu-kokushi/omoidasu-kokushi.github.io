@@ -932,6 +932,39 @@
     box.hidden = false;
   }
 
+  /* --- 模試の解禁の見通し（V1.94・判断待ちの「案C」） ---
+     解禁条件には触らない。**「このペースでは間に合わない」と早く知らせるだけ。**
+     行動を変える余地がある時期に知らせるほうが、開けてしまうより効く。
+     見通しは模型で計算しない。**解禁率が1日に何ポイント進んだかを実測して**
+     伸ばす。新規と復習の割合も正答率も、全部その1つに入っている。
+     それでも「早くても」と書く。進み方は先へ行くほど鈍る（易しい肢から
+     片付くため）ので、実測の外挿は**楽観側**に出る。断定しない。 */
+  function fmtMD(ts) {
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  function renderExamForecast(f) {
+    var el = $('#exam-forecast');
+    if (!el) { return; }
+    if (!f || !f.show) { el.hidden = true; return; }
+    if (f.reason === 'need_questions') {
+      el.textContent = f.label + 'を開くには問題が ' + f.need_questions
+        + '問足りません。設定から問題を取り込んでください。';
+    } else if (f.reason === 'stalled') {
+      el.textContent = f.label + 'の解禁が、ここ数日ほとんど進んでいません。'
+        + 'このままでは試験日までに開きません。'
+        + '新しい問題を解く量を増やしてください（復習だけでは解禁は進みません）。';
+    } else {
+      el.textContent = 'いまの進み方（1日 ' + f.per_day + '%）だと、'
+        + f.label + 'が開くのは早くても ' + fmtMD(f.at)
+        + '（試験の ' + f.over_days + '日後）です。'
+        + (f.need_ratio ? ('いまの ' + f.need_ratio + '倍の速さが要ります。'
+            + '新しい問題を解く量を増やしてください。') : '');
+    }
+    el.hidden = false;
+  }
+
   /* いまの無料枠の状態。ライセンスが読めていない環境（license.js が
      欠けている等）では【購入済みと同じ扱い】にする。
      売り物の都合でアプリが使えなくなるのは、いちばんまずい壊れ方。 */
@@ -1021,6 +1054,9 @@
       setText('#exam-tag', lockedQ > 0
         ? ('予想問題 ' + lockedQ + '問が待機中')
         : ('解放 ' + h.unlock_pct + '%'));
+
+      /* --- 模試の解禁の見通し（V1.94） --- */
+      renderExamForecast(h.exam_forecast);
 
       /* --- ビジュアルテーマ --- */
       applyVisualTheme(h.visual_theme);
@@ -3773,6 +3809,7 @@
     armInterlock  : armInterlock,
     confirmAnswer : confirmAnswer,
     renderReview  : renderReview,
+    renderExamForecast: renderExamForecast,
     stashPendingAnswer: stashPendingAnswer,
     flushPendingAnswer: flushPendingAnswer,
     PENDING_KEY   : PENDING_KEY,

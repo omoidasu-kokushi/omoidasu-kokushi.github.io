@@ -814,15 +814,19 @@
       return S.getMeta('total_questions_answered', 0).then(function (total) {
         return S.setMeta('total_questions_answered', (total || 0) + 1);
       }).then(function () {
-        /* V1.92：今日の実績。上限の自動計算の材料でもある。 */
+        return S.recordScanProgress(qId);
+      }).then(function (scan) {
+        /* V1.92：今日の実績。上限の自動計算の材料でもある。
+           V1.94：初めて解いた問題かどうかも数える（見通しの材料）。
+           scan より**後**に置くこと。新規かどうかは scan が判定している。 */
         return S.loadMeta().then(function (meta) {
-          var patch = bumpDaily(meta, nowMs(), meta.day_boundary_hour);
+          var patch = bumpDaily(meta, nowMs(), meta.day_boundary_hour, scan && scan.is_new);
           return S.setMeta('daily_key', patch.daily_key)
             .then(function () { return S.setMeta('daily_count', patch.daily_count); })
+            .then(function () { return S.setMeta('daily_new', patch.daily_new); })
+            .then(function () { return S.setMeta('daily_unlock', patch.daily_unlock); })
             .then(function () { return S.setMeta('daily_log', patch.daily_log); });
-        });
-      }).then(function () {
-        return S.recordScanProgress(qId);
+        }).then(function () { return scan; });
       }).then(function (scan) {
         return S.pushGuard(qId, tags).then(function () {
           return { scan: scan, tags: tags };
@@ -1377,19 +1381,30 @@
 
   /* 今日の実績を1つ進める。日が変わっていたら、前日ぶんを台帳へ送る。
      純関数。書き込みは呼び出し側で1回だけ行う。 */
-  function bumpDaily(meta, now, boundaryHour) {
+  function bumpDaily(meta, now, boundaryHour, isNew) {
     var h = isNum(boundaryHour) ? boundaryHour : 4;
     var key = S.util.dayStart(isNum(now) ? now : nowMs(), h);
     var log = (meta && meta.daily_log) ? meta.daily_log.slice() : [];
     var count = (meta && isNum(meta.daily_count)) ? meta.daily_count : 0;
+    /* w＝その日に**初めて解いた問題**の数（V1.94）。
+       復習で何度解いてもユニーク肢は増えないので、解禁の見通しは
+       総数ではなくこちらで見立てないと必ず楽観側に狂う。 */
+    var fresh = (meta && isNum(meta.daily_new)) ? meta.daily_new : 0;
+    /* u＝その日の時点での「120問フル模試の解禁率」（V1.94）。
+       見通しは模型で計算しない。**この数字が1日に何ポイント進んだか**を測って
+       伸ばす。新規と復習の割合も正答率も、全部この1つに入っている。 */
+    var pct = (meta && isNum(meta.unlock_pct_mock_120)) ? meta.unlock_pct_mock_120 : 0;
     if (meta && meta.daily_key !== key) {
       if (isNum(meta.daily_key) && count > 0) {
-        log.push({ k: meta.daily_key, n: count });
+        log.push({ k: meta.daily_key, n: count, w: fresh,
+                   u: (meta && isNum(meta.daily_unlock)) ? meta.daily_unlock : pct });
         if (log.length > DAILY_KEEP) { log = log.slice(log.length - DAILY_KEEP); }
       }
-      count = 0;
+      count = 0; fresh = 0;
     }
-    return { daily_key: key, daily_count: count + 1, daily_log: log };
+    return { daily_key: key, daily_count: count + 1,
+             daily_new: fresh + (isNew ? 1 : 0),
+             daily_unlock: pct, daily_log: log };
   }
 
   function getReviewQueue(limit) {
@@ -2210,6 +2225,128 @@
       });
   }
 
+  /* ======================================================================
+   * 模試の解禁の見通し（V1.94・判断待ちの「案C」）
+   *
+   * 【何が起きていたか】
+   * 模試の解禁は**解答済みの割合だけ**で決まり、試験日を見ていない。
+   * 実測（tools/journey.py・1,359問）では
+   *   1日40問 …… 90日たっても1つも解禁されない
+   *   1日100問 … 50日目に120問フル模試まで解禁
+   * **試験3ヶ月前に始めて1日40問の人は、本番形式の模試を一度も受けられない。**
+   * いちばん試験に近い機能に、いちばん必要な人が届かない。
+   *
+   * 【ここで直すのは条件ではなく、見通し】
+   * 解禁条件には**1ミリも触らない**（案A＝直前期の緩和は仕様第11章の数値に
+   * 手を入れるので、別に判断する）。ここでやるのは
+   * **「このペースでは間に合わない」と早く知らせること**だけ。
+   * 行動を変える余地がある時期に知らせるほうが、開けてしまうより効く。
+   *
+   * 【楽観側であることを言葉に埋める】
+   * 「普通以上◯%」がどれだけ速く伸びるかは、正答率次第で読めない。
+   * ここでは**初見で正解すれば全肢[普通]が点く**（§4-3の既定）と仮定して数える。
+   * 実際には不正解の肢が[難しい]になるぶん、もっと遅くなる。
+   * だから文言は必ず **「早くても」** と書く。断定しない。
+   *
+   * 【試験日を入れていない人には何も出さない】
+   * 出す条件は「試験日がある」「まだ解禁されていない」「間に合わない」の3つが揃ったときだけ。
+   * 間に合っている人の画面には1文字も足さない。
+   * ====================================================================== */
+  /* これだけ実績が無いと見立てない。3日だと差分の元が2日ぶんしかなく、
+     1日ぶんのブレがそのまま倍率になる。5日（＝4日ぶんの差分）にしてある。
+     「間に合わなくなる30日以上前に出す」という目標には十分間に合う。 */
+  var FORECAST_MIN_DAYS = 5;
+  var FORECAST_TARGET   = 'mock_120';
+
+  /* 直近の実績から「1日あたり何問」を見立てる。解いた日だけで中央値を取る
+     （休んだ日を混ぜると、週末だけの人のペースが0になる）。 */
+  function pacePerDay(meta, kind) {
+    var f = (kind === 'new')
+      ? function (x) { return x && x.w; }
+      : function (x) { return x && x.n; };
+    var ns = ((meta && meta.daily_log) || []).map(f)
+      .filter(function (n) { return isNum(n) && n > 0; });
+    var today = (kind === 'new') ? (meta && meta.daily_new) : (meta && meta.daily_count);
+    if (isNum(today) && today > 0) { ns = ns.concat([today]); }
+    if (ns.length < FORECAST_MIN_DAYS) { return null; }
+    return medianOf(ns);
+  }
+
+  function mockDefById(id) {
+    var out = null;
+    (S.MOCK_DEFS || []).forEach(function (d) { if (d.id === id) { out = d; } });
+    return out;
+  }
+
+  /* 純関数。テストから直接叩けるようにしてある。 */
+  /* 解禁率が1日あたり何ポイント進んでいるかを、実測から出す。
+     模型で計算しない。新規と復習の割合も正答率も、全部この1つに入っている。 */
+  function unlockRate(meta) {
+    var log = ((meta && meta.daily_log) || []).filter(function (x) {
+      return x && isNum(x.u) && isNum(x.k);
+    });
+    var today = (meta && isNum(meta.daily_unlock)) ? meta.daily_unlock : null;
+    var todayKey = (meta && isNum(meta.daily_key)) ? meta.daily_key : null;
+    if (today !== null && todayKey !== null) { log = log.concat([{ k: todayKey, u: today }]); }
+    if (log.length < FORECAST_MIN_DAYS) { return null; }
+    var a = log[0], b = log[log.length - 1];
+    var days = (b.k - a.k) / DAY;
+    if (!(days > 0)) { return null; }
+    return { per_day: (b.u - a.u) / days, now_pct: b.u, days_measured: days };
+  }
+
+  /* 純関数。テストから直接叩けるようにしてある。
+     pace（1日あたりの問数）は文言に出すためだけに受け取る。
+     見通しそのものは unlockRate（実測した進み方）で決める。 */
+  function forecastUnlock(stats, meta, pace, now, boundaryHour) {
+    var def = mockDefById(FORECAST_TARGET);
+    var rest = examRemainingDays(meta, now, boundaryHour);
+    var out = { show: false, target: FORECAST_TARGET,
+                label: def ? def.label : '', rest_days: rest };
+    if (!def || rest === null || rest < 0) { return out; }        /* 試験日が無い／過ぎた */
+    if (meta && meta[def.flag]) { return out; }                   /* もう解禁されている */
+    if (!stats || !stats.total_atoms) { return out; }
+
+    /* 問題数そのものが足りないときは、ペースの話ではない */
+    if (stats.total_questions < def.req_q) {
+      out.show = true; out.reason = 'need_questions';
+      out.need_questions = def.req_q - stats.total_questions;
+      return out;
+    }
+
+    var r = unlockRate(meta);
+    if (!r) { return out; }                                        /* まだ測れない */
+    out.pace = pace;
+    out.now_pct = r.now_pct;
+    out.per_day = Math.round(r.per_day * 100) / 100;
+    var left = Math.max(0, 100 - r.now_pct);
+    if (left <= 0) { return out; }
+
+    /* 進んでいない（または後退している）なら、日付は出しようがない。
+       それでも黙らない。**間に合わないことは分かっている。** */
+    if (r.per_day <= 0) {
+      out.show = true; out.reason = 'stalled';
+      return out;
+    }
+    var days = Math.ceil(left / r.per_day);
+    out.days = days;
+    out.at = S.util.dayStart(isNum(now) ? now : nowMs(),
+                             isNum(boundaryHour) ? boundaryHour : 4) + days * DAY;
+    out.in_time = (days <= rest);
+    if (out.in_time) { return out; }                              /* 間に合う人には出さない */
+    out.show = true;
+    out.reason = 'too_slow';
+    out.over_days = days - rest;
+    /* 間に合わせるのに要る「1日あたりの進み」を、いまのペースの何倍かで出す。
+       問数で出すと、新規と復習の割合しだいで嘘になる。 */
+    /* **切り上げる。** 四捨五入すると 1.04倍 が「1倍」になり、
+       「いまの1倍の速さが要ります」という無意味な文になる（実測で出た）。
+       必要な速さは下回ってはいけない数なので、切り上げが正しい。 */
+    var ratio = (rest > 0) ? Math.ceil((left / rest) / r.per_day * 10) / 10 : null;
+    out.need_ratio = (ratio !== null && ratio > 1) ? ratio : null;
+    return out;
+  }
+
   /* 定着率が基準を割っているかを返す（模試開始時のソフト警告用・第11章②） */
   function shouldWarnBeforeExam(examId) {
     return refreshUnlocks().then(function (r) {
@@ -2621,6 +2758,13 @@
            ここが食い違うと「128と出ていたのに40問で終わった」になる。 */
         badge_value: Math.min(dueToday, 99),
         badge_text: dueToday > 99 ? '99+' : String(dueToday),
+        /* 模試の解禁の見通し（V1.94）。出す条件が揃わなければ show:false。 */
+        exam_forecast: forecastUnlock(
+          { total_atoms: unlocks.stats.total_atoms,
+            answered_atoms: unlocks.stats.answered_atoms,
+            normal_plus_atoms: unlocks.stats.normal_plus_atoms,
+            total_questions: unlocks.stats.total_questions },
+          meta, pacePerDay(meta, 'new'), nowMs(), boundary2),
         due_questions: dueQuestions,
         due_today: dueToday,
         due_rest: dueRest,
@@ -2802,6 +2946,9 @@
     weightedPick    : weightedPick,
     CONQUER_BAND    : CONQUER_BAND,
     getReviewQueue  : getReviewQueue,
+    FORECAST_MIN_DAYS: FORECAST_MIN_DAYS, FORECAST_TARGET: FORECAST_TARGET,
+    pacePerDay      : pacePerDay,       forecastUnlock : forecastUnlock,
+    unlockRate      : unlockRate,
     CAP_MIN         : CAP_MIN,          CAP_MAX        : CAP_MAX,
     CAP_DEFAULT     : CAP_DEFAULT,      CAP_MULT       : CAP_MULT,
     CAP_MIN_DAYS    : CAP_MIN_DAYS,     DAILY_KEEP     : DAILY_KEEP,

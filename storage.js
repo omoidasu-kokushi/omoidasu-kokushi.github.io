@@ -164,7 +164,15 @@
        V1.91 まで DEFAULT_META にあるだけで、どこからも読み書きしていなかった。 */
     daily_key               : null,          /* 日界4:00基準の「その日」の開始時刻 */
     daily_count             : 0,             /* 今日解いた問題数 */
-    /* 直近14日の実績 [{k:日界キー, n:問数}]。復習の1日上限を自動で決めるのに使う。
+    /* 今日**初めて**解いた問題数（V1.94）。復習で何度解いてもユニーク肢は
+       増えないので、模試の解禁の見通しはこちらで見立てる。 */
+    daily_new               : 0,
+    /* 今日の時点での「120問フル模試の解禁率」（V1.94）。
+       見通しは模型で計算せず、この数字の**進み方**を実測して伸ばす。 */
+    daily_unlock            : 0,
+    /* 直近14日の実績 [{k:日界キー, n:解いた問数, w:初めて解いた問数, u:その日の解禁率}]。
+       復習の1日上限を自動で決めるのに使う（n）。w は V1.94 から。
+       それ以前の記録には無いので、見通しは w が3日ぶんたまるまで出ない。
        解いた日だけ入る（休んだ日は入らない）。休んだ日を0として混ぜると、
        週3日で100問ずつ解く人の上限が30問まで落ちて、二度と追いつけなくなる。 */
     daily_log               : [],
@@ -2742,11 +2750,16 @@
     return Promise.all([getMeta('scan_answered_qids', []), countQuestions()]).then(function (r) {
       var list = Array.isArray(r[0]) ? r[0].slice() : [];
       var totalQ = r[1];
-      if (qId && list.indexOf(qId) < 0) { list.push(qId); }
+      /* この問題が「初めて解いた問題」だったか。V1.94 の見通しが要る。
+         復習で何度解いてもユニーク肢は増えないので、
+         **新規を解いた数**を数えないとペースの見立てが必ず楽観側に狂う。 */
+      var isNew = !!(qId && list.indexOf(qId) < 0);
+      if (isNew) { list.push(qId); }
       var denom = Math.min(totalQ, 60);
       var pct = denom > 0 ? Math.round(clamp(list.length / denom, 0, 1) * 100) : 0;
       return setMeta('scan_answered_qids', list).then(function () {
-        return { answered: list.length, denominator: denom, pct: pct, total_questions: totalQ };
+        return { answered: list.length, denominator: denom, pct: pct,
+                 total_questions: totalQ, is_new: isNew };
       });
     });
   }

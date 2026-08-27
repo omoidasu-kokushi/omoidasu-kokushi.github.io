@@ -1205,6 +1205,13 @@ small{ font-size:var(--fs-xs); }
 .atom-note-flag.is-wrong{ background:color-mix(in srgb, var(--c-hard) 16%, transparent); color:var(--c-hard); }
 .atom-note-text{ font-weight:700; font-size:var(--fs-md); margin-bottom:4px; }
 .atom-note-exp{ font-size:var(--fs-md); color:var(--text-sub); }
+/* 模試の解禁の見通し（V1.94）。間に合わないときだけ出る。 */
+.exam-forecast{
+  margin:8px 2px 0;
+  font-size:var(--fs-xs); font-weight:700;
+  color:var(--c-hard); line-height:1.6;
+}
+
 /* 溜まっているときだけ出す1行（V1.92）。
    溜まっていない人の画面には出ない（hidden のまま）。 */
 .review-rest{
