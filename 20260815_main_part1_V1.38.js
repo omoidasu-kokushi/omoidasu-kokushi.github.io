@@ -1007,10 +1007,6 @@
       /* --- 溜まっているときだけ出す1行（V1.92） ---
          上限は先送りであって帳消しではない。隠すと、定着率だけが良く見える
          嘘の画面になる。逆に、溜まっていない人には1文字も足さない。 */
-      /* V2.01：復習があるときだけ出す。0件の人に押させる意味は無い。 */
-      var quick = $('#review-quick');
-      if (quick) { quick.hidden = !(h.due_today > 0); }
-
       var rest = $('#review-rest');
       if (rest) {
         if (h.due_rest > 0) {
@@ -1342,12 +1338,6 @@
 
       state.session = {
         mode: mode,
-        /* V2.01：時間で始めたときの区切り。**強制終了はしない。**
-           時間が来たら、解説画面へ切り替わったタイミングで一度だけ聞く。 */
-        timeLimitMs: (typeof opts.timeLimitMs === 'number' && opts.timeLimitMs > 0)
-          ? opts.timeLimitMs : 0,
-        timeStartedAt: Date.now(),
-        timeAsked: false,
         sessionId: 'S' + Date.now().toString(36),
         questions: q.questions,
         index: 0,
@@ -1815,7 +1805,6 @@
       global.setTimeout(function () { Half2.tipReviewExtra(); }, 1800);
     }
     checkPomodoro();
-    checkTimeBox();
   }
 
   /* 解説文の冒頭にある「① 誤り：」は、行頭の番号と重複して冗長になる。
@@ -3136,38 +3125,6 @@
 
   /* 経過判定は解説画面の表示時に行う。
      解答の途中でモーダルを割り込ませて思考を折らないための設計。 */
-  /* --- 時間で区切って始める（V2.01） -------------------------------
-   *
-   * 【なぜ要るか】
-   * 1日の問数を決めるのは「続ける時間」ではなく **「始められるかどうか」**。
-   * 始めた人は、たいてい予定より多くやる。
-   * V1.92 で「今日の分」（上限）を入れたのは**多すぎて始められない**人のため、
-   * こちらは**そもそも取りかかれない**人のための入口。
-   *
-   * 【ノックとの決定的な違い】
-   * テーマ別ノック（§7）は忘却スケジュールを更新しない独立モードだが、
-   * こちらは**本日の復習そのもの**なので、**通常どおり記録も期日も更新する。**
-   * 時間は「いつ聞くか」を決めるだけで、学習の扱いは1ミリも変えない。
-   *
-   * 【強制終了しない】
-   * 時間が来たら、**解説画面へ切り替わったタイミングで一度だけ**聞く
-   * （ポモドーロと同じ作法。問題の途中で割り込まない）。
-   * ［続ける］なら以後は聞かない。止めたい人には止める道を、
-   * 続けたい人には続ける道を。
-   * ------------------------------------------------------------------ */
-  function checkTimeBox() {
-    var s = state.session;
-    if (!s || !s.timeLimitMs || s.timeAsked) { return false; }
-    if (Date.now() - s.timeStartedAt < s.timeLimitMs) { return false; }
-    s.timeAsked = true;
-    var min = Math.round(s.timeLimitMs / 60000);
-    setText('#time-up-title', min + '分たちました');
-    setHtml('#time-up-body', 'ここまでで <b>' + (s.answeredCount || 0) +
-      '</b> 問。区切りにしても、続けても大丈夫です。');
-    openModal('#modal-time-up');
-    return true;
-  }
-
   function checkPomodoro() {
     var p = state.pomodoro;
     if (!p.enabled || !p.running || p.notified) { return false; }
@@ -3505,17 +3462,6 @@
       closeModals();
       if (action === 'review') { startSession({ mode: 'review' }); }
       else { Half2.openRandomSelect(); }
-    });
-    on($('#btn-review-5'), 'click', function () {
-      startSession({ mode: 'review', timeLimitMs: 5 * 60 * 1000 });
-    });
-    on($('#btn-review-10'), 'click', function () {
-      startSession({ mode: 'review', timeLimitMs: 10 * 60 * 1000 });
-    });
-    on($('#time-up-go'), 'click', function () { closeModals(); });
-    on($('#time-up-stop'), 'click', function () {
-      closeModals();
-      finishSession();
     });
     on($('#done-next'), 'click', function () {
       closeModals();
@@ -4003,7 +3949,6 @@
     pomodoroIsFresh     : pomodoroIsFresh,
     savePomodoroState   : savePomodoroState,
     checkPomodoro : checkPomodoro,
-    checkTimeBox  : checkTimeBox,
     updatePomoUi  : updatePomoUi,
     setPomodoroEnabled: setPomodoroEnabled,
     numHtml       : numHtml,

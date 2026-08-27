@@ -50,6 +50,12 @@ ok("**question_type で選択の仕方を決めていない**",
 ok("なぜ写しを信じないか書いてある", "写しではなく本体を見る" in j1)
 ok("入口だけの検査では足りないと書いてある", "入口ができる前に入ったものが永久に残ります" in j1)
 ok("**負の数を出さないと書いてある**", "負の数を出さない" in j1)
+# V2.04 で HTML を削ったとき、閉じ <div> を1つ多く消して**16スイートが落ちた**。
+# 目に見えないので、構造そのものを数える。
+_body = re.sub(r"<!--.*?-->", "", html, flags=re.S)
+ok("**index.html の <div> が開閉ぴったり**",
+   len(re.findall(r"<div\b", _body)) == len(re.findall(r"</div>", _body)),
+   "%d / %d" % (len(re.findall(r"<div\b", _body)), len(re.findall(r"</div>", _body))))
 ok("版番号・CACHE_NAME・?v= の3箇所が揃っている",
    (lambda i, w: i and w and i == w)(
        (re.search(r"\?v=([0-9.]+)", html) or [None, None])[1],
