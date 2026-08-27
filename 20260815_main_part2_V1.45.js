@@ -1886,8 +1886,24 @@ var QR_MATRIX = [
   function openExamList() {
     return Promise.all([K.refreshUnlocks(), S.countQuestions()]).then(function (r) {
       var unlocks = r[0].unlocks, totalQ = r[1];
+      var st = r[0].stats || {};
       var byId = {};
       unlocks.forEach(function (u) { byId[u.id] = u; });
+
+      /* --- 直前期の緩和（V1.95） ---
+         効いているときだけ、**理由と、いま実際に必要な割合**を出す。
+         条件の文字を書き換えないと、画面の数字と実際の判定がずれる。 */
+      var ease = $('#exam-ease');
+      if (ease) {
+        if (st.unlock_ease && st.unlock_ease < 1) {
+          ease.textContent = '試験まで ' + st.exam_rest_days + '日なので、'
+            + '解禁に必要な割合を ' + Math.round(st.unlock_ease * 100) + '% まで下げています。'
+            + '（合格基準そのものは本番と同じままです）';
+          ease.hidden = false;
+        } else {
+          ease.hidden = true;
+        }
+      }
 
       $$('#exam-list .exam-card').forEach(function (card) {
         var id = ({ mini30: 'mock_30', half60: 'mock_60', full120: 'mock_120', evil120: 'mock_weak' })[card.getAttribute('data-exam')];
@@ -1898,6 +1914,14 @@ var QR_MATRIX = [
         cls(card, 'is-locked', !u.unlocked);
         var fill = card.querySelector('.exam-prog i');
         if (fill) { fill.style.width = u.pct + '%'; }
+        /* V1.95：緩和が効いているなら、条件の文字も実際の数に合わせる。
+           ここを書き換えないと、画面は15%と言っているのに6%で開く。 */
+        var cond = card.querySelector('.exam-cond');
+        if (cond && u.need_unique !== null && u.need_unique !== undefined) {
+          cond.textContent = 'ユニーク選択肢 ' + Math.round(u.need_unique * 100)
+            + '% 解答 ＋ 普通以上 ' + Math.round(u.need_normal_plus * 100) + '%'
+            + (u.eased ? '（直前期のため緩和中）' : '');
+        }
         var state2 = card.querySelector('.exam-state');
         if (state2) {
           state2.textContent = u.unlocked ? '解禁ずみ'

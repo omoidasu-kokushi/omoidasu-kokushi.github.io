@@ -2638,12 +2638,48 @@
   /* 解禁の絶対前提ガード：DB登録問題数が要求問数に届いていなければ、
      成績条件を満たしていても解禁しない（第11章①）。
      一度 true にしたフラグは、この関数からは決して false に戻さない。 */
+  /* --- 直前期の緩和（V1.95・判断待ちの「案A」） --------------------
+   *
+   * 【なぜ入れるか】
+   * 解禁は解答済みの割合だけで決まり、試験日を見ていなかった。
+   * 実測（tools/journey.py・1,359問）で **1日40問の人は90日たっても
+   * 1つも解禁されない**。試験3ヶ月前に始めた人は本番形式の模試を
+   * 一度も受けられないまま試験を迎える。買い切りの商品としてここがいちばん痛い。
+   *
+   * 【効くのは試験日を入れている人だけ】
+   * 試験日が無ければ係数は 1.0。**入れていない人の解禁日は1日もずれない。**
+   * 試験日は本人が申告した文脈なので、「なぜ今日開いたのか」の説明もそこに紐づく。
+   *
+   * 【問題数の下限（req_q）は緩めない】
+   * 30問模試に30問要るのは物理的な要件で、試験が近いかどうかとは関係がない。
+   * 緩めると「120問フル模試」が80問で始まってしまう。
+   *
+   * 【戻さない】
+   * 一度 true にしたフラグは戻さない（既存仕様）。試験日を後ろへずらすと
+   * 解禁済みが残るが、**戻すほうが体験としてずっと悪い**。
+   * ------------------------------------------------------------------ */
+  var EXAM_EASE = [
+    { within: 30, factor: 0.4 },
+    { within: 60, factor: 0.6 }
+  ];
+
+  function unlockEaseFactor(restDays) {
+    if (!isNum(restDays) || restDays < 0) { return 1; }
+    var f = 1;
+    EXAM_EASE.forEach(function (e) {
+      if (restDays <= e.within && e.factor < f) { f = e.factor; }
+    });
+    return f;
+  }
+
   function evaluateUnlocks(stats) {
     stats = stats || {};
     var totalQ        = isNum(stats.totalQuestions) ? stats.totalQuestions : 0;
     var uniqueRatio   = isNum(stats.uniqueAnsweredRatio) ? stats.uniqueAnsweredRatio : 0;
     var normalRatio   = isNum(stats.normalPlusRatio) ? stats.normalPlusRatio : 0;
     var passStreak    = isNum(stats.fullMockPassStreak) ? stats.fullMockPassStreak : 0;
+    /* 試験日までの残り日数。渡されなければ緩和なし（係数1.0）。 */
+    var ease          = unlockEaseFactor(stats.examRestDays);
 
     return loadMeta().then(function (meta) {
       var updates = {};
@@ -2653,18 +2689,20 @@
         var already = !!meta[def.flag];
         var qGate = totalQ >= def.req_q;
         var pctParts = [];
-        var conditionMet;
+        var conditionMet, needU = null, needN = null;
 
         if (def.id === 'mock_weak') {
           pctParts.push(clamp(passStreak / 2, 0, 1));
           pctParts.push(clamp(totalQ / def.req_q, 0, 1));
           conditionMet = (passStreak >= 2) && qGate;
         } else {
-          pctParts.push(clamp(uniqueRatio / def.need_unique, 0, 1));
-          pctParts.push(clamp(normalRatio / def.need_normal_plus, 0, 1));
+          /* V1.95：直前期だけ必要割合を下げる。問題数の下限（req_q）は下げない。 */
+          needU = def.need_unique * ease;
+          needN = def.need_normal_plus * ease;
+          pctParts.push(clamp(uniqueRatio / needU, 0, 1));
+          pctParts.push(clamp(normalRatio / needN, 0, 1));
           pctParts.push(clamp(totalQ / def.req_q, 0, 1));
-          conditionMet = (uniqueRatio >= def.need_unique) &&
-                         (normalRatio >= def.need_normal_plus) && qGate;
+          conditionMet = (uniqueRatio >= needU) && (normalRatio >= needN) && qGate;
         }
 
         var rawPct = Math.round(Math.min.apply(null, pctParts) * 100);
@@ -2683,7 +2721,10 @@
           id: def.id, flag: def.flag, label: def.label,
           unlocked: unlocked, newly_unlocked: unlocked && !already,
           pct: pct, raw_pct: rawPct,
-          q_gate_met: qGate, required_questions: def.req_q, total_questions: totalQ
+          q_gate_met: qGate, required_questions: def.req_q, total_questions: totalQ,
+          /* V1.95：緩和が効いたか。**なぜ今日開いたのか**を画面が説明できるように返す。 */
+          ease: ease, eased: (ease < 1),
+          need_unique: needU, need_normal_plus: needN
         });
       });
 
@@ -3546,6 +3587,8 @@
 
     /* --- 解禁・進捗率 --- */
     evaluateUnlocks       : evaluateUnlocks,
+    unlockEaseFactor      : unlockEaseFactor,
+    EXAM_EASE             : EXAM_EASE,
     getUnlockState        : getUnlockState,
     recordFullMockResult  : recordFullMockResult,
     applyHighWaterPct     : applyHighWaterPct,

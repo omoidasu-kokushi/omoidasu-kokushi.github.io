@@ -2178,9 +2178,12 @@
   }
 
   function refreshUnlocks(preloaded) {
-    return Promise.all([useAtoms(preloaded), S.countQuestions(), S.getMeta('full_mock_pass_streak', 0)])
+    return Promise.all([useAtoms(preloaded), S.countQuestions(),
+                        S.getMeta('full_mock_pass_streak', 0), S.loadMeta()])
       .then(function (r) {
-        var atoms = r[0], totalQ = r[1], streak = r[2] || 0;
+        var atoms = r[0], totalQ = r[1], streak = r[2] || 0, meta = r[3];
+        /* V1.95：試験日までの残り日数を渡す。無ければ null＝緩和なし。 */
+        var restDays = examRemainingDays(meta, nowMs(), meta && meta.day_boundary_hour);
 
         /* 模試待ちの予想問題は分母から外す（V1.56）。
            入れたままだと、解けない問題が分母に居座り、
@@ -2203,7 +2206,8 @@
           totalQuestions      : mainQ,
           uniqueAnsweredRatio : total > 0 ? (answered / total) : 0,
           normalPlusRatio     : total > 0 ? (normalPlus / total) : 0,
-          fullMockPassStreak  : streak
+          fullMockPassStreak  : streak,
+          examRestDays        : restDays
         }).then(function (results) {
           return {
             unlocks: results,
@@ -2218,7 +2222,9 @@
               normal_plus_atoms: normalPlus,
               unique_answered_ratio: total > 0 ? (answered / total) : 0,
               normal_plus_ratio: total > 0 ? (normalPlus / total) : 0,
-              full_mock_pass_streak: streak
+              full_mock_pass_streak: streak,
+              exam_rest_days: restDays,
+              unlock_ease: S.unlockEaseFactor(restDays)
             }
           };
         });
