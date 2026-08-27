@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=1.99">
+<link rel="stylesheet" href="./styles.css?v=2.00">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=1.99",                 label: "問題データ層（74テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.00",                 label: "問題データ層（74テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=1.99",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.00",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=1.99",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.00",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=1.99",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=2.00",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=1.99",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.00",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -70,6 +70,7 @@
 
   function render(opts) {
     opts = opts || {};
+    window.__DIAG_LAST = opts;      /* 印から戻すとき、同じ内容を出すため（V2.00） */
     /* すでに出ている、または一度閉じられた場合は蒸し返さない。
        閉じたそばから再表示されると、操作を永久に塞いでしまう。 */
     if (document.getElementById("boot-diagnostics")) { return; }
@@ -147,8 +148,35 @@
       btn.addEventListener("click", function () {
         window.__DIAG_DISMISSED = true;
         if (box.parentNode) { box.parentNode.removeChild(box); }
+        /* --- V2.00：閉じても「動いていない」ことは消さない ---
+           起動できていない（＝保存領域が開けていない等）のに覆いを消すと、
+           **ふつうのホーム画面が出ているのに何をしても記録されない**という、
+           いちばん分かりにくい壊れ方になる（実際にそう見えていた）。
+           覆いは片付けてよい。ただし小さな印を必ず残し、押せば戻れるようにする。
+           起動できている場合（file:// の助言など）は、閉じたら本当に消してよい。 */
+        if (!window.__APP_READY) { showDiagBadge(); }
       });
     }
+  }
+
+  /* 起動できていないことを示す小さな印。押すと診断パネルが戻る。 */
+  function showDiagBadge() {
+    if (document.getElementById("boot-diagnostics-badge")) { return; }
+    var b = document.createElement("button");
+    b.type = "button";
+    b.id = "boot-diagnostics-badge";
+    b.textContent = "⚠ 起動できていません";
+    b.setAttribute("aria-label", "起動できていません。押すと理由を表示します");
+    b.style.cssText = "position:fixed;z-index:99999;left:10px;bottom:10px;"
+      + "padding:8px 14px;border-radius:999px;border:1px solid #FF5568;"
+      + "background:#18202C;color:#FF5568;font:700 13px/1.4 system-ui,sans-serif;"
+      + "cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.45)";
+    b.addEventListener("click", function () {
+      window.__DIAG_DISMISSED = false;
+      if (b.parentNode) { b.parentNode.removeChild(b); }
+      render(window.__DIAG_LAST || {});
+    });
+    document.body.appendChild(b);
   }
 
   window.__showBootDiagnostics = render;
@@ -432,7 +460,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260827_Omoidasu_V1.99</p>
+        <p class="build-stamp">20260827_Omoidasu_V2.00</p>
       </div>
     </section>
 
@@ -1253,7 +1281,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260827_Omoidasu_V1.99 / cache v1.87.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260827_Omoidasu_V2.00 / cache v1.88.0</p>
         </section>
       </div>
     </section>
@@ -1802,12 +1830,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=1.99"></script>
-<script src="./storage.js?v=1.99"></script>
-<script src="./scheduler.js?v=1.99"></script>
+<script src="./questions.js?v=2.00"></script>
+<script src="./storage.js?v=2.00"></script>
+<script src="./scheduler.js?v=2.00"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=1.99"></script>
-<script src="./license.js?v=1.99"></script>
+<script src="./drive.js?v=2.00"></script>
+<script src="./license.js?v=2.00"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>
