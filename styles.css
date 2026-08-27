@@ -1205,6 +1205,16 @@ small{ font-size:var(--fs-xs); }
 .atom-note-flag.is-wrong{ background:color-mix(in srgb, var(--c-hard) 16%, transparent); color:var(--c-hard); }
 .atom-note-text{ font-weight:700; font-size:var(--fs-md); margin-bottom:4px; }
 .atom-note-exp{ font-size:var(--fs-md); color:var(--text-sub); }
+/* 分析がまだ足りないときだけ出る（V1.96）。 */
+.dash-scan{
+  margin:0 2px 14px;
+  padding:10px 12px;
+  border-radius:var(--r-md);
+  background:var(--surface-2);
+  font-size:var(--fs-xs); font-weight:700;
+  color:var(--text-sub); line-height:1.7;
+}
+
 /* 直前期の緩和が効いているときだけ出る（V1.95）。 */
 .exam-ease{
   margin:-6px 2px 12px;

@@ -510,9 +510,33 @@
     });
   }
 
+  /* --- 分析がまだ足りないことを言う（V1.96） ---
+     チュートリアルは**3問**で終わる（仕様§8の10問ではなく、
+     「まとめて20問やらせる旧構成をやめ、最初は3問だけ」という意図的な変更）。
+     全60問モデルなので、3問時点の分析精度は**5%**しかない。
+     ここで「あと何問で使えるようになるか」を言わないと、
+     ほぼ空のグラフを見せたまま「壊れている」と読まれる。
+     **チュートリアルを重くする代わりに、待たせる理由を説明する。** */
+  function refreshDashScan() {
+    var box = $('#dash-scan');
+    if (!box) { return Promise.resolve(null); }
+    return K.getScanAccuracy().then(function (scan) {
+      if (scan.complete) { box.hidden = true; return scan; }
+      var left = Math.max(0, scan.denominator - scan.answered);
+      box.textContent = '分析はいま ' + scan.pct + '%（' + scan.answered
+        + '/' + scan.denominator + '問）です。あと ' + left
+        + '問 解くと、弱点の並びが安定します。'
+        + 'それまでは、まだ解いていない範囲が上に出ません。';
+      box.hidden = false;
+      return scan;
+    }).catch(function () { return null; });
+  }
+
   function renderDashboard(level, metric) {
     st.dashboard.level = level || st.dashboard.level;
     st.dashboard.metric = metric || st.dashboard.metric;
+
+    refreshDashScan();
 
     $$('#screen-dashboard .seg-btn[data-level]').forEach(function (b) {
       cls(b, 'is-active', b.getAttribute('data-level') === st.dashboard.level);
@@ -5074,6 +5098,7 @@ var QR_MATRIX = [
     setPreferFrequent: setPreferFrequent,
     refreshHissuNote: refreshHissuNote, setHissuMode: setHissuMode,
     refreshCapNote: refreshCapNote, setReviewCap: setReviewCap,
+    refreshDashScan: refreshDashScan,
     maybeHissuHint: maybeHissuHint, hissuHintAnswer: hissuHintAnswer,
     hissuDistance: hissuDistance,
     openSearch: openSearch,              runSearch: runSearch,
