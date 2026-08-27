@@ -163,6 +163,8 @@ with sync_playwright() as p:
       await S.setMeta('exam_date', null);
       await H.openExamList();
       const off = { hidden: document.getElementById('exam-ease').hidden,
+                    ask: document.getElementById('exam-ease').classList.contains('is-ask'),
+                    text: document.getElementById('exam-ease').textContent,
                     cond: document.querySelector('#exam-list .exam-cond').textContent };
       const d = new Date(Date.now() + 86400000 * 20);
       await S.setMeta('exam_date', d.getFullYear() + '-'
@@ -173,10 +175,15 @@ with sync_playwright() as p:
                    cond: document.querySelector('#exam-list .exam-cond').textContent };
       await S.setMeta('exam_date', null);
       await H.openExamList();
-      const back = document.getElementById('exam-ease').hidden;
+      const back = { hidden: document.getElementById('exam-ease').hidden,
+                     ask: document.getElementById('exam-ease').classList.contains('is-ask') };
       return { off:off, on:on, back:back };
     }""")
-    ok("**試験日が無ければ何も出ない**", v["off"]["hidden"] is True,
+    # V1.99 で意図的に変えた：試験日が無いときは「緩和の説明」ではなく
+    # **静かな入口**（試験日を入れる）を同じ1行で出す。
+    # 緩和中と入口は同時には出ない（試験日が無ければ緩和も起きない）。
+    ok("**試験日が無ければ緩和の説明は出ない**",
+       "解禁に必要な割合" not in v["off"]["text"] and v["off"]["ask"] is True,
        json.dumps(v["off"], ensure_ascii=False))
     ok("**直前期は理由が出る**",
        v["on"]["hidden"] is False and "解禁に必要な割合" in v["on"]["note"],
@@ -187,8 +194,8 @@ with sync_playwright() as p:
     ok("**条件の文字も実際の数に書き換わる**",
        "6%" in v["on"]["cond"] and "緩和中" in v["on"]["cond"],
        json.dumps(v["on"], ensure_ascii=False))
-    ok("試験日を外せば元の数字に戻る",
-       v["back"] is True and "15%" in v["off"]["cond"],
+    ok("試験日を外せば条件の数字が元に戻る",
+       "15%" in v["off"]["cond"] and v["back"]["ask"] is True,
        json.dumps({"off": v["off"], "back": v["back"]}, ensure_ascii=False))
 
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))

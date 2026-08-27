@@ -1923,6 +1923,16 @@ var QR_MATRIX = [
           ease.textContent = '試験まで ' + st.exam_rest_days + '日なので、'
             + '解禁に必要な割合を ' + Math.round(st.unlock_ease * 100) + '% まで下げています。'
             + '（合格基準そのものは本番と同じままです）';
+          ease.classList.remove('is-ask');
+          ease.hidden = false;
+        } else if (st.exam_rest_days === null || st.exam_rest_days === undefined) {
+          /* V1.99：試験日が無い人への静かな入口。ここがいちばん意味を持つ場所。
+             緩和中と同時には出ない（試験日が無ければ緩和も起きない）ので、
+             同じ1行を使い回す。 */
+          ease.innerHTML = '試験日を入れると、直前期は解禁の条件がゆるみます。'
+            + '<button type="button" class="exam-ease-btn" id="exam-set-date">'
+            + '試験日を入れる</button>';
+          ease.classList.add('is-ask');
           ease.hidden = false;
         } else {
           ease.hidden = true;
@@ -3371,8 +3381,8 @@ var QR_MATRIX = [
 
   /* 過ぎた年は出さない。選べてしまうと残り日数が負になり、
      間隔の上限計算が壊れる（examCapMs が不定になる）。 */
-  function fillExamYears(current) {
-    var sel = $('#set-exam-year');
+  function fillExamYears(current, sel2) {
+    var sel = sel2 ? $(sel2) : $('#set-exam-year');
     if (!sel) { return; }
     var now = new Date();
     var y0 = now.getFullYear();
@@ -3389,6 +3399,45 @@ var QR_MATRIX = [
     }
     sel.innerHTML = opts.join('');
     sel.value = current || '';
+  }
+
+  /* --- 試験日を1回だけ聞く（V1.99） ---------------------------------
+   *
+   * 【なぜ要るか】
+   * 試験日を書き込む場所は設定のセレクト1箇所しか無かった。
+   * ところが試験日が無いと、次の**5つがまとめて無効**になる。
+   *   逆算プランナー（V1.50）／解禁の見通し（V1.94）／直前期の緩和（V1.95）／
+   *   忘却の間隔上限（examCapMs）／直前モード（examPhase・残10日）
+   * 買ったばかりの人が設定を開く確率は高くないので、
+   * **5機能が「たまたま設定を開いて年を選んだ人」にしか届いていなかった。**
+   *
+   * 【いつ聞くか】
+   * チュートリアルを終えた直後。V1.60 の `requestPersist` と同じ作法で、
+   * **この人にとって記録が価値を持ち始めた瞬間**に頼む。
+   * 起動直後に聞くと、まだ何も積み上がっていないので断られて終わる。
+   *
+   * 【1回だけ】
+   * 断られたら二度と聞かない（`exam_ask_done`）。
+   * 代わりに、力試し画面に**静かな入口**を残す（そこがいちばん意味を持つ場所）。
+   * ------------------------------------------------------------------ */
+  function maybeAskExamDate() {
+    return S.loadMeta().then(function (meta) {
+      if (meta.exam_ask_done || meta.exam_date) { return false; }
+      fillExamYears('', '#exam-ask-year');
+      openModal('#modal-exam-ask');
+      return S.setMeta('exam_ask_done', true).then(function () { return true; });
+    }).catch(function () { return false; });
+  }
+
+  function answerExamAsk(save) {
+    var sel = $('#exam-ask-year');
+    var year = (save && sel) ? sel.value : '';
+    closeModals();
+    var p = year ? setExamYear(year) : Promise.resolve(null);
+    return p.then(function () {
+      /* チュートリアル直後の案内は、この覆いが片付いてから出す。 */
+      return global.setTimeout(function () { tip('home_review'); }, 400);
+    });
   }
 
   /* --- 選択肢ごとの解説の見せ方（V1.44） --- */
@@ -5067,8 +5116,13 @@ var QR_MATRIX = [
       })
       .then(function (scan) {
         toast('ここまでで分析精度が ' + scan.pct + '% になりました', 4200);
-        /* 次に押してほしいボタンを1つだけ案内する */
-        return global.setTimeout(function () { tip('home_review'); }, 900);
+        /* V1.99：ここで試験日を1回だけ聞く（§V1.60 の requestPersist と同じ作法）。
+           聞けたなら、次の案内はその覆いを閉じてから出す（重ねると両方読まれない）。 */
+        return maybeAskExamDate().then(function (asked) {
+          if (asked) { return null; }
+          /* 次に押してほしいボタンを1つだけ案内する */
+          return global.setTimeout(function () { tip('home_review'); }, 900);
+        });
       });
   }
 
@@ -5098,6 +5152,7 @@ var QR_MATRIX = [
     setPreferFrequent: setPreferFrequent,
     refreshHissuNote: refreshHissuNote, setHissuMode: setHissuMode,
     refreshCapNote: refreshCapNote, setReviewCap: setReviewCap,
+    maybeAskExamDate: maybeAskExamDate, answerExamAsk: answerExamAsk,
     refreshDashScan: refreshDashScan,
     maybeHissuHint: maybeHissuHint, hissuHintAnswer: hissuHintAnswer,
     hissuDistance: hissuDistance,
@@ -5502,6 +5557,11 @@ var QR_MATRIX = [
     on($('#btn-drive-logout'),  'click', function () { driveLogout(); });
     on($('#btn-drive-sync'),    'click', function () { driveSync(); });
     on($('#set-exam-year'), 'change', function (ev) { setExamYear(ev.target.value); });
+    on($('#exam-ask-ok'), 'click', function () { answerExamAsk(true); });
+    on($('#exam-ask-later'), 'click', function () { answerExamAsk(false); });
+    on($('#exam-ease'), 'click', function (ev) {
+      if (ev.target && ev.target.id === 'exam-set-date') { openSettings(); }
+    });
     on($('#set-cap'), 'click', function (ev) {
       var b = ev.target.closest('.seg-btn');
       if (b && b.dataset.cap !== undefined) { setReviewCap(b.dataset.cap); }

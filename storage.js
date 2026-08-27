@@ -134,6 +134,9 @@
     tutorial_finished       : false,
     random_qty_unlocked     : false,         /* 2回目以降の全出題数解放 */
     ui_tour_done            : false,
+    /* 試験日を一度でも聞いたか（V1.99）。**聞くのは1回だけ。**
+       断られたら二度と聞かない（力試し画面に静かな入口だけ残す）。 */
+    exam_ask_done           : false,
 
     /* --- ポモドーロ --- */
     pomodoro_enabled        : true,
