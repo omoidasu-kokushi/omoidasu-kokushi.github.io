@@ -74,22 +74,22 @@ with sync_playwright() as p:
       return { n: Object.keys(m).length, c: c,
                tax: (window.TAXONOMY_MASTER || []).length };
     }""")
-    ok("**S25 / A69 / C126 が載っている**",
-       t["c"]["S"] == 25 and t["c"]["A"] == 69 and t["c"]["C"] == 126,
+    ok("**S31 / A71 / C116 が載っている**",
+       t["c"]["S"] == 31 and t["c"]["A"] == 71 and t["c"]["C"] == 116,
        json.dumps(t))
     ok("**B は載せていない（既定なので）**", t["c"]["B"] == 0, json.dumps(t))
-    ok("出題基準458中項目のうち220件が表にある",
-       t["n"] == 220 and t["tax"] == 458, json.dumps(t))
+    ok("出題基準465中項目のうち218件が表にある",
+       t["n"] == 218 and t["tax"] == 465, json.dumps(t))
 
     r = pg.evaluate("""() => {
       const S = window.Storage;
       return {
-        s:   S.rankFor('必修問題', '1. 健康に関する指標', 'A. 人口静態・人口動態', 'B'),
+        s:   S.rankFor('必修', '11. 徴候と疾患', 'A. 主要な症状と徴候', 'B'),
         /* 表に載っていない中項目（＝B相当）は、渡された値をそのまま使う */
-        miss:S.rankFor('必修問題', 'なにか', 'どこにも無い中項目', 'A'),
+        miss:S.rankFor('必修', 'なにか', 'どこにも無い中項目', 'A'),
         /* 渡された値が壊れていれば B */
-        bad: S.rankFor('必修問題', 'なにか', 'どこにも無い中項目', 'Z'),
-        none:S.rankFor('必修問題', 'なにか', 'どこにも無い中項目', null),
+        bad: S.rankFor('必修', 'なにか', 'どこにも無い中項目', 'Z'),
+        none:S.rankFor('必修', 'なにか', 'どこにも無い中項目', null),
         /* 分類が空なら表は引けない */
         empty: S.rankFor('', '', '', 'A')
       };
@@ -114,9 +114,9 @@ with sync_playwright() as p:
         ]
       });
       const payload = JSON.stringify({ questions: [
-        mk('必修問題', '1. 健康に関する指標', 'A. 人口静態・人口動態', 1),   /* S */
-        mk('必修問題', '2. 健康と生活', 'B. 労働', 2),                      /* 表に無い＝B */
-        mk('人体の構造と機能', '1. 細胞・組織', 'B. 遺伝子と遺伝情報', 3)    /* C の可能性 */
+        mk('必修', '11. 徴候と疾患', 'A. 主要な症状と徴候', 1),   /* S */
+        mk('必修', '4. 看護における倫理', 'A. 基本的人権の擁護', 2),        /* 表に無い＝B */
+        mk('人体の構造と機能', '1. 細胞と組織', 'B. 遺伝子と遺伝情報', 3)    /* C の可能性 */
       ]});
       await S.importText(payload);
       const out = {};

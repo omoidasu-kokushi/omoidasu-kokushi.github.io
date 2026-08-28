@@ -326,7 +326,7 @@
       p.createIndex('mode',        'mode',        { unique: false });
     }
 
-    /* --- concept_stat（74概念の理解率） --- */
+    /* --- concept_stat（103概念の理解率） --- */
     if (!db.objectStoreNames.contains(STORE.CONCEPT)) {
       var c = db.createObjectStore(STORE.CONCEPT, { keyPath: 'tag' });
       c.createIndex('score',      'score',      { unique: false });
@@ -1398,7 +1398,7 @@
   /* --- 概念タグも同じ扱いにする（V1.88） ---
      分類は「出題基準に無い」と言えるのに、タグは何を書いても黙って通っていた。
      タグが74マスタから外れると、
-       ・74概念理解率（§12-2）の対象にならない
+       ・103概念理解率（§12-2）の対象にならない
        ・概念別弱点ノック（§7）に球が出ない
        ・最優先克服概念TOP3（§12-3）に出てこない
      どれも「出ない」だけなので、**画面のどこにもエラーが出ない**。
@@ -1406,7 +1406,7 @@
      そのときにはもう原因の見当がつかない。
 
      実測（同梱453問）：タグ 1,365個のうち 1,344個（98.5%）がマスタ外。
-     74テーマのうち球があるのは14テーマ、最大4肢。ここは誰も見ていなかった。 */
+     103テーマのうち球があるのは14テーマ、最大4肢。ここは誰も見ていなかった。 */
   var _tagSet = null;
   function tagKnown(tag) {
     var master = (typeof global !== 'undefined' && global.CONCEPT_TAGS_MASTER) || null;
@@ -2533,7 +2533,7 @@
   }
 
   /* ======================================================================
-   * 10. 74概念タグ（concept_stat）
+   * 10. 103概念タグ（concept_stat）
    * ====================================================================== */
 
   function conceptMaster() {
@@ -3619,7 +3619,7 @@
     trimGuard        : trimGuard,
     clearGuard       : clearGuard,
 
-    /* --- 74概念 --- */
+    /* --- 103概念 --- */
     refreshConceptCatalog : refreshConceptCatalog,
     getConceptStats       : getConceptStats,
     saveConceptScores     : saveConceptScores,

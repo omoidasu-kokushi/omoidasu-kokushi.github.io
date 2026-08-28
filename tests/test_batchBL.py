@@ -14,7 +14,7 @@
     利用者の目に直接触れる。1箇所だけ "the" もあった。
   ・そのうち **15行は分類セルに入っていた**ので、
     「9. 主な看護活動展開 of 場と看護の機能」のような、
-    出題基準の458キーに存在しない分類になっていた。
+    出題基準の465キーに存在しない分類になっていた。
   ・全角＜＞が半角<>、全角）が半角) になっている行が11。
     こちらも出題基準と一致しない。
   ・**タグのセルに生成器の後始末が残っていた**（`STATE_COMPLETE` が6個・5行）。
@@ -43,13 +43,13 @@ qs = io.open(os.path.join(APP, "questions.js"), encoding="utf-8").read()
 mstart = qs.index("const TAXONOMY_MASTER")
 body = qs[mstart:qs.index("if (typeof window", mstart)]
 KEYS = set("｜".join(k) for k in re.findall(r'\["([^"]+)","([^"]+)","([^"]+)"\]', body))
-ok("出題基準マスタが458キーある", len(KEYS) == 458, str(len(KEYS)))
+ok("出題基準マスタが465キーある", len(KEYS) == 465, str(len(KEYS)))
 
 # --- 概念タグマスタ ---
 tstart = qs.index("const CONCEPT_TAGS_MASTER")
 tbody = qs[tstart:qs.index("if (typeof window", tstart)]
 TAGS = set(re.findall(r'tag:\s*"([^"]+)"', tbody))
-ok("概念タグマスタが74ある", len(TAGS) == 74, str(len(TAGS)))
+ok("概念タグマスタが103ある", len(TAGS) == 103, str(len(TAGS)))
 
 # --- 見本問題のTSVを、アプリと同じ手順で組み立てて読む ---
 import subprocess
@@ -74,7 +74,7 @@ for i, r in enumerate(rows):
     k = "｜".join([c[0], c[3], c[4]])
     if k not in KEYS:
         bad_key.append((i, k))
-ok("全行の分類が出題基準の458キーの中にある", not bad_key,
+ok("全行の分類が出題基準の465キーの中にある", not bad_key,
    json.dumps(bad_key[:5], ensure_ascii=False))
 
 # --- 機械翻訳の混入（の → of / the） ---

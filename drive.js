@@ -1270,7 +1270,7 @@
         return S.updateQuestionsBulk(qp).then(function () { return touched; });
       });
     }).then(function (touched) {
-      /* 台帳を差し替えたら74概念の理解率はもう合っていない。
+      /* 台帳を差し替えたら103概念の理解率はもう合っていない。
          ここで作り直さないと、分析画面と弱点ノックが同期前の値のまま残る。 */
       if (!K.recomputeConceptScores) { return touched; }
       return Promise.resolve(K.recomputeConceptScores())

@@ -3,7 +3,7 @@
 """バッチAV：取り込み時の分類ガード（V1.71）
 
 391バッチのNB分類は表記ゆれを起こしやすく、中項目名が1字違うだけで
-3階層ツリーが分裂する。出題基準タキソノミー（458中項目・questions.js）と
+3階層ツリーが分裂する。出題基準タキソノミー（465中項目・questions.js）と
 突合して警告が出ることを固定する。ブロックはしない（出題基準の改定や
 意図的な独自分類を止めないため）。
 """
@@ -41,7 +41,7 @@ ok("マスター不在時は検査しない（他環境での安全）",
 from playwright.sync_api import sync_playwright
 
 def q(medium, stem):
-    return {"unit": "必修問題", "major": "1. 健康に関する指標", "medium": medium,
+    return {"unit": "必修", "major": "11. 徴候と疾患", "medium": medium,
             "sub_item": "a. 総人口", "rank": "B", "pool": "main",
             "question_type": "single", "select_count": 1, "stem": stem,
             "atoms": [
@@ -65,12 +65,12 @@ with sync_playwright() as p:
     pg.wait_for_timeout(900)
 
     n = pg.evaluate("(window.TAXONOMY_MASTER || []).length")
-    ok("マスターは458中項目", n == 458, str(n))
+    ok("マスターは465中項目", n == 465, str(n))
 
     r = pg.evaluate("""async (txt) => {
       const rep = await window.Storage.importText(txt, {});
       return { bad: rep.tax_bad, ex: rep.tax_examples, imported: rep.imported };
-    }""", json.dumps({"questions": [q("A. 人口静態・人口動態", "分類ガード検証・正 v1")]},
+    }""", json.dumps({"questions": [q("A. 主要な症状と徴候", "分類ガード検証・正 v1")]},
                      ensure_ascii=False))
     ok("正しい分類は警告なし", r["bad"] == 0, json.dumps(r, ensure_ascii=False))
     ok("正しい分類は取り込まれる", r["imported"] == 1, str(r["imported"]))

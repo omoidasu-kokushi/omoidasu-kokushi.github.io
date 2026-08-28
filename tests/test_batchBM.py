@@ -45,7 +45,7 @@ ok("マスター不在なら検査しない（分類と同じ扱い）",
 ok("TSVの取り込みでも数える", "tagCheckInto(report, built.atoms" in st)
 ok("JSONの取り込みでも数える", "tagCheckInto(report, atoms" in st)
 ok("レポートの初期値にある", "tag_bad: 0, tag_bad_rows: 0, tag_examples: []" in st)
-ok("画面に出す", "74テーマに無いタグ" in js)
+ok("画面に出す", "103テーマに無いタグ" in js)
 ok("何が起きるかを画面にも書く",
    "概念別弱点ノックにも" in js and "最優先克服概念" in js)
 ok("何が起きていたかがコードに書いてある", "静かに死ぬ" in st or "静かに死ぬ" in js)
@@ -66,8 +66,8 @@ with sync_playwright() as p:
     got = pg.evaluate("""async () => {
       const master = window.CONCEPT_TAGS_MASTER.map(x => x.tag);
       const mk = (tag, tags) => ({
-        unit: '必修問題', rank: 'B', major: '1. 健康に関する指標',
-        medium: 'A. 人口静態・人口動態', sub_item: 'a. 総人口',
+        unit: '必修', rank: 'B', major: '11. 徴候と疾患',
+        medium: 'A. 主要な症状と徴候', sub_item: 'a. 意識障害',
         question_type: 'single', select_count: 1, pool: 'main',
         stem: 'タグ照合の検証 ' + tag,
         atoms: [
@@ -99,8 +99,8 @@ with sync_playwright() as p:
     clean = pg.evaluate("""async () => {
       const master = window.CONCEPT_TAGS_MASTER.map(x => x.tag);
       const payload = { questions: [{
-        unit: '必修問題', rank: 'B', major: '1. 健康に関する指標',
-        medium: 'A. 人口静態・人口動態', sub_item: 'a. 総人口',
+        unit: '必修', rank: 'B', major: '11. 徴候と疾患',
+        medium: 'A. 主要な症状と徴候', sub_item: 'a. 意識障害',
         question_type: 'single', select_count: 1, pool: 'main',
         stem: 'タグ照合の検証 きれいな行',
         atoms: [
