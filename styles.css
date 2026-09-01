@@ -2515,7 +2515,12 @@ body.is-review .toast{ bottom:calc(var(--tz-h) + var(--safe-b) + 12px); }
    肢ごとに1行ずつ並べると、同じ文字列を4回繰り返すだけで
    1問あたり約100pxを消費していた。 */
 .cx-shared-tags{
-  display:flex; align-items:center; flex-wrap:wrap; gap:5px;
+  display:flex; align-items:center; flex-wrap:wrap;
+  column-gap:5px; row-gap:19px;
+  /* row-gap 19px は見た目ではなく当たり判定（V1.90 と同じ理由）。
+     .tag-pill::after が上下±9px。V2.07 でシードにマスタタグを追記して
+     共有タグが折り返すようになり、gap:5px のこの容器だけ行が13px重なって
+     いた（batchAP が検出）。3つ目の容器。片方だけ直すと、また重なる。 */
   margin:0 0 9px; padding:0 0 8px;
   border-bottom:1px solid var(--border);
 }
@@ -4352,7 +4357,7 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 
 /* タグは横の隙間5px。左右は触らず、上下だけ厚くする。
    **折り返したときは行どうしが重なる。** 容器側で row-gap:19px を取っている
-   （.atom-tags / .cx-tags）。片方だけ直すと、また重なる。 */
+   （.atom-tags / .cx-tags / .cx-shared-tags）。片方だけ直すと、また重なる。 */
 .tag-pill::after{ top:-9px; bottom:-9px; }
 
 /* ヘッダーの？は上に余白が無い。下だけ広げる。 */

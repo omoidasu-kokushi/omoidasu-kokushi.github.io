@@ -128,9 +128,12 @@ with sync_playwright() as p:
       return { total: total, inMaster: inMaster, themes: hit.size, masterSize: master.size };
     }""")
     ok("同梱シードのタグを数えられた", seed["total"] > 0, json.dumps(seed, ensure_ascii=False))
-    ok("**同梱シードのタグはほとんどが74マスタ外**（この事実を固定して忘れない）",
-       seed["inMaster"] * 20 < seed["total"], json.dumps(seed, ensure_ascii=False))
-    ok("74テーマのうち球があるのは一部だけ", seed["themes"] < 40,
+    # V2.07（案A'）で中項目→対応表の既定タグを全肢へ追記し、旧事実
+    # 「ほぼマスタ外・球<40」は決着した（claude/20260901_…判断待ち_V1.01）。
+    # 以後はこの健常状態を固定する（静的な固定は tests/test_batchCE.py）。
+    ok("シードのタグはマスタ内が3分の1を超える（V2.07で追記済み）",
+       seed["inMaster"] * 3 > seed["total"], json.dumps(seed, ensure_ascii=False))
+    ok("球のあるテーマが40以上ある（V2.07実測48）", seed["themes"] >= 40,
        json.dumps(seed, ensure_ascii=False))
 
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))

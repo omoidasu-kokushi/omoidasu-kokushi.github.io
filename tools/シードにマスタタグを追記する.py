@@ -90,23 +90,37 @@ def load_mapping(path):
     else:
         data = json.load(io.open(path, encoding="utf-8-sig"))
         if isinstance(data, dict):
-            items = data.items()
+            items = [(norm(k), v, [norm(k)]) for k, v in data.items()]
         else:
             items = []
             for d in data:
-                key = d.get("中項目") or d.get("中項目名") or d.get("key") \
-                    or d.get("num_code") or d.get("code") or d.get("name")
-                items.append((key, d))
-        for key, v in items:
-            if key is None:
-                continue
+                med = d.get("中項目") or d.get("中項目名") or d.get("medium") \
+                    or d.get("key") or d.get("num_code") or d.get("code") \
+                    or d.get("name")
+                if med is None:
+                    continue
+                med = norm(med)
+                keys = [med]
+                if d.get("major"):
+                    keys.append(norm(d["major"]) + "|" + med)
+                    if d.get("unit"):
+                        keys.append(norm(d["unit"]) + "|" +
+                                    norm(d["major"]) + "|" + med)
+                items.append((med, d, keys))
+        conflict = set()
+        for med, v, keys in items:
             if isinstance(v, dict):
                 v = v.get("既定") or v.get("default") or v.get("tags") \
                     or v.get("タグ") or []
             if isinstance(v, str):
-                v = re.findall(r"#[^\s,、/｜|\]\[\"']+", v)
-            tags = set("#" + t.lstrip("#") for t in v if str(t).strip())
-            mp.setdefault(norm(key), set()).update(tags)
+                v = re.findall(r"#[^\s,、/｜|\]\[\"']+", v) or [v]
+            tags = set("#" + str(t).lstrip("#") for t in v if str(t).strip())
+            for k in keys:
+                if k in mp and mp[k] != tags:
+                    conflict.add(k)     # 同名キーで中身が割れたら、そのキーは使わない
+                mp.setdefault(k, set()).update(tags)
+        for k in conflict:
+            mp.pop(k, None)
     if not mp:
         raise SystemExit("対応表からキーを1つも読めなかった: " + path)
     return mp
@@ -253,6 +267,26 @@ def selftest():
     mp = load_mapping(mt)
     chk("TSVの既定列だけ読む（候補は読まない）",
         mp["B. 健康に関する指標"] == {"#人口静態", "#保健統計指標"})
+
+    # 形式3: 実物スキーマ（unit/major/medium・defaultは#無し文字列・同名mediumの衝突）
+    mr = os.path.join(d, "real.json")
+    json.dump([
+        {"unit": "必修", "major": "1. 健康", "medium": "B. 健康に関する指標",
+         "default": "人口静態", "candidates": ["人口静態", "保健統計指標"]},
+        {"unit": "成人", "major": "9. 場", "medium": "A. かぶる中項目",
+         "default": "人口静態"},
+        {"unit": "老年", "major": "2. 別", "medium": "A. かぶる中項目",
+         "default": "保健統計指標"},
+    ], io.open(mr, "w", encoding="utf-8"), ensure_ascii=False)
+    mp = load_mapping(mr)
+    chk("実物形式: defaultの#無し文字列を1タグとして読む",
+        mp["B. 健康に関する指標"] == {"#人口静態"})
+    chk("実物形式: candidatesは読まない",
+        "#保健統計指標" not in mp["B. 健康に関する指標"])
+    chk("実物形式: 同名mediumで中身が割れたら素のキーを捨て複合キーで引ける",
+        "A. かぶる中項目" not in mp
+        and mp["9. 場|A. かぶる中項目"] == {"#人口静態"}
+        and mp["老年|2. 別|A. かぶる中項目"] == {"#保健統計指標"})
 
     print("\nselftest:", "全通過" if ok else "失敗あり")
     return 0 if ok else 1
