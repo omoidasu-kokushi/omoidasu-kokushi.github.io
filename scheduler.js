@@ -1199,7 +1199,19 @@
       var spareO = shuffle(pool.filter(function (c) { return !c.hissu && !inQ[c.q_id]; }), seed);
       var cut = Math.min(his.length - target, spareO.length);
       if (!cut) { return picked; }
-      out = oth.concat(spareO.slice(0, cut)).concat(shuffle(his, seed).slice(0, his.length - cut));
+      /* --- V2.06：切るのは既出の必修から。未学習を含む必修は残す ---
+         ここが shuffle(his) 丸ごとだったせいで、未学習の必修問題まで
+         抽選で切られていた。§6-②「未学習は最優先で抽出」がここで破れ、
+         同梱シードだけを解き切る通し検証で、最後の1問（必修・4肢）が
+         400日回しても一度も出題されない実測を得た（Level 3 が 99%で永遠に止まる）。
+         必修枠は「どの必修を出すか」を選ぶ場所であって、
+         「未学習を出すか」を決め直す場所ではない。 */
+      var keepN   = his.length - cut;
+      var hisUn   = his.filter(function (c) { return c.unlearned > 0; });
+      var hisDone = shuffle(his.filter(function (c) { return c.unlearned === 0; }), seed);
+      var kept = hisUn.slice(0, keepN);
+      if (kept.length < keepN) { kept = kept.concat(hisDone.slice(0, keepN - kept.length)); }
+      out = oth.concat(spareO.slice(0, cut)).concat(kept);
     } else {
       if (his.length >= target) { return picked; }
       var spareH = shuffle(pool.filter(function (c) { return c.hissu && !inQ[c.q_id]; }), seed);
