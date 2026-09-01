@@ -258,10 +258,21 @@ def check_modes(pg, say, C, errs):
       const t0 = performance.now();
       const h = await window.Scheduler.getHomeState();
       const ms = Math.round(performance.now()-t0);
-      return { due:h.due_count, badge:h.badge_text, ms };
+      return { due:h.due_count, badge:h.badge_text, ms,
+               due_q:h.due_questions, due_today:h.due_today, cap:h.review_cap };
     }""")
     say("  " + json.dumps(hs, ensure_ascii=False))
-    C("DOMバッジは 99+ で頭打ちになる", hs["badge"] == "99+", hs["badge"])
+    # V1.92：バッジは期日総数ではなく「今日の分」（復習上限の適用後）。
+    # 押して出てくる数とバッジを揃える設計なので、期待値も同じ式で組む。
+    # 旧期待値の「badge == '99+'」は、自動上限が99以下に落ちた瞬間に偽になる
+    # （実走行で終盤の日次実績が縮み、上限が下がって発覚。V2.06の全体検証）。
+    want = "99+" if hs["due_today"] > 99 else str(hs["due_today"])
+    C("DOMバッジは「今日の分」を出す（V1.92。期日総数の99+ではない）",
+      hs["badge"] == want,
+      "badge=%s due_today=%s cap=%s due_q=%s" % (hs["badge"], hs["due_today"], hs["cap"], hs["due_q"]))
+    C("数千件の期日でも「今日の分」は上限で頭打ち（先送りであって帳消しではない）",
+      hs["cap"] == 0 or hs["due_today"] == min(hs["due_q"], hs["cap"]),
+      "due_today=%s cap=%s due_q=%s" % (hs["due_today"], hs["cap"], hs["due_q"]))
     C("ホームの組み立てが2秒以内", hs["ms"] < 2000, "%dms" % hs["ms"])
     got = js("""async () => {
       const nav = navigator; const seen = [];
@@ -383,12 +394,23 @@ def check_modes(pg, say, C, errs):
     # ------------------------------------------------- ⑯ オフラインで各モード
     say("\n===== ⑯ オフライン（電波が無い実習先）で各モード =====")
     n0 = len(errs)
+    # 使い捨てコンテキストでは、リロードのたびに CLOCK（add_init_script）が
+    # offset=0 から作り直される。＝ここまで積んだ「◯日後の利用者」の時計だけが
+    # 現実の今日へ巻き戻り、オフライン区間は別人のプロファイルを検査していた
+    # （期日が全部未来へ行き、復習が0件になる。V2.06 の全体検証で発覚）。
+    # リロード前に offset を退避し、init script で引き継ぐ。
+    saved_offset = js("() => window.__offset()")
+    pg.context.add_init_script(
+        "(() => { if (window.__setOffset) window.__setOffset(%d); })()" % saved_offset)
     try:
         pg.context.set_offline(True)
         pg.reload(wait_until="load")
         pg.wait_for_function("window.__APP_READY === true", timeout=180000)
         pg.wait_for_timeout(1500)
         close_modals(pg); tour_skip(pg)
+        C("オフラインのリロード後も検証中の日付を引き継ぐ（時計が今日へ戻らない）",
+          js("() => window.__offset()") == saved_offset,
+          "offset %s → %s" % (saved_offset, js("() => window.__offset()")))
         offq = js("""async () => {
           const r = await window.Scheduler.buildQueue({ mode:'random', count:5, applyGuard:false });
           const rv = await window.Scheduler.getReviewQueue(5);
@@ -399,7 +421,16 @@ def check_modes(pg, say, C, errs):
         C("オフラインでもランダムが出る", offq["random"] > 0, offq["random"])
         pg.click("#card-random"); pg.wait_for_timeout(1200)
         scr = js("() => (document.querySelector('.screen.is-active')||{}).id")
-        C("オフラインでもランダム画面へ進める", scr in ("screen-random", "screen-quiz"), scr)
+        # 期日が20件以上たまった状態では、引き留め（modal-review-nag・1日1回・
+        # ブロックはしない）が先に出るのが正しい動線。時計を引き継ぐと
+        # ここは期日数千件なので、まず引き留めが出る。「それでも進む」で先へ。
+        if js("() => { const m = document.querySelector('#modal-review-nag');"
+              " return !!(m && !m.hidden); }"):
+            say("  引き留め（復習がたまっています）が出た → それでも進む")
+            pg.click("#nag-go"); pg.wait_for_timeout(1200)
+            scr = js("() => (document.querySelector('.screen.is-active')||{}).id")
+        C("オフラインでもランダム画面へ進める（引き留めが出たら選んで進める）",
+          scr in ("screen-random", "screen-quiz"), scr)
     finally:
         pg.context.set_offline(False)
     C("オフラインでJSエラーが出ない", not errs_since(n0), json.dumps(errs_since(n0)[:3], ensure_ascii=False))
