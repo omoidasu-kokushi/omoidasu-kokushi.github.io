@@ -68,6 +68,11 @@ def runtime_checks():
             pg.wait_for_function("window.__APP_READY === true", timeout=40000)
             settle()
             pg.wait_for_timeout(1600)
+            # 新規プロファイルの初回ナビゲーションは、SWのclaimが遅い環境だと
+            # まだ controller=null のことがある（クラウド検証で実測）。
+            # ここで待たないと old='NO_CONTROLLER' の置換空振り→以後が連鎖NGになる。
+            pg.wait_for_function("() => !!navigator.serviceWorker.controller",
+                                 timeout=30000)
 
             ver = """async () => {
               const c = navigator.serviceWorker.controller;
