@@ -2437,7 +2437,13 @@
   };
   var SAFE_ATTRS = { class:1, style:1, colspan:1, rowspan:1, 'data-verdict':1, 'aria-hidden':1 };
   /* style から外部を取りにいく書き方だけ落とす。色や太さは残す。 */
-  var STYLE_BAD = /url\s*\(|expression\s*\(|javascript\s*:|@import|behavior\s*:|-moz-binding/i;
+  /* V2.09：字面の url( だけでは足りなかった。
+     ・CSSエスケープ（\75rl( や u\72l(）はブラウザが url( に戻す
+     ・image-set("…") / -webkit-image-set("…") は url( 無しで外部を読む
+     いずれも実測で外部へリクエストが飛んだ（V1.84 で止めたはずの外部通信の再発）。
+     バックスラッシュを含む宣言は丸ごと落とす（解説の見た目に必要な場面は無い）。
+     position:fixed/sticky は解説が画面全体を覆えてしまうので落とす。 */
+  var STYLE_BAD = /\\|url\s*\(|image-set\s*\(|image\s*\(|src\s*\(|element\s*\(|cross-fade\s*\(|paint\s*\(|-webkit-canvas\s*\(|expression\s*\(|javascript\s*:|@|behavior\s*:|-moz-binding|position\s*:\s*(fixed|sticky)/i;
 
   var _inertDoc = null;
   function inertDoc() {

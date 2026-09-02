@@ -608,6 +608,41 @@
   /* ---- 4-1. TSV 行分割（クォート内のタブを壊さない状態機械）
      外側のクォートは剥がさずに返す。剥がすのは csvUnquote の仕事にして、
      実データで検証済みのサニタイズ手順を1本に保つ。 */
+  /* V2.09：行の切り出しを引用符対応にする。
+     Excel は改行入りのセルを "…" で包んで書き出す（中の改行は実改行）。
+     単純に \n で割ると、そのセルの途中で行が切れて2行とも列数不足→スキップになり、
+     問題が黙って消えていた（実測）。引用符の中の改行は行の一部として残す。
+     引用符は「セルの先頭」にあるものだけを開きとみなし、"" は splitTsvRow へそのまま渡す。 */
+  function splitTsvRecords(raw) {
+    var out = [], buf = '', inQ = false, atStart = true, i, ch, nx;
+    for (i = 0; i < raw.length; i++) {
+      ch = raw[i]; nx = raw[i + 1];
+      if (inQ) {
+        if (ch === '"') {
+          if (nx === '"') { buf += '""'; i++; continue; }
+          inQ = false; buf += ch; continue;
+        }
+        buf += ch; continue;
+      }
+      if (ch === '"' && atStart) { inQ = true; buf += ch; atStart = false; continue; }
+      if (ch === '\r') { if (nx === '\n') { i++; } out.push(buf); buf = ''; atStart = true; continue; }
+      if (ch === '\n') { out.push(buf); buf = ''; atStart = true; continue; }
+      buf += ch; atStart = (ch === '\t');
+    }
+    out.push(buf);
+    return out;
+  }
+
+  /* V2.09：分類キー（単元・大項目・中項目・小項目）の表記ゆれを寄せる。
+     全角の数字・英字・記号・空白を半角へ、連続空白を1つへ。
+     寄せないと「１. 健康の定義と理解」が別の大項目として単元別の木に生え、
+     num_code が [1-?-…] になる（実測）。NFKC は使わない（Ⅰ・① まで変わってしまう）。 */
+  function taxKey(s) {
+    return String(s == null ? '' : s)
+      .replace(/[\uFF01-\uFF5E]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })
+      .replace(/\u3000/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
   function splitTsvRow(line) {
     var cells = [];
     var buf = '';
@@ -988,12 +1023,12 @@
       return { ok: false, error: '列数が ' + (cells ? cells.length : 0) + ' しかありません（12列必要）' };
     }
 
-    var unit    = csvUnquote(cells[0]).trim();
+    var unit    = taxKey(csvUnquote(cells[0]));      /* V2.09：表記ゆれを寄せる */
     var target  = csvUnquote(cells[1]).trim();
     var rank    = csvUnquote(cells[2]).trim().toUpperCase();
-    var major   = csvUnquote(cells[3]).trim();
-    var medium  = csvUnquote(cells[4]).trim();
-    var subItem = csvUnquote(cells[5]).trim();
+    var major   = taxKey(csvUnquote(cells[3]));
+    var medium  = taxKey(csvUnquote(cells[4]));
+    var subItem = taxKey(csvUnquote(cells[5]));
     var qtypeIn = csvUnquote(cells[6]).trim().toLowerCase();
     var stemRaw = csvUnquote(cells[7]);
     var optsRaw = cells[8];
@@ -1457,7 +1492,7 @@
 
   function importTsvPayload(raw, options) {
     return loadMeta().then(function (meta) {
-      var lines = raw.split(/\r\n|\r|\n/);
+      var lines = splitTsvRecords(raw);   /* V2.09：引用符の中の改行で切らない */
       var unitMap = {}, k;
       var stored = meta.unit_index_map || {};
       var maxNo = 0;
@@ -1594,6 +1629,12 @@
           });
           return;
         }
+
+        /* V2.09：JSON側も分類キーの表記ゆれを寄せる（TSVと同じ taxKey） */
+        if (q.unit != null)     { q.unit = taxKey(q.unit); }
+        if (q.major != null)    { q.major = taxKey(q.major); }
+        if (q.medium != null)   { q.medium = taxKey(q.medium); }
+        if (q.sub_item != null) { q.sub_item = taxKey(q.sub_item); }
 
         var unitNo = ctx.unitIndexMap[q.unit];
         if (!unitNo) { unitNo = ctx.nextUnitNo++; ctx.unitIndexMap[q.unit] = unitNo; }
