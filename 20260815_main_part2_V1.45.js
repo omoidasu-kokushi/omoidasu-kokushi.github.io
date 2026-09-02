@@ -2741,7 +2741,9 @@ var QR_MATRIX = [
     }).then(function (yes) {
       if (!yes) { return null; }
       return S.importText(global.SEED_QUESTIONS_TSV).then(function (rep) {
-        return markSeedConsumed().then(function () {
+        return markSeedConsumed()
+          .then(function () { return S.setMeta('seed_version', global.SEED_VERSION || null); })
+          .then(function () {
           toast('見本問題を入れ直しました：新規 ' + rep.imported + ' 問 ／ 更新 ' + rep.updated + ' 問', 4600);
           return rep;
         });
@@ -5745,10 +5747,33 @@ var QR_MATRIX = [
         if (!global.SEED_QUESTIONS_TSV || meta.seed_imported) { return null; }
         return S.importText(global.SEED_QUESTIONS_TSV)
           .then(function (rep) {
-            return S.setMeta('seed_imported', true).then(function () { return rep; });
+            return S.setMeta('seed_imported', true)
+              .then(function () { return S.setMeta('seed_version', global.SEED_VERSION || null); })
+              .then(function () { return rep; });
           })
           .then(function () { return K.refreshAll({ recomputeWeakness: false }); })
           .then(function () { return M.refreshHome(); })
+          .then(function () { return route(logs, meta); });
+      }
+      /* --- 同梱データの版が上がっていたら、既存の見本問題だけ上書き更新（V2.08） ---
+         見本は「問題数0のとき1回だけ」入る設計なので、配布物のシードを直しても
+         既存の端末には届かない（V2.07 のマスタタグ追記が、更新後も旧タグのままだった）。
+         onlyExisting で「いま無い問題は入れない」。消した見本は戻さない（§22-4）。
+         学習の記録・★・メモ・図は取り込みが引き継ぐ（persistImportPayload）。 */
+      if (global.SEED_QUESTIONS_TSV && global.SEED_VERSION &&
+          meta.seed_version !== global.SEED_VERSION) {
+        return S.importText(global.SEED_QUESTIONS_TSV, { onlyExisting: true })
+          .then(function (rep) {
+            return S.setMeta('seed_version', global.SEED_VERSION).then(function () { return rep; });
+          })
+          .then(function (rep) {
+            if (rep && rep.updated) {
+              toast('同梱の見本問題を最新にしました：更新 ' + rep.updated + ' 問', 4200);
+              return K.refreshAll({ recomputeWeakness: true }).then(function () { return M.refreshHome(); });
+            }
+            return null;
+          })
+          .catch(function (e) { console.error('[seed_version]', e); })
           .then(function () { return route(logs, meta); });
       }
       return route(logs, meta);

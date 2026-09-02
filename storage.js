@@ -1697,6 +1697,13 @@
                    「模試で出したから main へ昇格」は台帳から導いており、
                    レコードには書いていないので、取り込み直しても失われない。 */
               } else {
+                /* onlyExisting（V2.08）：同梱データの版更新で使う。
+                   いま無い問題は入れない。利用者が消した見本問題を、
+                   版が上がるたびに黙って戻さないため（§22-4）。 */
+                if (options && options.onlyExisting) {
+                  report.skipped_missing = (report.skipped_missing || 0) + 1;
+                  return null;
+                }
                 report.imported++;
               }
               q._star = q.is_starred ? 1 : 0;
