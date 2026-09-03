@@ -1065,7 +1065,7 @@
       state.pomodoro.enabled = h.pomodoro_enabled;
 
       /* --- アプリアイコンバッジ（整数厳守） --- */
-      updateAppBadge(h.due_count);
+      updateAppBadge(h.badge_value);   /* V2.11：OSアイコンも「今日の分」（§23-⑨） */
       state.dueToday = h.due_today | 0;         /* V2.10：離れるときの通知に使う */
       state.dueQuestions = h.due_questions | 0;
       if (!doc.hidden) { dueNotifyClear(); }    /* 戻ってきたら「復習が待っています」を消す */
@@ -2867,9 +2867,9 @@
         S.bumpDailyCount(state.meta ? state.meta.day_boundary_hour : 4)
           .then(function () { return refreshScanSlot(); }).catch(noop);
       }
-      return S.getDueCount();
-    }).then(function (due) {
-      updateAppBadge(due);
+      return window.Scheduler.getHomeState();
+    }).then(function (h) {
+      updateAppBadge(h.badge_value);   /* V2.11：解答後のOSバッジも今日の分 */
       hideVerdictPopup();
       return advanceQueue();
     }).catch(function (e) {

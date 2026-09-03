@@ -3127,3 +3127,13 @@ V1.92 以降バッジは「今日の分」`min(期日の問題数, 復習上限)
 - `updateAppBadge` はOFFのとき消す（早期returnに戻さない）
 - 設定の注記は機能検出（`'setAppBadge' in navigator`）で出し分ける。文言で「Android」と
   決め打ちしない（iOS 16.4+ は Badging API がある）
+
+
+## §39 OSアイコンバッジも「今日の分」（V2.11・§23-⑨・裁定待ちで実装）
+
+V1.92 の原則は「バッジの数＝押して出てくる数」。DOMは揃えたのに OSアイコンだけ
+期日**アトム総数**で、DOM「60」／OS「99」に割れていた（1問≒4肢なので4倍速く張り付く）。
+`updateAppBadge` への入力を3箇所とも `getHomeState().badge_value` に統一。
+
+守ること：**OSバッジへ渡す値は badge_value 以外にしない**（getDueCount を直接渡さない）。
+batchBQ が固定。'99+' の文字列を渡すと型エラーで落ちる（§2-2）のも従来どおり。

@@ -201,6 +201,23 @@ with sync_playwright() as p:
        or (q["home"]["today"] > 99 and q["home"]["badge"] == "99+"),
        json.dumps(q["home"], ensure_ascii=False))
 
+    # --- V2.11：OSアイコン（App Badging）にも今日の分を渡す（§23-⑨） ---
+    b = pg.evaluate("""async () => {
+      const got = [];
+      const orig = navigator.setAppBadge
+        ? navigator.setAppBadge.bind(navigator) : null;
+      navigator.setAppBadge = async n => { got.push(n); };
+      try { await window.Main.refreshHome(); }
+      finally { if (orig) { navigator.setAppBadge = orig; }
+                else { delete navigator.setAppBadge; } }
+      const h = await window.Scheduler.getHomeState();
+      return { got: got, want: h.badge_value, today: h.due_today };
+    }""")
+    ok("OSアイコンバッジへ渡るのは badge_value（今日の分・99以下の整数）",
+       len(b["got"]) >= 1 and b["got"][-1] == b["want"]
+       and isinstance(b["got"][-1], int) and b["got"][-1] <= 99,
+       json.dumps(b, ensure_ascii=False))
+
     # --- 画面 ---
     v = pg.evaluate("""async () => {
       const S = window.Storage, M = window.Main;

@@ -5649,8 +5649,8 @@ var QR_MATRIX = [
     });
     on($('#set-badge'), 'change', function (ev) {
       S.setMeta('badge_enabled', ev.target.checked).then(function () { return S.loadMeta(); })
-        .then(function (m) { M.state.meta = m; return S.getDueCount(); })
-        .then(function (d) { M.updateAppBadge(ev.target.checked ? d : 0); })
+        .then(function (m) { M.state.meta = m; return window.Scheduler.getHomeState(); })
+        .then(function (h) { M.updateAppBadge(ev.target.checked ? h.badge_value : 0); })
         .then(function () {
           /* V2.10：Badging API が無い端末（Android）は通知でバッジの代わりをする。
              ONにした操作の中で通知の許可を取る（ユーザー操作の外では取れない）。 */
