@@ -3110,3 +3110,20 @@ V1.92 以降バッジは「今日の分」`min(期日の問題数, 復習上限)
 - **style の外部参照**は `url(` の字面だけでは止まらない（`\75rl(`・`image-set(`）。
   バックスラッシュを含む宣言は丸ごと落とす。解説の見た目に必要な場面は無い。
   V1.84 の「取り込んだHTMLはそのまま画面へ入れない」の再発防止（§22-1）
+
+
+## §38 Android のバッジは「通知」で、通知は「SW」で出す（V2.10）
+
+仕様 §2-2 は App Badging API を前提にしていたが、**Android Chrome には無い**
+（アイコンのバッジは未読通知があるときの点だけ。数字は出せない）。さらに
+**ページからの `new Notification()` は Android で常に失敗**する。利用者の実機で
+「復習の数字が一度も出ない」「ポモドーロの通知も出ない」を確認した。
+
+守ること：
+- **通知は必ず `swNotify`（SW の showNotification）で出す**。`new Notification()` を
+  直接書かない。batchCH が「notify() は new Notification を呼ばない」で固定
+- **Badging API が無い端末では、離れるときに今日の分を1件（tag `omoidasu-due`・無音）**、
+  戻ったら消す。数字は通知本文に出す。DOMバッジと同じ「今日の分」を使う
+- `updateAppBadge` はOFFのとき消す（早期returnに戻さない）
+- 設定の注記は機能検出（`'setAppBadge' in navigator`）で出し分ける。文言で「Android」と
+  決め打ちしない（iOS 16.4+ は Badging API がある）

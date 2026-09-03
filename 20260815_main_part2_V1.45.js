@@ -2484,6 +2484,7 @@ var QR_MATRIX = [
       refreshAlarmFileNote().catch(noop);
       var l = $('#set-longbreak');     if (l) { l.value = String(meta.pomodoro_longbreak_min || 15); }
       var b = $('#set-badge');         if (b) { b.checked = meta.badge_enabled !== false; }
+      var bn = $('#set-badge-note');   if (bn) { bn.hidden = M.badgingSupported(); }   /* V2.10 */
       var vp = $('#set-verdict-popup'); if (vp) { vp.checked = meta.verdict_popup_enabled !== false; }
       var n = $('#set-notify');        if (n) { n.checked = !!meta.notify_enabled; }
       $$('#screen-settings .seg-btn[data-theme-set]').forEach(function (x) {
@@ -4229,7 +4230,9 @@ var QR_MATRIX = [
     playAlarm();
     if (!supportsNotification() || global.Notification.permission !== 'granted') { return; }
     if (!(M.state.meta && M.state.meta.notify_enabled)) { return; }
-    try { new global.Notification(title, { body: body, tag: 'nurse-srs-timer' }); } catch (e) { /* 無視 */ }
+    /* V2.10：Android はページからの new Notification() を受け付けない
+       （Illegal constructor）。SW の showNotification で出す。 */
+    M.swNotify(title, { body: body, tag: 'nurse-srs-timer' });
   }
 
   /* 5分休憩／長休憩の共通入口。4セッションごとに長休憩ダイアログを出す。 */
@@ -5647,7 +5650,17 @@ var QR_MATRIX = [
     on($('#set-badge'), 'change', function (ev) {
       S.setMeta('badge_enabled', ev.target.checked).then(function () { return S.loadMeta(); })
         .then(function (m) { M.state.meta = m; return S.getDueCount(); })
-        .then(function (d) { M.updateAppBadge(ev.target.checked ? d : 0); });
+        .then(function (d) { M.updateAppBadge(ev.target.checked ? d : 0); })
+        .then(function () {
+          /* V2.10：Badging API が無い端末（Android）は通知でバッジの代わりをする。
+             ONにした操作の中で通知の許可を取る（ユーザー操作の外では取れない）。 */
+          if (!ev.target.checked) { return M.dueNotifyClear(); }
+          if (M.badgingSupported()) { return null; }
+          return requestNotifyPermission().then(function (granted) {
+            toast(granted ? 'アプリを閉じたとき、今日の復習数を通知で知らせます'
+                          : '通知が許可されていないため、この端末ではバッジを出せません', 4200);
+          });
+        });
     });
     on($('#set-notify'), 'change', function (ev) {
       if (!ev.target.checked) { return S.setMeta('notify_enabled', false); }

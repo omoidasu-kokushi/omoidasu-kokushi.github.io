@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v1.97.0';
+const CACHE_NAME = 'v1.98.0';
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,12 +25,12 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=2.09',
-  './questions.js?v=2.09',
-  './storage.js?v=2.09',
-  './scheduler.js?v=2.09',
-  './drive.js?v=2.09',
-  './license.js?v=2.09',
+  './styles.css?v=2.10',
+  './questions.js?v=2.10',
+  './storage.js?v=2.10',
+  './scheduler.js?v=2.10',
+  './drive.js?v=2.10',
+  './license.js?v=2.10',
   './20260815_main_part1_V1.38.js',
   './20260815_main_part2_V1.45.js',
   './about.html',
@@ -131,4 +131,17 @@ self.addEventListener('fetch', (event) => {
       return fallback || new Response('', { status: 504, statusText: 'offline' });
     }
   })());
+});
+
+/* V2.10：通知（復習が待っています／ポモドーロ）をタップしたらアプリへ戻る。
+   開いている窓があればそれを前へ、無ければ新しく開く。 */
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
+    for (var i = 0; i < cs.length; i++) {
+      if ('focus' in cs[i]) { return cs[i].focus(); }
+    }
+    if (self.clients.openWindow) { return self.clients.openWindow('./index.html'); }
+    return null;
+  }));
 });

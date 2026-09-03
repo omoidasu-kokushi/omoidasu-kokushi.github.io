@@ -1066,6 +1066,9 @@
 
       /* --- アプリアイコンバッジ（整数厳守） --- */
       updateAppBadge(h.due_count);
+      state.dueToday = h.due_today | 0;         /* V2.10：離れるときの通知に使う */
+      state.dueQuestions = h.due_questions | 0;
+      if (!doc.hidden) { dueNotifyClear(); }    /* 戻ってきたら「復習が待っています」を消す */
 
       /* --- 概念ノックの対象タグ ＆ ランダムカードの顔 --- */
       return Promise.all([K.getTop3Concepts(), S.getUnlockState()]).then(function (r) {
@@ -1262,8 +1265,9 @@
     var nav = global.navigator;
     if (!nav) { return; }
     var enabled = !state.meta || state.meta.badge_enabled !== false;
-    if (!enabled) { return; }
-    var n = Math.min(dueCount | 0, 99);
+    /* V2.10：OFFのときは「何もしない」ではなく消す。早期returnだと、ONのときに出した
+       数字がアイコンに残り続けていた（消す経路がここにしか無い）。 */
+    var n = enabled ? Math.min(dueCount | 0, 99) : 0;
     try {
       if (n > 0 && typeof nav.setAppBadge === 'function') {
         nav.setAppBadge(n).catch(noop);
@@ -1271,6 +1275,58 @@
         nav.clearAppBadge().catch(noop);
       }
     } catch (e) { /* 非対応端末では黙って無視する */ }
+  }
+
+  /* --- V2.10：Android には App Badging API が無い ---
+     Android Chrome は setAppBadge を実装しない（アイコンのバッジは「未読通知がある」
+     ときだけ、点で出る。数字は出せない）。ページからの new Notification() も
+     Android では常に失敗する（SW の showNotification だけが通る）。実機（ColorOS・
+     WebAPK）で「復習の数字が一度も出ない」「ポモドーロの通知も出ない」を確認した。だから
+       ・通知は必ず SW 経由で出す（swNotify）
+       ・Badging API が無い端末では、アプリを離れるときに「今日の分」を無音通知で
+         1件だけ置き（tag で置換）、戻ってきたら消す。通知＝バッジの代わり。 */
+  var DUE_TAG = 'omoidasu-due';
+  function badgingSupported() {
+    var nav = global.navigator;
+    return !!(nav && typeof nav.setAppBadge === 'function');
+  }
+  function notifyGranted() {
+    return typeof global.Notification !== 'undefined' && global.Notification.permission === 'granted';
+  }
+  function swRegistration() {
+    var nav = global.navigator;
+    if (!nav || !nav.serviceWorker || typeof nav.serviceWorker.getRegistration !== 'function') {
+      return Promise.resolve(null);
+    }
+    return nav.serviceWorker.getRegistration().catch(function () { return null; });
+  }
+  /* SW 優先で通知を出す。SW が無い環境だけページの Notification へ落とす。 */
+  function swNotify(title, opts) {
+    var o = opts || {};
+    if (!o.icon) { o.icon = './icons/icon-192.png'; }
+    return swRegistration().then(function (reg) {
+      if (reg && typeof reg.showNotification === 'function') { return reg.showNotification(title, o); }
+      try { new global.Notification(title, o); } catch (e) { /* Android はページから出せない */ }
+    }).catch(noop);
+  }
+  /* Badging API が無い端末：離れるときに今日の分を1件（無音・tag置換）。 */
+  function dueNotifyOnHide() {
+    if (badgingSupported() || !notifyGranted()) { return Promise.resolve(); }
+    if (state.meta && state.meta.badge_enabled === false) { return Promise.resolve(); }
+    var n = state.dueToday | 0, m = state.dueQuestions | 0;
+    if (n <= 0) { return Promise.resolve(); }
+    return swNotify('復習が待っています', {
+      body: '今日の分 ' + n + '問' + (m > n ? '（期日 ' + m + '問）' : ''),
+      tag: DUE_TAG, silent: true, renotify: false
+    });
+  }
+  function dueNotifyClear() {
+    return swRegistration().then(function (reg) {
+      if (!reg || typeof reg.getNotifications !== 'function') { return; }
+      return reg.getNotifications({ tag: DUE_TAG }).then(function (ns) {
+        (ns || []).forEach(function (x) { try { x.close(); } catch (e) { /* 無視 */ } });
+      });
+    }).catch(noop);
   }
 
   /* 分析精度は60問で100%に達したあと一生100%のまま飾りになる。
@@ -3536,11 +3592,12 @@
       if (doc.visibilityState === 'hidden' && state.booted) {
         stashPendingAnswer();      /* V1.93：同期。必ず syncOnHide より先。 */
         syncOnHide();
+        dueNotifyOnHide();         /* V2.10：Android の「バッジ」はこの通知 */
       }
     });
     /* visibilitychange が来ない環境のための二重の網（§4-14 と同じ考え方）。 */
     on(global, 'pagehide', function () {
-      if (state.booted) { stashPendingAnswer(); syncOnHide(); }
+      if (state.booted) { stashPendingAnswer(); syncOnHide(); dueNotifyOnHide(); }
     });
   }
 
@@ -3862,6 +3919,10 @@
     updateScanMeter: updateScanMeter,
     refreshScanSlot: refreshScanSlot,
     updateAppBadge: updateAppBadge,
+    swNotify: swNotify,                 /* V2.10 */
+    badgingSupported: badgingSupported,
+    dueNotifyOnHide: dueNotifyOnHide,
+    dueNotifyClear: dueNotifyClear,
 
     /* 出題〜解説 */
     startSession  : startSession,
