@@ -16,7 +16,18 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=15000)
-    pg.wait_for_timeout(2000)
+    # 初回のシード取り込みは200行ずつの非同期書き込みで、遅い環境では3秒を超える。
+    # 固定2秒待ちだと途中（200問）を「基準」に取ってしまい、以後の3項目が偽NGになる
+    # （クラウド検証で実測。V2.08前の版でも同じ）。取り込み完了の印（seed_imported）を待つ。
+    # wait_for_function に Promise を返すと即通過するので Python 側で回す（batchCF と同じ）。
+    import time as _t
+    _t0 = _t.time()
+    while _t.time() - _t0 < 60:
+        _m = pg.evaluate("async () => { const m = await window.Storage.loadMeta(); return !!m.seed_imported; }")
+        if _m:
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     base = pg.evaluate("""async () => ({
         q: await window.Storage.countQuestions(),
