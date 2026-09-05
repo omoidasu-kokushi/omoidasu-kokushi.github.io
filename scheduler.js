@@ -1946,9 +1946,19 @@
      score !== null かつ 50%未満 に限定して下位3件を返す。
      未評価（null）を混ぜないことで、手つかずの概念が「最弱」と
      誤って提示されるのを防ぐ。 */
+  /* §23-⑩（2026-09-05 裁定＝案a）：評価がこの件数に満たないテーマはTOP3に出さない。
+     V2.07 で全肢にマスタタグが付いたため、1肢を「難しい」と評価しただけで
+     そのテーマが 0%（評価1件）と計算され、即TOP3に上がってノックへ誤誘導していた。
+     模試や本日の復習を回せば3件はすぐ貯まるので、足切りの害は序盤だけ。
+     間引くのはTOP3だけ。§12-2の理解率集計・74概念アナライザーの一覧は間引かない。 */
+  var TOP3_MIN_EVALUATED = 3;
+
   function getTop3Concepts() {
     return getConceptRanking({ order: 'low', onlyEvaluated: true }).then(function (list) {
-      return list.filter(function (r) { return isNum(r.score) && r.score < 50; }).slice(0, 3);
+      return list.filter(function (r) {
+        return isNum(r.score) && r.score < 50
+            && (r.evaluated_count || 0) >= TOP3_MIN_EVALUATED;
+      }).slice(0, 3);
     });
   }
 
