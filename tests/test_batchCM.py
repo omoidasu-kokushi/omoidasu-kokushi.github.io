@@ -115,19 +115,61 @@ with sync_playwright() as p:
       await new Promise(r2 => setTimeout(r2, 300));
       out.jumpedTo5 = M.state.session.index === 4 && modal.hidden;
 
-      /* 提出（未回答confirmはOKで通す）→ 採点結果 */
-      window.confirm = () => true;
+      /* V2.18：未回答がある間は提出ボタンが無効（空欄提出をさせない） */
       M.hooks.openExamConfirm();
       await new Promise(r2 => setTimeout(r2, 200));
-      document.getElementById('exam-confirm-submit').click();
-      await new Promise(r2 => setTimeout(r2, 2500));
+      const sub = document.getElementById('exam-confirm-submit');
+      out.submitDisabledWhenUnanswered = sub.disabled === true && /未回答/.test(sub.textContent);
+      document.getElementById('exam-confirm-close').click();
+      await new Promise(r2 => setTimeout(r2, 200));
+
+      /* 全問を埋める */
+      for (let i = 0; i < len; i++) {
+        M.examJump(i);
+        await new Promise(r2 => setTimeout(r2, 60));
+        const qid = M.state.current.question.q_id;
+        if (!M.hooks.examSavedFor(qid)) {
+          answer();
+          await new Promise(r2 => setTimeout(r2, 60));
+          const mc = document.getElementById('modal-exam-confirm');
+          if (!mc.hidden) { document.getElementById('exam-confirm-close').click();
+            await new Promise(r2 => setTimeout(r2, 120)); }
+        }
+      }
+      M.hooks.openExamConfirm();
+      await new Promise(r2 => setTimeout(r2, 250));
+      out.submitEnabledWhenFull = sub.disabled === false;
+      sub.click();
+      await new Promise(r2 => setTimeout(r2, 3000));
       out.resultOpen = !document.getElementById('modal-exam-result').hidden;
       out.hooksCleared = !M.hooks.afterGrade && !M.hooks.examSavedFor;
+
+      /* V2.18：復習（誤答は展開・正答は畳む）＋単元グラフ */
+      document.getElementById('btn-exam-review').click();
+      await new Promise(r2 => setTimeout(r2, 400));
+      const rv = document.getElementById('modal-exam-review');
+      out.reviewOpen = !rv.hidden;
+      const rows2 = document.querySelectorAll('#exam-review-list .er-q');
+      out.reviewRows = rows2.length === len;
+      const rightN = window.Half2.st.exam.answers.filter(a => a.answered_right).length;
+      out.closedMatchesRight =
+        document.querySelectorAll('#exam-review-list .er-q.is-closed').length === rightN;
+      out.wrongExpanded =
+        document.querySelectorAll('#exam-review-list .er-q:not(.is-closed)').length === len - rightN;
+      out.graphRows = document.querySelectorAll('#exam-review-graph .erg-row').length >= 1;
+      /* 折りたたみのトグル */
+      const firstHead = document.querySelector('#exam-review-list .er-q .er-head');
+      const firstQ = firstHead.closest('.er-q');
+      const wasClosed = firstQ.classList.contains('is-closed');
+      firstHead.click();
+      out.toggleWorks = firstQ.classList.contains('is-closed') !== wasClosed;
       return out;
     }""")
     for k in ["launched", "navVisible", "prevDisabledAtStart", "movedTo2", "noVerdictOnCards", "popupHidden",
               "restored", "domSelected", "replaced", "countStable", "confirmOpen", "rows",
-              "hasUnanswered", "jumpedTo5", "resultOpen", "hooksCleared"]:
+              "hasUnanswered", "jumpedTo5", "submitDisabledWhenUnanswered", "submitEnabledWhenFull", "resultOpen",
+              "hooksCleared", "reviewOpen", "reviewRows", "closedMatchesRight", "wrongExpanded",
+              "graphRows", "toggleWorks"]:
         ok(k, r.get(k) is True, json.dumps({k: r.get(k)}, ensure_ascii=False))
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))
     br.close()

@@ -4415,3 +4415,37 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .ec-ans{ flex:1 1 auto; font-size:var(--fs-sm); }
 .ec-go{ flex:0 0 auto; color:var(--text-mute); }
 .ec-row.is-un .ec-ans{ color:var(--c-hard); font-weight:800; }
+
+/* V2.18：模試後の復習 */
+#modal-exam-review{ max-width:640px; max-height:88dvh; overflow-y:auto; }
+.exam-review-graph{ margin:6px 0 12px; }
+.erg-row{ display:flex; align-items:center; gap:8px; margin:5px 0; }
+.erg-label{ flex:0 0 9.5em; font-size:var(--fs-xs); color:var(--text-sub);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.erg-bar{ flex:1 1 auto; height:10px; border-radius:var(--r-pill);
+  background:var(--surface-3); overflow:hidden; }
+.erg-bar i{ display:block; height:100%; border-radius:var(--r-pill); }
+.erg-num{ flex:0 0 3.6em; text-align:right; font-family:var(--font-num);
+  font-size:var(--fs-xs); font-weight:800; color:var(--text-sub); }
+.exam-review-list{ margin:0; }
+.er-q{ border:1px solid var(--border); border-radius:var(--r-md);
+  margin:0 0 10px; background:var(--surface); overflow:hidden; }
+.er-head{ display:flex; align-items:flex-start; gap:8px; width:100%;
+  padding:10px 12px; text-align:left; }
+.er-mark{ flex:0 0 auto; font-weight:900; }
+.er-mark.is-right{ color:var(--c-easy); }
+.er-mark.is-wrong{ color:var(--c-hard); }
+.er-stem{ flex:1 1 auto; font-size:var(--fs-sm); line-height:1.6; }
+.er-toggle{ flex:0 0 auto; color:var(--text-mute); }
+.er-q.is-closed .er-body{ display:none; }
+.er-body{ padding:0 12px 12px; border-top:1px dashed var(--border); }
+.er-choice{ display:flex; gap:8px; align-items:flex-start;
+  padding:7px 0; font-size:var(--fs-sm); }
+.er-cnum{ flex:0 0 auto; font-family:var(--font-num); font-weight:800; color:var(--text-sub); }
+.er-choice.is-answer .er-cnum{ color:var(--c-easy); }
+.er-badge{ flex:0 0 auto; font-size:var(--fs-xs); font-weight:800;
+  padding:1px 7px; border-radius:var(--r-pill); }
+.er-badge.is-you{ background:color-mix(in srgb, var(--c-hard) 15%, transparent); color:var(--c-hard); }
+.er-badge.is-ans{ background:color-mix(in srgb, var(--c-easy) 15%, transparent); color:var(--c-easy); }
+.er-exp{ margin-top:8px; font-size:var(--fs-sm); line-height:1.7; color:var(--text-sub); }
+.er-exp b{ color:var(--text); }

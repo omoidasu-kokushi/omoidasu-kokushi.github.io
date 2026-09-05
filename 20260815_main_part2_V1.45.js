@@ -2188,6 +2188,69 @@ var QR_MATRIX = [
      `M.endSession()` は【呼ばない】：ここは endSession から呼ばれる側なので、
      呼び返すと入れ子になる（概念ノックの `abortKnock` と同じ理由）。
      採点はしない。受験の途中で抜けた以上、点数は出しようがない。 */
+  /* V2.18：模試後の復習（利用者要望：採点だけで終わらせない）。
+     誤答＝解説つき全展開／正答＝畳んで問題文のみ（タップで展開）。
+     上部に単元別の得点グラフを出し、どの単元が足りないかを一目にする。
+     解説HTMLは必ず sanitizeExplanationHtml を通す（§22-1）。 */
+  function openExamReview() {
+    var ex = st.exam;
+    if (!ex || !ex.questions || !ex.questions.length) { toast('復習できる模試の結果がありません'); return; }
+    var by = {};
+    (ex.answers || []).forEach(function (a) { by[a.q_id] = a; });
+    var clean = (typeof M.sanitizeExplanationHtml === 'function')
+      ? M.sanitizeExplanationHtml : function (h) { return esc(String(h || '')); };
+
+    /* --- 単元別グラフ --- */
+    var units = {};
+    ex.questions.forEach(function (q) {
+      var a = by[q.q_id];
+      var u = q.unit || '（単元なし）';
+      units[u] = units[u] || { total: 0, right: 0 };
+      units[u].total++;
+      if (a && a.answered_right) { units[u].right++; }
+    });
+    setHtml('#exam-review-graph', Object.keys(units).map(function (u) {
+      var d = units[u];
+      var pct = Math.round(100 * d.right / d.total);
+      var lv = pct >= 80 ? 'lv-good' : pct >= 50 ? 'lv-mid' : 'lv-bad';
+      return '<div class="erg-row"><span class="erg-label">' + esc(u) + '</span>' +
+             '<span class="erg-bar"><i class="bar-fill ' + lv + '" style="width:' + pct + '%"></i></span>' +
+             '<span class="erg-num">' + d.right + '/' + d.total + '</span></div>';
+    }).join(''));
+
+    /* --- 問題リスト --- */
+    setHtml('#exam-review-list', ex.questions.map(function (q, i) {
+      var a = by[q.q_id];
+      var right = !!(a && a.answered_right);
+      var pickedNums = a ? a.atoms.filter(function (x) { return x.picked; })
+        .map(function (x) { return x.original_num; }) : [];
+      var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
+      var choices = atoms.map(function (at) {
+        var isAns = !!at.is_correct;
+        var youPicked = pickedNums.indexOf(at.original_num) >= 0;
+        return '<div class="er-choice' + (isAns ? ' is-answer' : '') + '">' +
+               '<span class="er-cnum">' + circled(at.original_num) + '</span>' +
+               '<span class="er-ctext">' + esc(at.text || '') + '</span>' +
+               (youPicked && !isAns ? '<span class="er-badge is-you">あなた</span>' : '') +
+               (isAns ? '<span class="er-badge is-ans">正解</span>' : '') +
+               '</div>' +
+               ((at.explanation && String(at.explanation).trim())
+                 ? '<div class="er-exp">' + clean(at.explanation) + '</div>' : '');
+      }).join('');
+      var overall = (q.overall_explanation && String(q.overall_explanation).trim())
+        ? '<div class="er-exp"><b>全体解説</b><br>' + clean(q.overall_explanation) + '</div>' : '';
+      return '<li class="er-q' + (right ? ' is-closed' : '') + '">' +
+             '<button type="button" class="er-head">' +
+             '<span class="er-mark ' + (right ? 'is-right' : 'is-wrong') + '">' + (right ? '○' : '×') + '</span>' +
+             '<span class="er-stem">' + (i + 1) + '. ' + esc(q.stem || '') + '</span>' +
+             '<span class="er-toggle">▾</span></button>' +
+             '<div class="er-body">' + choices + overall + '</div></li>';
+    }).join(''));
+
+    closeModals();
+    openModal('#modal-exam-review');
+  }
+
   /* V2.17：提出前の最終確認。全問一覧（自分の答え・根拠チェック数・未回答）を出し、
      行タップでその問題へ戻す。「全解答を提出する」で初めて gradeExam が走る。 */
   function openExamConfirm() {
@@ -2215,6 +2278,12 @@ var QR_MATRIX = [
     setText('#exam-confirm-note', (un > 0 ? ('未回答が ' + un + ' 問あります。') : '')
       + '行をタップするとその問題に戻れます。提出するまで採点されません。');
     ex.unanswered = un;
+    /* V2.18：空欄のまま提出はさせない（利用者裁定）。全問回答で初めて押せる */
+    var sub = $('#exam-confirm-submit');
+    if (sub) {
+      sub.disabled = un > 0;
+      sub.textContent = un > 0 ? ('未回答 ' + un + ' 問') : '全解答を提出する';
+    }
     openModal('#modal-exam-confirm');
   }
 
@@ -5458,11 +5527,19 @@ var QR_MATRIX = [
     });
     on($('#exam-confirm-submit'), 'click', function () {
       if (!st.exam) { return; }
-      var un = st.exam.unanswered || 0;
-      var go2 = function () { closeModals(); gradeExam(st.exam.answers); };
-      if (un > 0) {
-        if (global.confirm('未回答が ' + un + ' 問あります。このまま提出しますか？')) { go2(); }
-      } else { go2(); }
+      /* V2.18：ボタン自体が未回答時は無効。二重の門番として実行側でも弾く */
+      if ((st.exam.unanswered || 0) > 0) { return; }
+      closeModals();
+      gradeExam(st.exam.answers);
+    });
+    /* V2.18：模試後の復習 */
+    on($('#btn-exam-review'), 'click', function () { openExamReview(); });
+    on($('#exam-review-close'), 'click', function () { closeModals(); });
+    on($('#exam-review-list'), 'click', function (ev) {
+      var head = ev.target.closest('.er-head');
+      if (!head) { return; }
+      var q = head.closest('.er-q');
+      if (q) { q.classList.toggle('is-closed'); }
     });
     on($('#warn-study'), 'click', function () { closeModals(); openRandomSelect(); });
     on($('#btn-exam-share'), 'click', function () { shareExamResult(); });

@@ -3211,3 +3211,13 @@ TOP3はタップ即「概念別弱点ノック」起動の導線なので、評�
 - hooks（afterGrade / onFinish / onAbort / examSavedFor / openExamConfirm）は
   abortExam と showExamResult の**両方**で外す（§22-2の教訓の適用範囲を広げた）
 - 実走の境界は tests/test_batchCM.py が固定
+
+
+## §45 模試の提出は全問回答が条件。復習は「誤答だけ開く」（V2.18）
+
+守ること：
+- 提出ボタンの有効条件は unanswered === 0 だけ。確認ダイアログ方式へ戻さない
+  （ボタン無効＋実行側の二重ガード）
+- 復習リストは誤答=展開・正答=畳みが既定。全展開にしない（誤答に視線を集めるための設計）
+- 復習の解説は sanitizeExplanationHtml 経由のみ（§22-1）。st.exam は showExamResult 後も
+  復習のために保持している——st.exam を消す処理を足すときは復習経路を必ず確認
