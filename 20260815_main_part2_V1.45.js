@@ -3865,22 +3865,25 @@ var QR_MATRIX = [
         fill.style.width = info.pct + '%';
         fill.setAttribute('data-tone', info.pct >= 90 ? 'bad' : info.pct >= 70 ? 'warn' : 'ok');
       }
-      var btn = $('#btn-persist'), warn = $('#store-warn');
-      if (info.persisted === true) {
-        if (btn) { btn.hidden = true; }
-        if (warn) {
-          warn.hidden = false;
-          warn.textContent = 'この端末では、空き容量が減っても学習の記録が消されない設定になっています。';
-        }
-      } else {
-        if (btn) { btn.hidden = false; }
-        if (warn) {
-          warn.hidden = false;
-          /* 脅かさない。事実と、対処と、それでも保険が要ることだけを言う。 */
-          warn.textContent = '空き容量が減ったとき、ブラウザが学習の記録を消すことがあります。'
-            + '［消えないようにする］を押すと、消さないよう要求します。'
-            + 'どちらの場合も、ときどきバックアップを書き出しておくのが確実です。';
-        }
+      /* V2.30：［消えないようにする］は撤去し、自動で要求する
+         （利用者裁定「最初から消えないようにしといたほうがよくない?」）。
+         要求のタイミングは3つとも自動：チュートリアル完了時・取り込み成功時
+         （いずれもV1.60から）・そしてこの保存領域欄を表示した時（ボタンが
+         居た場所と同じ場面での自動化・セッション1回だけ）。
+         V1.60の「起動直後には要求しない」（Firefoxで断られて終わる）は守る。
+         ここは状態の言葉だけを出す。 */
+      if (info.persisted !== true && !st._persistAsked) {
+        st._persistAsked = true;
+        return S.requestPersist().then(function () { return refreshStorage(); }).catch(function () { return info; });
+      }
+      var warn = $('#store-warn');
+      if (warn) {
+        warn.hidden = false;
+        warn.textContent = (info.persisted === true)
+          ? 'この端末では、空き容量が減っても学習の記録が消されない設定になっています。'
+          : '空き容量が減ったとき、ブラウザが学習の記録を消すことがあります'
+            + '（消さないよう自動で要求しましたが、この端末はまだ許可していません）。'
+            + 'ときどきバックアップを書き出しておくのが確実です。';
       }
       return info;
     });
@@ -5670,18 +5673,7 @@ var QR_MATRIX = [
     on($('#btn-reset-all'), 'click', function () { openResetModal(); });
     on($('#reset-go'), 'click', function () { closeModals(); runResetAll(); });
     on($('#btn-contact'), 'click', function () { openContact(); });
-    /* V1.60：保存領域 */
-    on($('#btn-persist'), 'click', function () {
-      S.requestPersist().then(function (r) {
-        if (r.persisted) { toast('学習の記録が消されない設定になりました', 3800); }
-        else if (r.supported) {
-          /* 断られたことを隠さない。隠すと「押したのに変わらない」になる。 */
-          toast('この端末では設定できませんでした。ホーム画面に追加してから'
-              + 'もう一度お試しいただくと通ることがあります', 5600);
-        } else { toast('この端末はこの設定に対応していません', 3800); }
-        return refreshStorage();
-      }).catch(noop);
-    });
+    /* V1.60の［消えないようにする］はV2.30で撤去（自動要求へ）。 */
 
     /* V1.53：ライセンス */
     on($('#lic-apply'), 'click', function () { applyLicense().catch(noop); });
