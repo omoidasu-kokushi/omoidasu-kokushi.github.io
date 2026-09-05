@@ -3926,7 +3926,7 @@ var QR_MATRIX = [
     var box = $('#lic-key');
     if (!L || !box) { return Promise.resolve(null); }
     var v = box.value;
-    if (!v || !v.trim()) { setText('#lic-msg', '鍵を貼り付けてください'); return Promise.resolve(null); }
+    if (!v || !v.trim()) { setText('#lic-msg', 'シリアルを貼り付けてください'); return Promise.resolve(null); }
     return L.activate(v).then(function (r) {
       if (r.ok) {
         box.value = '';
@@ -3938,9 +3938,9 @@ var QR_MATRIX = [
       /* 失敗の理由を分けて出す。「無効です」だけだと、
          貼り間違いなのか鍵が違うのか分からず問い合わせになる。 */
       setText('#lic-msg',
-        r.reason === 'format'   ? '鍵の形が違います。OMOI1. から始まる全体を貼り付けてください。' :
-        r.reason === 'nocrypto' ? 'この端末では鍵の確認ができません（古いブラウザの可能性）。' :
-                                  'この鍵は確認できませんでした。購入時に届いたものか確かめてください。');
+        r.reason === 'format'   ? 'シリアルの形が違います。OMOI1. から始まる全体を貼り付けてください。' :
+        r.reason === 'nocrypto' ? 'この端末ではシリアルの確認ができません（古いブラウザの可能性）。' :
+                                  'このシリアルは確認できませんでした。購入時に届いたものか確かめてください。');
       return null;
     });
   }
@@ -5690,7 +5690,7 @@ var QR_MATRIX = [
       var L = global.NurseLicense;
       if (!L) { return; }
       L.deactivate().then(function () {
-        toast('この端末から鍵を外しました');
+        toast('この端末からシリアルを外しました');
         refreshLicense();
         M.refreshFreeGate();
       }).catch(noop);

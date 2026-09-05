@@ -4274,10 +4274,15 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   font-size:.78rem; line-height:1.4;
   /* 鍵は長い1語。折り返さないと1行に潰れて読めない（V1.49a の教訓）。 */
   overflow-wrap:anywhere; word-break:break-all;
-  color:var(--text-main); background:var(--surface-1);
-  border:1px solid var(--border-1); border-radius:8px;
+  /* V2.25：--text-main／--surface-1／--border-1 は存在しない変数だった。
+     3つとも無効になり、枠線も背景も無い「見えない入力欄」になっていた
+     （利用者報告「どこに貼ればいいか分からない」）。実在の変数に直し、
+     入力欄と分かる破線枠を敷く。 */
+  color:var(--text); background:var(--surface-2);
+  border:2px dashed var(--border-2); border-radius:8px;
   resize:vertical;
 }
+.lic-key:focus{ border-style:solid; border-color:var(--accent); outline:none; }
 .lic-btns{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
 .lic-paid-wrap{ margin-top:8px; }
 
