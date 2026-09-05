@@ -701,9 +701,14 @@
           reason: 'この選択肢はまだ期日ではないので記録しません'
         };
       }
-      /* 期日前に間違えた肢は、押されたボタンに関わらず「難しい」で戻す。
-         ここで押された評価をそのまま使うと、期日前の昇格を手動で作れてしまう。 */
-      var useEval = decision.demote ? EVAL.HARD : evalKey;
+      /* 期日前に間違えた肢の扱い（V2.19・利用者裁定「既定は難・押し直し可」）：
+         既定は「難しい」。ただし「普通」への押し直しだけは通す
+         （うっかりミスと本当の忘却を自分で区別できるようにする）。
+         「易しい」「マスター」は通さない——ここを開けると
+         期日前の昇格を手動で作れてしまう（従来からの門番の理由）。 */
+      var useEval = decision.demote
+        ? (evalKey === EVAL.NORMAL ? EVAL.NORMAL : EVAL.HARD)
+        : evalKey;
 
       var boundary = isNum(ctx.boundaryHour) ? ctx.boundaryHour : 4;
       var plan = planSchedule(atom, useEval, {

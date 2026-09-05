@@ -2047,11 +2047,8 @@
   }
 
   function lockedPanelHtml(a, dec) {
-    if (dec.demote) {
-      return '<div class="eval-locked is-demote">' +
-             '<span class="el-main">期日前でしたが、間違えたので<b>「難しい」</b>に戻します</span>' +
-             '<span class="el-sub">次回：10分後</span></div>';
-    }
+    /* V2.19：demote（期日前ミス）はロックせず評価群を出すようになったので、
+       ここへ来るのは「期日前で正解＝記録しない」だけ。 */
     return '<div class="eval-locked">' +
            '<span class="el-main">この選択肢は仕上がっています</span>' +
            '<span class="el-sub">次回 ' + escapeHtml(fmtDueShort(a.due_date)) +
@@ -2101,17 +2098,26 @@
         { k: 'easy',   b: '易', s: 'しい' },
         { k: 'master', b: 'マ', s: 'スター' }
       ].map(function (e) {
-        var dis = (e.k === 'master' && !masterOk);
-        var title = dis ? '30日以上の長期ステップに到達すると押せます' : '次回：' + pv[e.k].label;
+        /* V2.19：期日前ミスは難・普だけ選べる（昇格は門番どおり不可） */
+        var demoteDis = dec.demote && (e.k === 'easy' || e.k === 'master');
+        var dis = (e.k === 'master' && !masterOk) || demoteDis;
+        var title = demoteDis ? '間違えた直後は上げられません'
+          : dis ? '30日以上の長期ステップに到達すると押せます' : '次回：' + pv[e.k].label;
         return '<button type="button" class="eval-btn eval-' + e.k + (e.k === chosen ? ' is-active' : '') + '"' +
                ' data-eval="' + e.k + '"' + (dis ? ' disabled' : '') +
                ' title="' + escapeHtml(title) + '">' +
                '<span class="eval-label"><b>' + e.b + '</b><small>' + e.s + '</small></span></button>';
       }).join('');
 
-      /* 期日前の肢は評価ボタンごと差し替える（disabled で並べない） */
-      var evalArea = (dec.commit && !dec.demote)
-        ? '<div class="eval-group" role="group" aria-label="選択肢' + a.original_num +
+      /* 期日前でも「間違えた」なら評価群を出す（V2.19・裁定：既定は難・押し直し可）。
+         評価ごと隠すのは「期日前で正解」（記録しない）の場合だけ。 */
+      var demoteNote = dec.demote
+        ? '<p class="eval-demote-note">期日前でしたが間違えたため、既定は<b>「難しい」</b>。' +
+          'うっかりなら「普通」に押し直せます（易・マスターへは上げられません）</p>'
+        : '';
+      var evalArea = (dec.commit)
+        ? demoteNote +
+          '<div class="eval-group" role="group" aria-label="選択肢' + a.original_num +
           'の評価">' + evals + '</div>' +
           /* V1.91：この肢で同じ評価を過去に何回押したか。中身は非同期で後から入れる。
              ここで枠だけ作っておくのは、あとから差し込むと高さが動いて

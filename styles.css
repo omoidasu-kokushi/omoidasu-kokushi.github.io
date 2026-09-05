@@ -4449,3 +4449,11 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .er-badge.is-ans{ background:color-mix(in srgb, var(--c-easy) 15%, transparent); color:var(--c-easy); }
 .er-exp{ margin-top:8px; font-size:var(--fs-sm); line-height:1.7; color:var(--text-sub); }
 .er-exp b{ color:var(--text); }
+
+/* V2.19：期日前ミスの注記（既定は難・普通へは押し直せる） */
+.eval-demote-note{
+  margin:0 0 7px; padding:7px 10px; border-radius:var(--r-sm);
+  background:color-mix(in srgb, var(--c-hard) 9%, transparent);
+  color:var(--text-sub); font-size:var(--fs-xs); line-height:1.6;
+}
+.eval-demote-note b{ color:var(--c-hard); }
