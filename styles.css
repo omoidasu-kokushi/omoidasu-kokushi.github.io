@@ -2353,6 +2353,12 @@ body.is-knock #knock-timer{ z-index:58; }
 .choice-card.is-selected .choice-num{ background:var(--accent); color:var(--accent-ink); }
 
 /* 模試の初回だけ出す使い方ヒント（「言われるまで気づかない」を防ぐ） */
+.ground-help{ margin:6px 0 2px; }
+.ground-help-btn{
+  border:1px solid var(--border); background:var(--surface-2); color:var(--ink-2);
+  font-size:var(--fs-xs); font-weight:800; border-radius:999px; padding:3px 10px;
+}
+.ground-help-btn[aria-expanded="true"]{ color:var(--accent); border-color:var(--accent); }
 .ground-hint{
   display:flex; align-items:center; gap:8px;
   margin:0 0 10px; padding:9px 12px;
@@ -4438,7 +4444,9 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   margin:0 0 10px; background:var(--surface); overflow:hidden; }
 .er-head{ display:flex; align-items:flex-start; gap:8px; width:100%;
   padding:10px 12px; text-align:left; }
-.er-mark{ flex:0 0 auto; font-weight:900; }
+.er-mark{ flex:0 0 auto; font-weight:900;
+  /* V2.23: 正解発表の○×はひと目で分かる太さ・大きさに（利用者要望） */
+  font-size:1.45em; line-height:1; -webkit-text-stroke:.06em currentColor; }
 .er-mark.is-right{ color:var(--c-easy); }
 .er-mark.is-wrong{ color:var(--c-hard); }
 .er-stem{ flex:1 1 auto; font-size:var(--fs-sm); line-height:1.6; }

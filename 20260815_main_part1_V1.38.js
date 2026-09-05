@@ -1662,17 +1662,29 @@
     }).join('');
     setHtml('#choice-list', html);
 
-    /* 模試の根拠チェックは、言われないと気づかれない。初回だけ使い方を出す。 */
-    var old = $('.ground-hint');
+    /* 模試の根拠チェックは、言われないと気づかれない。
+       V2.23：初回は説明を開いた状態で出し、以後も［？］でいつでも読める。
+       初回だけだと、聞き流したり久々に模試をやったときに戻れない（利用者要望）。 */
+    var old = $('.ground-help');
     if (old) { old.parentNode.removeChild(old); }
-    if (exam && !state.groundHintShown) {
+    if (exam) {
+      var open = !state.groundHintShown;
       state.groundHintShown = true;
-      var hint = doc.createElement('p');
-      hint.className = 'ground-hint';
-      hint.innerHTML = '右の <b>☐</b> は「勘ではなく根拠を説明できた」チェックです。' +
-                       'チェックした肢だけが、正解時に長期記憶へ昇格します。';
+      var wrap = doc.createElement('div');
+      wrap.className = 'ground-help';
+      wrap.innerHTML =
+        '<button type="button" class="ground-help-btn" aria-expanded="' + (open ? 'true' : 'false') + '">' +
+        '？ 右の☐チェックとは</button>' +
+        '<p class="ground-hint"' + (open ? '' : ' hidden') + '>右の <b>☐</b> は' +
+        '「勘ではなく根拠を説明できた」チェックです。' +
+        'チェックした肢だけが、正解時に長期記憶へ昇格します。</p>';
       var list = $('#choice-list');
-      list.parentNode.insertBefore(hint, list);
+      list.parentNode.insertBefore(wrap, list);
+      wrap.querySelector('.ground-help-btn').addEventListener('click', function () {
+        var hp = wrap.querySelector('.ground-hint');
+        hp.hidden = !hp.hidden;
+        this.setAttribute('aria-expanded', hp.hidden ? 'false' : 'true');
+      });
     }
   }
 
