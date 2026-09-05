@@ -4394,3 +4394,24 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
    彩度と明度を落として「まだ使う段階ではない」ことを伝える。タップは可能なまま
    （一覧に解禁条件と進捗があるため、入口を閉じない）。 */
 .sub-card.is-locked { opacity: .5; filter: grayscale(.7); }
+
+/* V2.17：模試の前後移動ナビ（本番に即した行き来）。確定ボタンの下に常設 */
+.exam-nav{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-top:10px; }
+.exam-nav-btn{
+  padding:11px 4px; border-radius:var(--r-md);
+  background:var(--surface); border:1.5px solid var(--border);
+  font-size:var(--fs-sm); font-weight:800; color:var(--text-sub);
+}
+.exam-nav-btn:disabled{ opacity:.4; }
+.exam-nav-btn.is-list{ color:var(--accent); border-color:var(--accent); }
+
+/* V2.17：提出前の最終確認リスト */
+.exam-confirm-list{ margin:10px 0 0; max-height:46dvh; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.ec-row{
+  display:flex; align-items:center; gap:10px;
+  padding:10px 8px; border-bottom:1px solid var(--border);
+}
+.ec-no{ flex:0 0 34px; font-family:var(--font-num); font-weight:800; color:var(--text-sub); }
+.ec-ans{ flex:1 1 auto; font-size:var(--fs-sm); }
+.ec-go{ flex:0 0 auto; color:var(--text-mute); }
+.ec-row.is-un .ec-ans{ color:var(--c-hard); font-weight:800; }

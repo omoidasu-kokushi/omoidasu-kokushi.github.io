@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.16">
+<link rel="stylesheet" href="./styles.css?v=2.17">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.16",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.17",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.16",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.17",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.16",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.17",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.16",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=2.17",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.16",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.17",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -460,7 +460,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260905_Omoidasu_V2.16</p>
+        <p class="build-stamp">20260905_Omoidasu_V2.17</p>
       </div>
     </section>
 
@@ -525,6 +525,12 @@
 
           <div class="answer-actions">
             <button type="button" class="btn-confirm" id="btn-confirm" disabled>解答を確定する</button>
+            <!-- V2.17：模試だけの前後移動（本番に即した行き来）。提出まで採点しない -->
+            <div class="exam-nav" id="exam-nav" hidden>
+              <button type="button" class="exam-nav-btn" id="btn-exam-prev">◀ 前へ</button>
+              <button type="button" class="exam-nav-btn is-list" id="btn-exam-list">一覧・提出</button>
+              <button type="button" class="exam-nav-btn" id="btn-exam-next">次へ ▶</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1291,7 +1297,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260905_Omoidasu_V2.16 / cache v2.16.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260905_Omoidasu_V2.17 / cache v2.17.0</p>
         </section>
       </div>
     </section>
@@ -1673,6 +1679,17 @@
   </div>
 
   <!-- 模試ソフト警告 -->
+  <!-- V2.17：提出前の最終確認。行タップでその問題へ戻れる。提出して初めて採点する -->
+  <div class="modal-card" id="modal-exam-confirm" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title">最終確認</h3>
+    <p class="modal-body" id="exam-confirm-note">行をタップするとその問題に戻れます。提出するまで採点されません。</p>
+    <ul class="exam-confirm-list" id="exam-confirm-list"></ul>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-secondary" id="exam-confirm-close">解答に戻る</button>
+      <button type="button" class="btn-primary" id="exam-confirm-submit">全解答を提出する</button>
+    </div>
+  </div>
+
   <div class="modal-card" id="modal-exam-warn" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">今の状態でも挑戦できるよ！</h3>
     <p class="modal-body">ただ、単元学習で少し知識を補強しておくと、合格率がもっと上がるかも。どうする？</p>
@@ -1840,12 +1857,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.16"></script>
-<script src="./storage.js?v=2.16"></script>
-<script src="./scheduler.js?v=2.16"></script>
+<script src="./questions.js?v=2.17"></script>
+<script src="./storage.js?v=2.17"></script>
+<script src="./scheduler.js?v=2.17"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.16"></script>
-<script src="./license.js?v=2.16"></script>
+<script src="./drive.js?v=2.17"></script>
+<script src="./license.js?v=2.17"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

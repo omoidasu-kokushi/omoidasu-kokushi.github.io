@@ -3197,3 +3197,17 @@ TOP3はタップ即「概念別弱点ノック」起動の導線なので、評�
 - `.choice-card` の overflow:hidden は番号セルの角丸切り抜きが目的。欄外チェックと両立しないため、
   模試中だけ overflow:visible ＋ 番号セル自身に左角丸。**カードに overflow:hidden を戻すときは
   欄外チェックが刈り取られないか必ず確認**（実機で消失した実績あり）
+
+
+## §44 模試は「提出」まで採点しない。解答は置き換え式（V2.17）
+
+前後移動と提出前最終確認を入れた（利用者要望）。設計の要：
+
+守ること：
+- st.exam.answers は **q_id で1問1エントリ**。解き直しは置き換え、answeredCount は増やさない。
+  think_ms は初回の値を保持（V1.79：測っているのは「最初に出会ったときの反応」）
+- 採点（gradeExam）の入口は「全解答を提出する」ボタンだけ。afterGrade / onFinish から直接呼ばない
+- 提出までは正誤情報を画面に出さない（ポップアップ§43・カード色・○×すべて）
+- hooks（afterGrade / onFinish / onAbort / examSavedFor / openExamConfirm）は
+  abortExam と showExamResult の**両方**で外す（§22-2の教訓の適用範囲を広げた）
+- 実走の境界は tests/test_batchCM.py が固定

@@ -1517,6 +1517,23 @@
     var btn = $('#btn-confirm');
     if (btn) { btn.disabled = true; btn.textContent = '解答を確定する'; }
 
+    /* --- V2.17：模試の前後移動と、保存済み解答の復元（設計メモ） --- */
+    var nav = $('#exam-nav');
+    if (nav) { nav.hidden = !isExamMode(); }
+    if (isExamMode()) {
+      var pb = $('#btn-exam-prev');
+      if (pb) { pb.disabled = state.session.index <= 0; }
+      var nb = $('#btn-exam-next');
+      if (nb) {
+        nb.textContent = (state.session.index >= state.session.questions.length - 1)
+          ? '一覧へ ▶' : '次へ ▶';
+      }
+      if (typeof hooks.examSavedFor === 'function') {
+        var sv = hooks.examSavedFor(q.q_id);
+        if (sv) { restoreExamAnswer(sv); }
+      }
+    }
+
     armInterlock();
     /* ガイドは「今それを押してほしい瞬間」にだけ出す */
     global.setTimeout(function () { Half2.tip('answer'); }, INTERLOCK_MS + 140);
@@ -1791,8 +1808,9 @@
 
     showVerdictPopup(cur);
 
-    /* --- 選択肢カードに正誤を反映（解答フェーズに一瞬残す） --- */
-    $$('#choice-list .choice-card').forEach(function (c) {
+    /* --- 選択肢カードに正誤を反映（解答フェーズに一瞬残す）。
+           V2.17：模試では出さない（提出まで正誤情報を一切見せない）。 --- */
+    if (!isExamMode()) $$('#choice-list .choice-card').forEach(function (c) {
       var n = parseInt(c.getAttribute('data-num'), 10);
       var atom = cur.atoms.filter(function (a) { return a.original_num === n; })[0];
       if (!atom) { return; }
@@ -2944,6 +2962,52 @@
     return stepForward();
   }
 
+  /* V2.17：模試で保存済みの解答を画面へ戻す。graded は false のまま
+     （確定し直せば part2 側が置き換える）。think_ms の初回性は part2 が守る。 */
+  function restoreExamAnswer(sv) {
+    var cur = state.current;
+    if (!cur) { return; }
+    if (cur.question.question_type === 'numeric') {
+      var inp = $('#numeric-input');
+      if (inp && sv.numeric_input !== undefined && sv.numeric_input !== null) {
+        inp.value = sv.numeric_input;
+      }
+      var b0 = $('#btn-confirm');
+      if (b0) { b0.disabled = false; b0.textContent = '解答を確定する'; }
+      return;
+    }
+    cur.selected = (sv.atoms || []).filter(function (a) { return a.picked; })
+      .map(function (a) { return a.original_num; });
+    cur.eliminated = {};
+    (sv.atoms || []).forEach(function (a) { if (a.ground_on) { cur.eliminated[a.atom_id] = true; } });
+    $$('#choice-list .choice-card').forEach(function (c) {
+      var n = parseInt(c.getAttribute('data-num'), 10);
+      toggleClass(c, 'is-selected', cur.selected.indexOf(n) >= 0);
+      var id = c.getAttribute('data-atom-id');
+      var on = !!cur.eliminated[id];
+      toggleClass(c, 'is-eliminated', on);
+      var mk = c.querySelector('.choice-mark[data-kind="ground"]');
+      if (mk) { mk.setAttribute('aria-pressed', on ? 'true' : 'false'); mk.textContent = on ? '☑' : '☐'; }
+    });
+    var need = needCount(cur.atoms);
+    var b = $('#btn-confirm');
+    if (b) {
+      var left = need - cur.selected.length;
+      b.disabled = (left !== 0);
+      b.textContent = (left === 0) ? '解答を確定する'
+        : (left > 0) ? (left + 'つ選んでください') : ((-left) + 'つ多いです');
+    }
+  }
+
+  /* V2.17：模試中だけ、指定の問題へ移動する（未確定の選び直しは捨てる） */
+  function examJump(i) {
+    if (!isExamMode()) { return; }
+    var s = state.session;
+    if (i < 0 || i >= s.questions.length) { return; }
+    s.index = i;
+    renderQuestion();
+  }
+
   function stepForward() {
     var s = state.session;
     s.index++;
@@ -3515,6 +3579,16 @@
 
     /* --- サムゾーン --- */
     on($('#btn-next'), 'click', function () { nextQuestion(); });
+    /* V2.17：模試ナビ */
+    on($('#btn-exam-prev'), 'click', function () { examJump(state.session.index - 1); });
+    on($('#btn-exam-next'), 'click', function () {
+      if (state.session.index >= state.session.questions.length - 1) {
+        if (typeof hooks.openExamConfirm === 'function') { hooks.openExamConfirm(); }
+      } else { examJump(state.session.index + 1); }
+    });
+    on($('#btn-exam-list'), 'click', function () {
+      if (typeof hooks.openExamConfirm === 'function') { hooks.openExamConfirm(); }
+    });
 
     /* --- モーダル共通 --- */
     on($('#confirm-go'), 'click', function () {
@@ -3990,6 +4064,7 @@
     forgetAtom    : forgetAtom,
     setEval       : setEval,
     nextQuestion  : nextQuestion,
+    examJump      : examJump,
     toggleCurrentQuestionStar: toggleCurrentQuestionStar,
     toggleAtomStarById       : toggleAtomStarById,
 

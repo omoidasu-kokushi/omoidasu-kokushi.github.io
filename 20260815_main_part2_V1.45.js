@@ -2101,8 +2101,10 @@ var QR_MATRIX = [
       };
 
       /* 模試は解説を挟まず全問回答 → 一括採点。前半のフックで割り込む。 */
+      /* V2.17：解答は q_id で置き換え式（前後移動して解き直せる）。
+         採点は「全解答を提出する」まで一切走らない（本番に即した設計メモ準拠）。 */
       M.hooks.afterGrade = function (cur) {
-        st.exam.answers.push({
+        var entry = {
           q_id: cur.question.q_id,
           atoms: cur.atoms.map(function (a) {
             return {
@@ -2116,17 +2118,42 @@ var QR_MATRIX = [
           answered_right: cur.answeredRight,
           /* 反応時間はこの瞬間にしか取れない（採点は最後にまとめて走る）。V1.79 */
           think_ms: (typeof M.thinkMsForCurrent === 'function') ? M.thinkMsForCurrent() : null,
-          unit: cur.question.unit
-        });
-        M.state.session.answeredCount++;
-        M.stepForward();
+          unit: cur.question.unit,
+          numeric_input: (cur.numericInput !== undefined) ? cur.numericInput : null
+        };
+        var at = -1;
+        for (var i = 0; i < st.exam.answers.length; i++) {
+          if (st.exam.answers[i].q_id === entry.q_id) { at = i; break; }
+        }
+        if (at >= 0) {
+          /* 解き直し：think_ms だけは初回の値を守る（計測の意味・V1.79） */
+          entry.think_ms = st.exam.answers[at].think_ms;
+          st.exam.answers[at] = entry;
+        } else {
+          st.exam.answers.push(entry);
+          M.state.session.answeredCount++;
+        }
+        if (M.state.session.index >= M.state.session.questions.length - 1) {
+          openExamConfirm();
+        } else {
+          M.stepForward();
+        }
         return false;   /* 解説フェーズを描画しない */
       };
       M.hooks.onFinish = function (sess) {
         if (sess.mode !== 'exam') { return false; }
-        gradeExam(st.exam.answers);
+        /* V2.17：末尾到達でも自動採点しない。必ず最終確認を通す */
+        openExamConfirm();
         return true;
       };
+      M.hooks.examSavedFor = function (qid) {
+        if (!st.exam) { return null; }
+        for (var i = 0; i < st.exam.answers.length; i++) {
+          if (st.exam.answers[i].q_id === qid) { return st.exam.answers[i]; }
+        }
+        return null;
+      };
+      M.hooks.openExamConfirm = openExamConfirm;
 
       /* --- 途中でやめたときの後片付け（V1.85・新設） -----------------------
          `endSession()` は **hooks を消さない**。消すのは各モードの役目で、
@@ -2161,10 +2188,42 @@ var QR_MATRIX = [
      `M.endSession()` は【呼ばない】：ここは endSession から呼ばれる側なので、
      呼び返すと入れ子になる（概念ノックの `abortKnock` と同じ理由）。
      採点はしない。受験の途中で抜けた以上、点数は出しようがない。 */
+  /* V2.17：提出前の最終確認。全問一覧（自分の答え・根拠チェック数・未回答）を出し、
+     行タップでその問題へ戻す。「全解答を提出する」で初めて gradeExam が走る。 */
+  function openExamConfirm() {
+    var ex = st.exam;
+    if (!ex) { return; }
+    var by = {};
+    ex.answers.forEach(function (a) { by[a.q_id] = a; });
+    var un = 0;
+    setHtml('#exam-confirm-list', ex.questions.map(function (q, i) {
+      var a = by[q.q_id];
+      var ans;
+      if (a) {
+        var nums = (a.atoms || []).filter(function (x) { return x.picked; })
+          .map(function (x) { return circled(x.original_num); }).join('');
+        var g = (a.atoms || []).filter(function (x) { return x.ground_on; }).length;
+        ans = (nums || (a.numeric_input !== null && a.numeric_input !== undefined
+                        ? String(a.numeric_input) : '—'))
+              + (g ? '　☑×' + g : '');
+      } else { un++; ans = '未回答'; }
+      return '<li class="ec-row' + (a ? '' : ' is-un') + '" data-index="' + i + '">' +
+             '<span class="ec-no">' + (i + 1) + '</span>' +
+             '<span class="ec-ans">' + esc(ans) + '</span>' +
+             '<span class="ec-go">▸</span></li>';
+    }).join(''));
+    setText('#exam-confirm-note', (un > 0 ? ('未回答が ' + un + ' 問あります。') : '')
+      + '行をタップするとその問題に戻れます。提出するまで採点されません。');
+    ex.unanswered = un;
+    openModal('#modal-exam-confirm');
+  }
+
   function abortExam() {
     M.hooks.afterGrade = null;
     M.hooks.onFinish = null;
     M.hooks.onAbort = null;
+    M.hooks.examSavedFor = null;      /* V2.17 */
+    M.hooks.openExamConfirm = null;   /* V2.17 */
     if (st.exam) { st.exam.answers = []; st.exam.aborted = true; }
   }
 
@@ -2228,6 +2287,8 @@ var QR_MATRIX = [
     /* V1.85：onAbort も必ず外す。張ったままだと、次のモードを畳んだときに
        模試の後片付けが走る（いまは無害だが、無害さに寄りかからない）。 */
     M.hooks.onAbort = null;
+    M.hooks.examSavedFor = null;      /* V2.17 */
+    M.hooks.openExamConfirm = null;   /* V2.17 */
     M.endSession();
 
     var r = result;
@@ -5386,6 +5447,22 @@ var QR_MATRIX = [
     on($('#exam-list'), 'click', function (ev) {
       var c = ev.target.closest('.exam-card');
       if (c) { startExam(c.dataset.examId); }
+    });
+    /* V2.17：最終確認モーダル */
+    on($('#exam-confirm-close'), 'click', function () { closeModals(); });
+    on($('#exam-confirm-list'), 'click', function (ev) {
+      var row = ev.target.closest('.ec-row');
+      if (!row) { return; }
+      closeModals();
+      M.examJump(parseInt(row.getAttribute('data-index'), 10));
+    });
+    on($('#exam-confirm-submit'), 'click', function () {
+      if (!st.exam) { return; }
+      var un = st.exam.unanswered || 0;
+      var go2 = function () { closeModals(); gradeExam(st.exam.answers); };
+      if (un > 0) {
+        if (global.confirm('未回答が ' + un + ' 問あります。このまま提出しますか？')) { go2(); }
+      } else { go2(); }
     });
     on($('#warn-study'), 'click', function () { closeModals(); openRandomSelect(); });
     on($('#btn-exam-share'), 'click', function () { shareExamResult(); });
