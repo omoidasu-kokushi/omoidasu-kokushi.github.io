@@ -1530,6 +1530,12 @@ small{ font-size:var(--fs-xs); }
   border-radius:var(--r-lg); background:var(--surface);
   border:1px solid var(--border); box-shadow:var(--shadow-1);
   overflow:hidden;
+  /* V2.21: ★が数百件たまると、一覧の一括レイアウトが描画後に
+     メインスレッドを数十秒塞いだ（疑似1年データ697件で実測20秒。
+     ★ノートを開いた直後、どのボタンも20秒効かない）。
+     画面外の項目はレイアウトを後回しにする。DOMも見た目も変わらない。 */
+  content-visibility:auto;
+  contain-intrinsic-size:auto 320px;
 }
 .star-item-head{
   display:flex; align-items:center; gap:7px;
