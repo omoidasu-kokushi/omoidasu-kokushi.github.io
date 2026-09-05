@@ -3306,7 +3306,7 @@
       setText('#pomo-title', 'ポモドーロは待機中です');
       setHtml('#pomo-body', '問題を解きはじめると、自動で25分の計測がはじまります。');
     } else if (left > 0) {
-      setText('#pomo-title', '集中中：残り ' + formatClock(left));
+      setText('#pomo-title', '集中時間：残り ' + formatClock(left));   /* V2.26 文言（利用者要望） */
       setHtml('#pomo-body', '25分たつと、<b>解説画面に切り替わったタイミング</b>でお知らせします。' +
                             '解答の途中では邪魔しません。');
     } else {
