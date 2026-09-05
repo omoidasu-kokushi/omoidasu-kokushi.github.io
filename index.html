@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.31">
+<link rel="stylesheet" href="./styles.css?v=2.32">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.31",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.32",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.31",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.32",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.31",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.32",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.31",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=2.32",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.31",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.32",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -467,7 +467,7 @@
           ・<a href="./terms.html" target="_blank" rel="noopener">利用規約</a>
           ・<a href="./about.html" target="_blank" rel="noopener">このアプリについて</a>
         </p>
-        <p class="build-stamp">20260906_Omoidasu_V2.31</p>
+        <p class="build-stamp">20260906_Omoidasu_V2.32</p>
       </div>
     </section>
 
@@ -882,17 +882,11 @@
           </button>
         </section>
 
+        <!-- V2.32：設定の再配置（利用者裁定「なぜその設定がそこに？を正す」）。
+             受験する年・必修比率・復習上限は「生活リズム」ではなく試験の設定。
+             一問一答の出しかたも出題の設定なのでここへ。 -->
         <section class="set-block">
-          <h3 class="set-head">2. 生活リズム設定
-            <button type="button" class="help-btn" data-help="dayline" aria-label="日界の説明">？</button>
-          </h3>
-          <div class="set-row set-static">
-            <span class="set-row-body"><b>日界（1日の切り替わり）</b><small>この時刻を過ぎると「1日後」の復習が出現します</small></span>
-            <!-- 選択肢は part2 の fillDaylineOptions() が 0〜23時で生成する -->
-            <select id="set-dayline" class="set-select"></select>
-          </div>
-          <p class="set-note">夜型なら遅め（例 6:00）、早朝に解くなら早め（例 3:00）。昼の時刻にすると、午前中の学習が前日ぶんとして数えられます。</p>
-
+          <h3 class="set-head">2. 試験と出題</h3>
           <!-- V1.30：試験日。ここから復習間隔の上限と、直前10日の出題順が決まる。
                日界と同じ「時間の設定」なので、章を増やさずここへ置く。 -->
           <div class="set-row set-static set-stack">
@@ -942,10 +936,27 @@
             </div>
             <p class="set-note" id="cap-note">—</p>
           </div>
+          <button type="button" class="set-row" id="btn-oneq">
+            <span class="set-row-body"><b>一問一答の出しかた</b><small id="oneq-state">期日の選択肢が1本のときだけ一問一答</small></span>
+            <span class="tool-arrow" aria-hidden="true"></span>
+          </button>
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">3. ポモドーロ勉強法
+          <h3 class="set-head">3. 生活リズム設定
+            <button type="button" class="help-btn" data-help="dayline" aria-label="日界の説明">？</button>
+          </h3>
+          <div class="set-row set-static">
+            <span class="set-row-body"><b>日界（1日の切り替わり）</b><small>この時刻を過ぎると「1日後」の復習が出現します</small></span>
+            <!-- 選択肢は part2 の fillDaylineOptions() が 0〜23時で生成する -->
+            <select id="set-dayline" class="set-select"></select>
+          </div>
+          <p class="set-note">夜型なら遅め（例 6:00）、早朝に解くなら早め（例 3:00）。昼の時刻にすると、午前中の学習が前日ぶんとして数えられます。</p>
+
+        </section>
+
+        <section class="set-block">
+          <h3 class="set-head">4. ポモドーロ勉強法
             <button type="button" class="help-btn" data-help="pomodoro" aria-label="ポモドーロ勉強法の説明">？</button>
           </h3>
           <label class="switch-row set-row">
@@ -989,42 +1000,17 @@
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">4. テーマ切替</h3>
+          <h3 class="set-head">5. テーマ切替</h3>
           <div class="seg-group" id="set-theme" role="group" aria-label="テーマ">
             <button type="button" class="seg-btn is-active" data-theme-set="light">ライト</button>
             <button type="button" class="seg-btn" data-theme-set="dark">ダーク</button>
             <button type="button" class="seg-btn" data-theme-set="sepia">セピア</button>
           </div>
 
-          <!-- V1.29：自分で入れた図をどこに出すか。
-               保存先は IndexedDB の meta（他の設定と同じ棚）。
-               localStorage にしないのは、バックアップ・復元・全消去の
-               3経路から外れて「戻したのに設定だけ違う」が起きるため。 -->
-          <div class="set-row set-static set-stack">
-            <span class="set-row-body"><b>自分で登録した画像の表示位置</b>
-              <small>解説の中で、貼った図をどこに出すか</small></span>
-            <div class="radio-list" role="radiogroup" aria-label="自分で登録した画像の表示位置">
-              <label class="radio-row">
-                <input type="radio" name="userimgpos" value="after-explanation">
-                <span class="radio-mark" aria-hidden="true"></span>
-                <span class="radio-text">解説文の直後<small>各肢の解説のすぐ下</small></span>
-              </label>
-              <label class="radio-row">
-                <input type="radio" name="userimgpos" value="after-figure" checked>
-                <span class="radio-mark" aria-hidden="true"></span>
-                <span class="radio-text">図解の直後<small>いちばん下（既定）</small></span>
-              </label>
-              <label class="radio-row">
-                <input type="radio" name="userimgpos" value="after-table">
-                <span class="radio-mark" aria-hidden="true"></span>
-                <span class="radio-text">一緒に覚える（表）の直後<small>比較表のすぐ下</small></span>
-              </label>
-            </div>
-          </div>
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">5. 通知</h3>
+          <h3 class="set-head">6. 通知</h3>
           <label class="switch-row set-row">
             <input type="checkbox" id="set-verdict-popup" checked>
             <span class="switch-track" aria-hidden="true"><span class="switch-knob"></span></span>
@@ -1047,7 +1033,7 @@
         <!-- V1.31：ドライブ同期。自作の図とメモを、利用者自身のGoogleドライブへ預ける。
              運営者のサーバーは存在しないので、こちらから中身は見られない。 -->
         <section class="set-block">
-          <h3 class="set-head">6. ドライブ同期
+          <h3 class="set-head">7. ドライブ同期
             <button type="button" class="help-btn" data-help="drive" aria-label="ドライブ同期の説明">？</button>
           </h3>
 
@@ -1098,7 +1084,7 @@
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">7. 出題と表示のカスタマイズ</h3>
+          <h3 class="set-head">8. 表示のカスタマイズ</h3>
 
           <!-- V1.44：選択肢ごとの解説をいつ見せるか。
                既定は「ボタンで出せる」。全体解説を読んで自分の言葉で書く、
@@ -1114,10 +1100,31 @@
             </div>
             <p class="set-note" id="explain-mode-note"></p>
           </div>
-          <button type="button" class="set-row" id="btn-oneq">
-            <span class="set-row-body"><b>一問一答の出しかた</b><small id="oneq-state">期日の選択肢が1本のときだけ一問一答</small></span>
-            <span class="tool-arrow" aria-hidden="true"></span>
-          </button>
+          <!-- V1.29：自分で入れた図をどこに出すか。
+               保存先は IndexedDB の meta（他の設定と同じ棚）。
+               localStorage にしないのは、バックアップ・復元・全消去の
+               3経路から外れて「戻したのに設定だけ違う」が起きるため。 -->
+          <div class="set-row set-static set-stack">
+            <span class="set-row-body"><b>自分で登録した画像の表示位置</b>
+              <small>解説の中で、貼った図をどこに出すか</small></span>
+            <div class="radio-list" role="radiogroup" aria-label="自分で登録した画像の表示位置">
+              <label class="radio-row">
+                <input type="radio" name="userimgpos" value="after-explanation">
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span class="radio-text">解説文の直後<small>各肢の解説のすぐ下</small></span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="userimgpos" value="after-figure" checked>
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span class="radio-text">図解の直後<small>いちばん下（既定）</small></span>
+              </label>
+              <label class="radio-row">
+                <input type="radio" name="userimgpos" value="after-table">
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span class="radio-text">一緒に覚える（表）の直後<small>比較表のすぐ下</small></span>
+              </label>
+            </div>
+          </div>
           <button type="button" class="set-row" id="btn-text-edit">
             <span class="set-row-body"><b>画面の文言を自分で直す</b><small>ガイドと一言欄の文を書き換えます。問題データの文は含みません</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
@@ -1125,11 +1132,11 @@
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">8. データ
+          <h3 class="set-head">9. データ
             <button type="button" class="help-btn" data-help="import" aria-label="取り込みの説明">？</button>
           </h3>
           <div class="import-box">
-            <label class="import-label" for="import-area">自作問題データ（12列TSV）の取り込み</label>
+            <label class="import-label" for="import-area">自作問題データ（TSV／JSON）の取り込み</label>
             <details class="import-guide">
               <summary>はじめての方へ：取り込みの手順（3分）</summary>
               <ol class="import-steps">
@@ -1217,7 +1224,7 @@
                 書き出したバックアップJSONも、この同じ欄に貼り付けて復元できます。</p>
             </details>
 
-            <textarea id="import-area" class="import-area" rows="6" placeholder="ご自身で作った問題データを取り込めます。スプレッドシートの12列をコピーして、そのまま貼り付けてください。（書き出したバックアップJSONもここに貼れます）"></textarea>
+            <textarea id="import-area" class="import-area" rows="6" placeholder="ご自身で作った問題データを取り込めます。スプレッドシートの列をコピーして、そのまま貼り付けてください。（書き出したバックアップJSONもここに貼れます）"></textarea>
             <div class="import-actions">
               <button type="button" class="btn-primary" id="btn-import">データを取り込む</button>
               <button type="button" class="btn-ghost" id="btn-import-file">ファイルから選ぶ</button>
@@ -1267,7 +1274,7 @@
         </section>
 
         <section class="set-block">
-          <h3 class="set-head">9. リセット・問い合わせ</h3>
+          <h3 class="set-head">10. リセット・問い合わせ</h3>
           <button type="button" class="set-row" id="btn-reset-medium">
             <span class="set-row-body"><b>中項目ごとに進捗を消す</b><small>一覧から選びます。問題データは残り、学習記録だけが消えます</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
@@ -1286,7 +1293,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260906_Omoidasu_V2.31 / cache v2.31.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260906_Omoidasu_V2.32 / cache v2.32.0</p>
         </section>
       </div>
     </section>
@@ -1860,12 +1867,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.31"></script>
-<script src="./storage.js?v=2.31"></script>
-<script src="./scheduler.js?v=2.31"></script>
+<script src="./questions.js?v=2.32"></script>
+<script src="./storage.js?v=2.32"></script>
+<script src="./scheduler.js?v=2.32"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.31"></script>
-<script src="./license.js?v=2.31"></script>
+<script src="./drive.js?v=2.32"></script>
+<script src="./license.js?v=2.32"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

@@ -16,7 +16,7 @@ for f in ["scheduler.js", P2]:
     ok("syntax %s" % f, p.returncode == 0, p.stderr.strip()[:200])
 
 idx, css = read("index.html"), read("styles.css")
-ok("カレンダー書き出しの入口がある", 'id="btn-ics"' in idx)
+ok("カレンダー書き出しの入口は撤去済み（V2.28裁定）", 'id="btn-ics"' not in idx)
 ok("間違いノートの入口がある", 'id="btn-note-print"' in idx)
 ok("用紙を4種から選べる",
    all(('value="%s"' % v) in idx for v in ["A4", "A5", "B5", "B4"]))

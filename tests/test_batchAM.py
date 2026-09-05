@@ -20,7 +20,7 @@ st, s1, s2, idx = read("storage.js"), read(P1), read(P2), read("index.html")
 ok("文言の変換は1箇所（describeError）", st.count("function describeError") == 1)
 ok("保存の失敗はトーストでなく覆いで出す", 'id="modal-save-error"' in idx)
 ok("覆いから書き出しへ逃がせる", 'id="save-error-backup"' in idx)
-ok("設定に保存領域の欄がある", 'id="store-row"' in idx and 'id="btn-persist"' in idx)
+ok("設定に保存領域の欄がある", 'id="store-row"' in idx)   # V2.30でボタンは自動要求へ
 ok("起動直後には persist を要求しない",
    "requestPersist" not in s1, "part1 で呼んでいる")
 ok("投資が発生したあとに要求する（チュートリアル完了・取り込み）",
@@ -161,14 +161,13 @@ def runtime_checks():
           return { shown: !document.getElementById('store-row').hidden,
                    note: document.getElementById('store-note').textContent,
                    tone: fill.getAttribute('data-tone'),
-                   warnShown: !document.getElementById('store-warn').hidden,
-                   btnShown: !document.getElementById('btn-persist').hidden };
+                   warnShown: !document.getElementById('store-warn').hidden };
         }""")
         ok("保存領域の欄が出る", r["shown"] is True, json.dumps(r, ensure_ascii=False))
         ok("使用量が数字で読める", "使用" in r["note"] and "MB" in r["note"], r["note"])
         ok("空きが十分なときは警告色にしない", r["tone"] == "ok", json.dumps(r))
-        ok("消えない設定になっていなければ、その旨と手段を出す",
-           r["warnShown"] is True and r["btnShown"] is True, json.dumps(r))
+        ok("消えない設定でなければ、その旨（自動要求済み）を出す",   # V2.30追随
+           r["warnShown"] is True, json.dumps(r))
 
         # ---------- 取り込み前の空き容量チェック ----------
         r = pg.evaluate("""async () => {
