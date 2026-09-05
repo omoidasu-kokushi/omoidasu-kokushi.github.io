@@ -212,8 +212,8 @@ with sync_playwright() as p:
     }""")
     ok("390px でも「ホーム」の文字が出る", r["homeText"] is True, json.dumps(r))
     ok("390px でも「設定」の文字が出る", r["setText"] is True, json.dumps(r))
-    ok("ONの横に「タイマー」の文字が出る",
-       r["timerText"] is True and "タイマー" in (r["timerLabel"] or ""), json.dumps(r))
+    ok("ONの横に ⏲ の記号が出る（V2.12：文字は記号だけに）",
+       r["timerText"] is True and "⏲" in (r["timerLabel"] or ""), json.dumps(r))
     ok("文字を出してもヘッダーが溢れない", r["right"] <= r["w"], json.dumps(r))
 
     ok("実行中にJSエラーが出ていない", len(errs) == 0, " / ".join(errs[:3]))

@@ -49,8 +49,9 @@ def static_checks():
     ok("index/sw に他版の part2 が残っていない",
        len(set(re.findall(r"main_part2_V\d+\.\d+\.js", idx + sw))) == 1,
        str(set(re.findall(r"main_part2_V\d+\.\d+\.js", idx + sw))))
+    # V2.12 から CACHE_NAME はアプリ版と同じ数字（v2.12.0…）。v1.x 系の古い値でないことを見る。
     ok("sw CACHE_NAME が上がっている",
-       bool(re.search(r"const CACHE_NAME = 'v1\.[1-9]", sw)),
+       bool(re.search(r"const CACHE_NAME = 'v(?:1\.[1-9]\d*|[2-9]\d*\.\d+)\.\d+'", sw)),
        re.search(r"const CACHE_NAME = '[^']+'", sw).group(0))
     ok("styles.css から cx-tags-inline 全消", "cx-tags-inline" not in read("styles.css"))
     ok("part1 から tagPills/tagSignature 全消",

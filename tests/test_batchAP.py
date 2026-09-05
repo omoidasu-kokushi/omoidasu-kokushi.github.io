@@ -117,14 +117,18 @@ def runtime_checks():
                 Math.max(m, e.getBoundingClientRect().height), 0);
               return { h: Math.round(b.height), innerH: Math.round(inner),
                        textShown: txt ? getComputedStyle(txt).display !== 'none' : false,
+                       label: txt ? txt.textContent.trim() : '',
                        text: rect(txt), state: rect(st),
                        docOverflow: de.scrollWidth > de.clientWidth };
             }""")
             ok("%dpx：タイマーの文字が枠からはみ出さない（V1.62までは縦に折り返していた）" % w,
                r["innerH"] <= r["h"], json.dumps(r))
             if r["textShown"]:
+                # V2.12：ラベルは「⏲」1文字になった。幅>高さ×2 は「5文字が縦に折り返していない」を
+                # 見る式で、1文字には当てはまらない。1文字のときは枠の高さに収まることを見る。
                 ok("%dpx：タイマーの文字が横1行に収まる" % w,
-                   r["text"]["w"] > r["text"]["h"] * 2, json.dumps(r))
+                   (r["text"]["w"] > r["text"]["h"] * 2) if len(r["label"]) >= 2
+                   else (r["text"]["h"] <= r["h"]), json.dumps(r))
             ok("%dpx：横スクロールが出ない" % w, r["docOverflow"] is False, json.dumps(r))
 
             # ---------- 当たり判定 ----------

@@ -318,7 +318,14 @@ small{ font-size:var(--fs-xs); }
   flex:1 1 auto; min-width:0;
   font-size:var(--fs-xs); color:var(--text-sub);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-  direction:rtl; text-align:left;      /* 末尾（小項目）を必ず見せる */
+  /* V2.12：中身が単元名だけになったので、末尾を見せる rtl の細工は不要。 */
+  direction:ltr; text-align:left;
+}
+/* V2.12：カード側に集約したパンくず。ランク・コードと同じ行に流し、狭ければ自然に折り返す。 */
+.q-path{
+  flex:1 1 auto; min-width:0;
+  font-size:var(--fs-xs); color:var(--text-sub); line-height:1.35;
+  white-space:normal;
 }
 .num-code{
   flex:0 0 auto;
@@ -345,6 +352,14 @@ small{ font-size:var(--fs-xs); }
   margin-left:auto; }
 
 /* ポモドーロチップ */
+/* V2.12：時間チップ＋トグルを1つのピルに見せる器。枠は持たず、角の丸めだけ中の2つで分担する。
+   当たり判定は2つのまま（残り時間を見るタップでOFFにならない）。 */
+.pomo-pill{ display:inline-flex; align-items:center; }
+.pomo-pill .pomo-chip{ border-radius:var(--r-pill) 0 0 var(--r-pill); border-right:0; height:26px; padding:0 8px 0 9px; }
+.pomo-pill .pomo-toggle{ border-radius:0 var(--r-pill) var(--r-pill) 0; height:26px; }
+/* 片方だけ見えているときは、その1つを丸いピルに戻す。 */
+.pomo-pill .pomo-chip[hidden] + .pomo-toggle{ border-radius:var(--r-pill); }
+.pomo-pill .pomo-chip:has(+ .pomo-toggle[hidden]){ border-radius:var(--r-pill); border-right:1px solid var(--border); }
 .pomo-chip{
   display:flex; align-items:center; gap:5px;
   height:28px; padding:0 10px; border-radius:var(--r-pill);

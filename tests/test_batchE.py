@@ -32,8 +32,10 @@ ok("ヘッダーに専用トグルがある", 'id="pomodoro-toggle"' in idx)
 ok("トグルは絵文字グリフを使わない（環境差を避ける）",
    "⏸" not in idx and "OFF</button>" not in idx
    and "setText('#pomodoro-toggle .pomo-toggle-state', p.enabled ? 'ON' : 'OFF');" in read(P1))
-ok("トグルに「⏲タイマー」の説明文字が付いている（何のONか分かる）",
-   'class="pomo-toggle-text">⏲タイマー<' in idx)
+# V2.12：時間チップと1つのピルに見せるため、説明文字は「⏲」の記号だけにした
+# （ON/OFFの文字は .pomo-toggle-state に残る。何のONかは記号と隣の残り時間で分かる）。
+ok("トグルに ⏲ の記号が付いている（何のONか分かる・V2.12で記号だけに）",
+   'class="pomo-toggle-text">⏲<' in idx)
 # V1.39：13列TSVに合わせて col13 が増えたので10個（アプリ側が正）
 ok("列ごとの[？]は10個", idx.count('class="help-btn help-col"') == 10, str(idx.count('class="help-btn help-col"')))
 for c in [1, 2, 3, 4, 5, 6, 7, 9, 12, 13]:

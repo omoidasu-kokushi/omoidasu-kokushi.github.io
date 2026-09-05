@@ -878,21 +878,14 @@
   }
 
   function setHeaderCrumb(question) {
-    var rank = $('#hdr-rank'), code = $('#hdr-code'), path = $('#hdr-path');
-    var crumb = $('#hdr-crumb');
-    if (!rank || !code || !path) { return; }
-    if (!question) {
-      rank.hidden = true; code.hidden = true;
-      if (crumb) { crumb.hidden = true; }
-      return;
-    }
+    /* V2.12：ヘッダーに出すのは単元名だけ。ランク・階層コード・大項目以下は
+       カードの q-meta（renderQuestion）に集約した。ヘッダーとカードで同じ文字が
+       二重に出て窮屈だった。問題個々の属性は欄外（ヘッダー）に置かない。 */
+    var path = $('#hdr-path'), crumb = $('#hdr-crumb');
+    if (!path) { return; }
+    if (!question) { if (crumb) { crumb.hidden = true; } return; }
     if (crumb) { crumb.hidden = false; }
-    rank.hidden = false; code.hidden = false;
-    rank.textContent = question.rank;
-    rank.className = 'rank-badge ' + question.rank;
-    code.textContent = question.num_code || '';
-    path.textContent = [question.unit, question.major, question.medium, question.sub_item]
-      .filter(Boolean).join(' ＞ ');
+    path.textContent = question.unit || '';
   }
 
   /* ======================================================================
@@ -1488,6 +1481,8 @@
     var rank = $('#q-rank');
     if (rank) { rank.textContent = q.rank; rank.className = 'rank-badge ' + q.rank; }
     setText('#q-code', q.num_code || '');
+    /* V2.12：単元＞大項目＞中項目＞小項目はここだけに出す（ヘッダーから移した） */
+    setText('#q-path', [q.unit, q.major, q.medium, q.sub_item].filter(Boolean).join(' ＞ '));
     /* 出典が空なら「AI予想問題」と自動表示する（第3章③） */
     setText('#q-source', (q.source && String(q.source).trim()) ? q.source : 'AI予想問題');
     setText('#q-counter', (state.session.index + 1) + ' / ' + state.session.questions.length);
