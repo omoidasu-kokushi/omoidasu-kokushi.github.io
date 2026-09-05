@@ -1070,6 +1070,13 @@
           ? '最優先：' + top3[0].tag + ' ' + top3[0].score + '%'
           : 'テーマ別 弱点分析と連動');
         var evil = unlocks.filter(function (x) { return x.id === 'mock_weak'; })[0];
+        /* V2.14：模試が1つも解禁されていない間は、力試しカードの見た目だけ休ませる。
+           タップは生かす（一覧側に解禁条件と進捗が出るので、行き止まりにしない）。 */
+        var examCard = doc.getElementById('card-exam');
+        if (examCard) {
+          examCard.classList.toggle('is-locked',
+            !unlocks.some(function (x) { return x.unlocked; }));
+        }
         renderRandomCard(h.level && h.level.stats ? h.level.stats.unlearned_atoms : null,
                          !!(evil && evil.unlocked), h.unlearned_questions);
         return h;

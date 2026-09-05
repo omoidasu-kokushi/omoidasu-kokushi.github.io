@@ -4380,3 +4380,8 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 
 /* タイマーのON/OFFはヘッダー内で単独。上下に広げる。 */
 .pomo-toggle::after{ top:-9px; bottom:-9px; }
+
+/* V2.14：力試しカードの未解禁表示（§2-1）。模試がひとつも解禁されていない間だけ
+   彩度と明度を落として「まだ使う段階ではない」ことを伝える。タップは可能なまま
+   （一覧に解禁条件と進捗があるため、入口を閉じない）。 */
+.sub-card.is-locked { opacity: .5; filter: grayscale(.7); }
