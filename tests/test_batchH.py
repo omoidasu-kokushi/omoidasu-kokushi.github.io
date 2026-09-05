@@ -300,13 +300,20 @@ with sync_playwright() as p:
     pg.eval_on_selector('#rv-choices .cx[data-locked="1"] .btn-forgot',
                         "b => b.dispatchEvent(new MouseEvent('click', {bubbles:true}))")
     pg.wait_for_timeout(500)
+    # V2.19：ロックパネルではなく評価群＋注記が出る（既定は難・普通へ押し直し可）
     after = pg.evaluate("""() => {
-      const dem = document.querySelectorAll('#rv-choices .eval-locked.is-demote');
-      return { demoteCount: dem.length, demoteText: dem.length ? dem[0].textContent : '' }; }""")
-    ok("「忘れていた」を押すと降格表示に変わる", after["demoteCount"] == 1,
-       json.dumps(after, ensure_ascii=False))
-    ok("降格表示に「難しい」と10分後が書いてある",
-       "難しい" in after["demoteText"] and "10分後" in after["demoteText"], after["demoteText"])
+      const note = document.querySelectorAll('#rv-choices .eval-demote-note');
+      const grp = document.querySelectorAll('#rv-choices .eval-group').length;
+      const hardActive = !!document.querySelector('#rv-choices .eval-btn.eval-hard.is-active');
+      const easyDis = !!document.querySelector('#rv-choices .eval-btn.eval-easy[disabled]');
+      return { demoteCount: note.length, demoteText: note.length ? note[0].textContent : '',
+               grp, hardActive, easyDis }; }""")
+    ok("「忘れていた」を押すと評価群＋注記に変わる（V2.19）",
+       after["demoteCount"] >= 1 and after["grp"] >= 1, json.dumps(after, ensure_ascii=False))
+    ok("注記に既定「難しい」と普通へ押し直せる旨がある",
+       "難しい" in after["demoteText"] and "普通" in after["demoteText"], after["demoteText"])
+    ok("既定は難が点灯・易しいは押せない（V2.19の門番）",
+       after["hardActive"] and after["easyDis"], json.dumps(after, ensure_ascii=False))
 
     res = pg.evaluate("""async (qid) => {
       await window.Main.nextQuestion();
