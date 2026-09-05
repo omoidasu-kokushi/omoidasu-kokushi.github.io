@@ -67,7 +67,7 @@ def runtime_checks():
         ok("未来の記録があっても期日は梯子の範囲に収まる（永久に出てこない肢を作らない）",
            r["onlyDueDays"] <= 200, json.dumps(r))
         ok("時計を戻して解き直すと、そちらが最新として効く",
-           r["bothEval"] == "hard" and r["bothDueMin"] <= 15, json.dumps(r))
+           r["bothEval"] == "hard" and r["bothDueMin"] <= 25, json.dumps(r))
         ok("未来の記録も解答回数には数える（解いた事実は消さない）",
            r["bothCount"] == 2, json.dumps(r))
         ok("未来の時刻をそのまま持たせない（分析や並べ替えが狂う）",

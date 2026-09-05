@@ -70,7 +70,7 @@ with sync_playwright() as p:
     # --- 追加4件（期間）
     ev = {t["label"]: t for t in tips if t["label"].startswith("評価ボタン：")}
     ok("追加：評価4ボタンの期間カードが4件", len(ev) == 4, str(sorted(ev.keys())))
-    ok("難しい＝10分後", "難しい" in "".join(ev.keys()) and "10分後" in ev["評価ボタン：難しい"]["title"])
+    ok("難しい＝20分後（V2.20）", "難しい" in "".join(ev.keys()) and "20分後" in ev["評価ボタン：難しい"]["title"])
     ok("難しいは何度押しても伸びないと明記", "間隔が伸びることはありません" in ev["評価ボタン：難しい"]["body"])
     ok("普通＝1時間→翌日→1週間", "1時間後" in ev["評価ボタン：普通"]["title"]
        and "1週間" in ev["評価ボタン：普通"]["title"])
@@ -103,8 +103,8 @@ with sync_playwright() as p:
           easy_30d   : P(at30d).easy.label,   easy_90d : P(at90d).easy.label,
           master_lock: !K.isMasterUnlocked(at1w), master_ok: K.isMasterUnlocked(at30d),
           master_val : P(at30d).master.label }; }""")
-    ok("実装：難しいは常に10分後（初見でも30日の段でも）",
-       real["hard_fresh"] == "10分後" and real["hard_at30d"] == "10分後", json.dumps(real, ensure_ascii=False))
+    ok("実装：難しいは常に20分後（初見でも30日の段でも・V2.20）",
+       real["hard_fresh"] == "20分後" and real["hard_at30d"] == "20分後", json.dumps(real, ensure_ascii=False))
     ok("実装：普通は 初見1時間 → 10分後の段なら1日 → 1日の段なら1週間 → 以後1週間固定",
        real["norm_fresh"] == "1時間後" and real["norm_10m"] == "1日後"
        and real["norm_1d"] == "1週間後" and real["norm_1w"] == "1週間後", json.dumps(real, ensure_ascii=False))
