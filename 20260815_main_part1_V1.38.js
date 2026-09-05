@@ -1392,6 +1392,10 @@
 
       K.Interrupt.endSession();   /* モード跨ぎの誤発火を構造的に断つ */
 
+      /* V2.22：畳み損ねた前のセッションが残っていたら、ここで必ず畳む。
+         どの経路から来ても、新しいセッションは更地の上でしか始めない（§49）。 */
+      if (state.session.mode) { endSession(); }
+
       state.session = {
         mode: mode,
         sessionId: 'S' + Date.now().toString(36),
@@ -3461,7 +3465,12 @@
        出題中に押されたら、セッションを畳んでから戻る（畳まないと
        裏で問題を抱えたまま別のモードへ入れてしまう）。 */
     on($('#btn-home'), 'click', function () {
-      if (state.screen === 'quiz') { endSession(); }
+      /* V2.22：見る先は「画面」ではなく「セッション」。
+         模試中に⚙設定へ寄り道してからホームを押すと、screen は
+         'settings' なので旧条件（screen === 'quiz'）では畳まれず、
+         模試の hooks が生き残って、次に始めた通常学習の解答が
+         丸ごと記録されなかった（§49）。 */
+      if (state.session.mode) { endSession(); }
       go('home', { replace: true });
       refreshHome().catch(noop);
     });

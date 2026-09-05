@@ -2094,6 +2094,10 @@ var QR_MATRIX = [
     return Promise.resolve().then(function () {
       if (!q.questions.length) { toast('出題できる問題がありません'); return null; }
 
+      /* V2.22：前のセッションが畳まれずに残っていても、模試は更地から始める
+         （startSession 側と同じ防御。part1 §49）。 */
+      if (M.state.session && M.state.session.mode) { M.endSession(); }
+
       st.exam = {
         id: examId, style: style || 'real',
         questions: q.questions, answers: [], index: 0,
