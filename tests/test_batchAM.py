@@ -157,6 +157,8 @@ def runtime_checks():
           await window.Half2Impl.openSettings();
           """ + UNTIL + """
           await until(() => !document.getElementById('store-row').hidden, 6000);
+          /* V2.30：未許可なら自動要求→再描画してからwarnが入る。それを待つ */
+          await until(() => !document.getElementById('store-warn').hidden, 6000);
           const fill = document.getElementById('store-bar-fill');
           return { shown: !document.getElementById('store-row').hidden,
                    note: document.getElementById('store-note').textContent,

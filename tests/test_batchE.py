@@ -21,7 +21,7 @@ for f in ["storage.js", "scheduler.js", P1, P2, "sw.js"]:
 idx, st = read("index.html"), read("storage.js")
 ok("storage：importText から trim() を撤去",
    ".replace(/^\\uFEFF/, '').trim()" not in st and "if (!/\\S/.test(raw))" in st)
-ok("設定3の見出しが「ポモドーロ勉強法」", "3. ポモドーロ勉強法" in idx and "3. ポモドーロタイマー" not in idx)
+ok("設定の見出しが「ポモドーロ勉強法」", "4. ポモドーロ勉強法" in idx and "ポモドーロタイマー</h3>" not in idx)   # V2.32再配置で3→4
 ok("スイッチ文言が指定どおり", "ポモドーロ機能(タイマー)を使う(25分)" in idx)
 ok("短い休憩は5分固定と明記", "5分（固定）" in idx)
 ok("ヘッダーに専用トグルがある", 'id="pomodoro-toggle"' in idx)

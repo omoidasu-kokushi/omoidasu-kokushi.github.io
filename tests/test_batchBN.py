@@ -74,7 +74,7 @@ ok("案内は3回で止まる", "(meta.hissu_hint_no || 0) >= 3" in j2)
 ok("案内は自動より先に降りる（読みを増やさない）",
    "自動のままの人には出しようがない" in j2)
 ok("案内は1日1回", "hissu_hint_at" in j2 and "setHours(0, 0, 0, 0)" in j2)
-ok("％ではなく距離を出す", "/50 相当" in j2 and "合格ラインまで" in j2)
+ok("％ではなく距離を出す", "/50点 相当" in j2 and "合格ラインまであと" in j2)   # V2.24文言へ追随
 
 from playwright.sync_api import sync_playwright
 
@@ -225,7 +225,7 @@ with sync_playwright() as p:
     ok("設定から切り替えられる", ui["m1"] == "strong" and ui["m2"] == "auto",
        json.dumps(ui, ensure_ascii=False))
     ok("押した段が反転して見える", ui["active1"] == "strong", json.dumps(ui, ensure_ascii=False))
-    ok("説明に％ではなく距離が出る", "/50 相当" in ui["note"], json.dumps(ui, ensure_ascii=False))
+    ok("説明に％ではなく距離が出る", "/50点 相当" in ui["note"], json.dumps(ui, ensure_ascii=False))   # V2.24追随
 
     # --- 案内は1日1回・3回で止まる ---
     hint = pg.evaluate("""async () => {

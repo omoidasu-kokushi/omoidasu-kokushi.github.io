@@ -52,9 +52,9 @@ ok("中断では endSession を呼び返さない",
 # ---------- 設定の並び ----------
 _h = re.findall(r'class="set-head">(\d)\.\s*([^\n<]+)', idx)
 ok("設定は9節ある", len(_h) == 9, json.dumps(_h, ensure_ascii=False))
-ok("7 は 出題と表示のカスタマイズ", any(n == "7" and "出題と表示" in t for n, t in _h),
+ok("8 は 表示のカスタマイズ", any(n == "8" and "表示のカスタマイズ" in t for n, t in _h),   # V2.32再配置
    json.dumps(_h, ensure_ascii=False))
-ok("8 は データ", any(n == "8" and "データ" in t for n, t in _h),
+ok("9 は データ", any(n == "9" and "データ" in t for n, t in _h),   # V2.32再配置
    json.dumps(_h, ensure_ascii=False))
 ok("節番号が1..9で重複していない",
    sorted(n for n, _ in _h) == [str(i) for i in range(1, 10)],
