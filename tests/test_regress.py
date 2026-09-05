@@ -103,7 +103,7 @@ with sync_playwright() as p:
                  normal: window.Scheduler.previewAllIntervals(a).normal.label,
                  easy: window.Scheduler.previewAllIntervals(a).easy.label,
                  masterLocked: !window.Scheduler.isMasterUnlocked(a) }; }""")
-    ok("忘却間隔：初見 難=10分 / 普=1時間 / 易=30日",
+    ok("忘却間隔：初見 難=20分（V2.20） / 普=1時間 / 易=30日",
        "10" in sch["hard"] and ("1" in sch["normal"]) and "30" in sch["easy"], str(sch))
     ok("マスターは初期グレーアウト", sch["masterLocked"])
 
