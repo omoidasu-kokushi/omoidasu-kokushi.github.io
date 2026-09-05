@@ -126,12 +126,17 @@ with sync_playwright() as p:
         answered += 1
         # 模試は確定すると自動で次へ進む（解説を挟まない）。［次へ］は押さない。
         pg.wait_for_timeout(120)
-        if pg.is_visible("#modal-exam-result"):
+        # V2.17：最終問題の確定で「最終確認」一覧が開く（自動採点はしない）
+        if pg.is_visible("#modal-exam-confirm") or pg.is_visible("#modal-exam-result"):
             break
 
     ok("30問を最後まで解ける（途中で止まらない）", answered >= 30, "answered=%d" % answered)
     ok("根拠ONにした問題がある（自動昇格の経路を通す）", ground >= 5, "ground=%d" % ground)
 
+    # V2.17：提出前の最終確認を通ってから採点する
+    pg.wait_for_selector("#modal-exam-confirm:not([hidden])", timeout=8000)
+    ok("提出前の最終確認が出る（自動採点しない）", True)
+    pg.click("#exam-confirm-submit")
     pg.wait_for_timeout(2500)
     res = pg.evaluate("""() => {
       const m = document.querySelector('#modal-exam-result');
