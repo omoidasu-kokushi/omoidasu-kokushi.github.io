@@ -4481,3 +4481,26 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   color:var(--text-sub); font-size:var(--fs-xs); line-height:1.6;
 }
 .eval-demote-note b{ color:var(--c-hard); }
+
+/* ==========================================================================
+   V2.33 使い方を全部読む（目次つき縦スクロール）
+   ========================================================================== */
+.guide-all{ display:flex; flex-direction:column; gap:10px; max-height:62vh; }
+.guide-toc{
+  display:flex; flex-wrap:wrap; gap:6px; flex:0 0 auto;
+  padding-bottom:8px; border-bottom:1px solid var(--border);
+}
+.guide-toc-row{
+  border:1px solid var(--border); background:var(--surface-2); color:var(--text);
+  font-size:var(--fs-xs); font-weight:800; border-radius:999px; padding:4px 10px;
+}
+.guide-toc-row small{ color:var(--text-mute); font-weight:600; margin-left:4px; }
+.guide-body{ overflow-y:auto; flex:1 1 auto; min-height:0; padding-right:4px; }
+.guide-sec-head{
+  font-size:var(--fs-md); font-weight:900; margin:14px 0 6px;
+  padding-top:8px; border-top:1px dashed var(--border);
+}
+.guide-sec:first-child .guide-sec-head{ border-top:0; margin-top:0; }
+.guide-item{ margin:0 0 12px; }
+.guide-item-title{ font-weight:800; margin:0 0 2px; }
+.guide-item-body{ font-size:var(--fs-sm); line-height:1.75; color:var(--text-sub); margin:0; }

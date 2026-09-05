@@ -3337,6 +3337,46 @@ var QR_MATRIX = [
     }
   };
 
+  /* --- 使い方を全部読む（V2.33） -------------------------------------
+     中身の正は HOME_TIPS ただ1つ（二重管理しない）。label をまとまりの
+     見出しにし、目次から各まとまりへ飛ぶ。文言の書き換え（text_overrides）も
+     一言欄と同じ ov() を通すので、自分で直した文がここにも反映される。 */
+  function openGuideAll() {
+    return loadTextOverrides().then(function () {
+      /* 目次のまとまりは「基底ラベル」＝末尾の丸数字と「：以降」を除いたもの。
+         「評価ボタン：難しい」〜「：マスター」は1つの目次項目にまとまり、
+         離れた場所の「使い方」も1箇所に集まる（拾い読みのための目次なので、
+         本文の順序より引きやすさを優先する）。 */
+      var groups = [], byBase = {};
+      HOME_TIPS.forEach(function (t) {
+        var label = ov(t.id + '.label', t.label);
+        var base = label.replace(/[：:].*$/, '').replace(/[ \u3000]*[①-⑳]$/, '');
+        var g = byBase[base];
+        if (!g) { g = { label: base, items: [] }; byBase[base] = g; groups.push(g); }
+        g.items.push(t);
+      });
+      setHtml('#guide-toc', groups.map(function (g, i) {
+        return '<button type="button" class="guide-toc-row" data-guide-jump="gsec' + i + '">' +
+               esc(g.label) + '<small>' + g.items.length + '件</small></button>';
+      }).join(''));
+      setHtml('#guide-body', groups.map(function (g, i) {
+        return '<section class="guide-sec" id="gsec' + i + '">' +
+          '<h4 class="guide-sec-head">' + esc(g.label) + '</h4>' +
+          g.items.map(function (t) {
+            var label2 = ov(t.id + '.label', t.label);
+            var title = ov(t.id + '.title', t.title || '');
+            var head = (label2 !== g.label ? label2 + (title ? '　' : '') : '') + title;
+            var body = ov(t.id + '.body', t.body);
+            return '<article class="guide-item">' +
+              (head ? '<p class="guide-item-title">' + esc(head) + '</p>' : '') +
+              '<p class="guide-item-body">' + esc(body).replace(/\n/g, '<br>') + '</p></article>';
+          }).join('') + '</section>';
+      }).join(''));
+      openModal('#modal-guide');
+      return groups.length;
+    });
+  }
+
   function openHelp(key) {
     var h = HELP[key] || HELP_COLS[key];
     if (!h) { return Promise.resolve(null); }
@@ -5362,6 +5402,7 @@ var QR_MATRIX = [
     syncBeforeReset: syncBeforeReset,    driveGuardState: driveGuardState,
     fillDaylineOptions: fillDaylineOptions,
     openHelp: openHelp,                  HELP: HELP,
+    openGuideAll: openGuideAll,
     HELP_COLS: HELP_COLS,
     confirmResetMedium: confirmResetMedium, runResetMedium: runResetMedium,
     mediumLabel: mediumLabel, mediumPath: mediumPath,
@@ -5688,6 +5729,13 @@ var QR_MATRIX = [
       }).catch(noop);
     });
 
+    on($('#btn-guide-all'), 'click', function () { openGuideAll(); });
+    on($('#guide-toc'), 'click', function (ev) {
+      var b = ev.target.closest('[data-guide-jump]');
+      if (!b) { return; }
+      var el = $('#' + b.getAttribute('data-guide-jump'));
+      if (el && el.scrollIntoView) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
     on($('#set-onboarding'), 'click', function () {
       resetTips()
         .then(function () { return showWelcome(); })
