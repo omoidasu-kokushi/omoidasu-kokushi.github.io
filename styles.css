@@ -281,6 +281,11 @@ small{ font-size:var(--fs-xs); }
 .sc-title{ font-size:var(--fs-xl); font-weight:800; letter-spacing:.01em; margin-bottom:4px; }
 .sc-subtitle{ font-size:var(--fs-lg); font-weight:800; margin:26px 0 10px; }
 .sc-lead{ font-size:var(--fs-sm); color:var(--text-sub); margin-bottom:16px; }
+.home-legal{
+  text-align:center; font-size:var(--fs-xs); color:var(--text-mute);
+  margin:18px 0 2px;
+}
+.home-legal a{ color:var(--text-mute); text-decoration:underline; }
 .build-stamp{
   margin-top:26px; text-align:center;
   font-family:var(--font-code); font-size:var(--fs-xs); color:var(--text-mute);
