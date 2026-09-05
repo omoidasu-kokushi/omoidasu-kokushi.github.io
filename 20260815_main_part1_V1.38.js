@@ -3658,7 +3658,7 @@
       if (a) { runAction(a, null); }
     });
     on($('#pomo-break'), 'click', function () { closeModals(); Half2.startBreak(5); });
-    on($('#pomo-extend'), 'click', function () { extendPomodoro(); });
+    /* #pomo-extend はV2.31で撤去（利用者裁定）。extendPomodoro は残置 */
     on($('#pomo-off'), 'click', function () { disablePomodoro(); });
     on($('#sw-reload'), 'click', function () { acceptUpdate(); });
 
