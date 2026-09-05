@@ -2069,7 +2069,7 @@
     cur.touched[atomId] = true;
     renderChoiceBlocks();
     renderSummary();
-    toast('この選択肢を復習に戻します（次回：10分後）', 2200);
+    toast('この選択肢を復習に戻します（次回：20分後）', 2200);
   }
 
   function renderChoiceBlocks() {

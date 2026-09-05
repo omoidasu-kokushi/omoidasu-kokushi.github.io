@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.19">
+<link rel="stylesheet" href="./styles.css?v=2.20">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.19",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.20",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.19",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.20",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.19",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.20",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.19",                     label: "ドライブ同期（自作の図とメモの預け先）",
+    { file: "./drive.js?v=2.20",                     label: "ドライブ同期（自作の図とメモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.19",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.20",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -460,7 +460,7 @@
           <p class="home-tip-body" id="home-tip-body"></p>
         </section>
 
-        <p class="build-stamp">20260905_Omoidasu_V2.19</p>
+        <p class="build-stamp">20260905_Omoidasu_V2.20</p>
       </div>
     </section>
 
@@ -1297,7 +1297,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260905_Omoidasu_V2.19 / cache v2.19.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260905_Omoidasu_V2.20 / cache v2.20.0</p>
         </section>
       </div>
     </section>
@@ -1771,7 +1771,7 @@
     <h3 class="modal-title">はじめまして</h3>
     <ul class="welcome-list">
       <li><b>覚えたかは、自分で決めます。</b>正解・不正解ではなく「その選択肢の根拠を説明できたか」を、解いた直後に自分で選びます。</li>
-      <li><b>忘れる直前に、また出ます。</b>選んだ結果に応じて、10分後・1日後・1週間後…と再出題の日が自動で決まります。</li>
+      <li><b>忘れる直前に、また出ます。</b>選んだ結果に応じて、20分後・1日後・1週間後…と再出題の日が自動で決まります。</li>
       <li><b>記録はこの端末の中だけです。</b>ログインも通信も要りません。設定からいつでも書き出せます。</li>
     </ul>
     <div class="modal-actions">
@@ -1870,12 +1870,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.19"></script>
-<script src="./storage.js?v=2.19"></script>
-<script src="./scheduler.js?v=2.19"></script>
+<script src="./questions.js?v=2.20"></script>
+<script src="./storage.js?v=2.20"></script>
+<script src="./scheduler.js?v=2.20"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.19"></script>
-<script src="./license.js?v=2.19"></script>
+<script src="./drive.js?v=2.20"></script>
+<script src="./license.js?v=2.20"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

@@ -144,8 +144,8 @@ with sync_playwright() as p:
     ok("期日前の肢は answer_count も増えない",
        all(x["cnt"] == 3 for x in a["after2"][1:]),
        json.dumps([x["cnt"] for x in a["after2"]]))
-    ok("期日の肢は今までどおり記録される（10分後・回数+2）",
-       a["after2"][0]["ic"] == "10m" and a["after2"][0]["cnt"] == 5,
+    ok("期日の肢は今までどおり記録される（20分後・回数+2）",
+       a["after2"][0]["ic"] == "20m" and a["after2"][0]["cnt"] == 5,
        json.dumps(a["after2"][0], ensure_ascii=False))
     ok("10分の段は期日前でも記録される（早期復習割り込みを殺さない）",
        pg.evaluate("""() => {
@@ -176,7 +176,7 @@ with sync_playwright() as p:
     demoted = [x for x in b["after1"] if x["n"] in bad and x["n"] != 1]
     intact = [x for x in b["after1"] if x["n"] not in bad and x["n"] != 1]
     ok("期日前でも間違えた肢は「難しい」へ降格する",
-       bool(demoted) and all(x["ic"] == "10m" and x["ev"] == "hard" for x in demoted),
+       bool(demoted) and all(x["ic"] == "20m" and x["ev"] == "hard" for x in demoted),
        json.dumps(b["after1"], ensure_ascii=False))
     ok("降格した肢は answer_count が増える",
        all(x["cnt"] == 4 for x in demoted), json.dumps(demoted, ensure_ascii=False))
@@ -193,7 +193,7 @@ with sync_playwright() as p:
     dbad = set([d["wrong0"][0]] + d["correct0"])
     ddem = [x for x in d["after1"] if x["n"] in dbad and x["n"] != 1]
     ok("期日前の誤答に「簡単」を押しても、門番が難しいで上書きする",
-       bool(ddem) and all(x["ic"] == "10m" and x["ev"] == "hard" for x in ddem),
+       bool(ddem) and all(x["ic"] == "20m" and x["ev"] == "hard" for x in ddem),
        json.dumps(d["after1"], ensure_ascii=False))
 
     # ---------- 5〜6. 画面 ----------
@@ -321,8 +321,8 @@ with sync_playwright() as p:
       return at.map(x=>({n:x.original_num, ic:x.interval_code, ev:x.last_eval, cnt:x.answer_count})); }""",
       qid)
     pg.wait_for_timeout(500)
-    ok("「忘れていた」を押した肢と期日の肢の2肢だけが10分後へ",
-       len([x for x in res if x["ic"] == "10m"]) == 2, json.dumps(res, ensure_ascii=False))
+    ok("「忘れていた」を押した肢と期日の肢の2肢だけが20分後へ",
+       len([x for x in res if x["ic"] == "20m"]) == 2, json.dumps(res, ensure_ascii=False))
     ok("押していない2肢は 30日 のまま",
        len([x for x in res if x["ic"] == "30d"]) == 2, json.dumps(res, ensure_ascii=False))
 

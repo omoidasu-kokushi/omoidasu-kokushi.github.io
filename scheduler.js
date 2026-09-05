@@ -58,8 +58,12 @@
   var DAY = 24 * HOUR;
 
   /* 忘却ステップの梯子。srs_step は「この配列の添字 + 1」。0 は未学習。 */
+  /* V2.20（利用者裁定）：「難しい」の最短段を10分→20分へ。
+     10分後だと4択では「さっき見た答えの表面記憶」で正解してしまいやすい。
+     コードは '20m' を新設し、旧 '10m' は互換エイリアスで読み続ける
+     （保存済みの atoms / logs / 同期台帳を書き換えない）。 */
   var STEPS = [
-    { code: '10m',  ms: 10 * MIN,  label: '10分後'   },
+    { code: '20m',  ms: 20 * MIN,  label: '20分後'   },
     { code: '1h',   ms: 1 * HOUR,  label: '1時間後'  },
     { code: '1d',   ms: 1 * DAY,   label: '1日後'    },
     { code: '1w',   ms: 7 * DAY,   label: '1週間後'  },
@@ -70,9 +74,10 @@
 
   var STEP_INDEX = {};
   STEPS.forEach(function (s, i) { STEP_INDEX[s.code] = i; });
+  STEP_INDEX['10m'] = STEP_INDEX['20m'];   /* V2.20：旧データ互換（同じ段として読む） */
 
   /* 緊急度昇順（本日の復習の出題順）。10m が最も緊急。 */
-  var URGENCY_ORDER = { '10m': 0, '1h': 1, '1d': 2, '1w': 3, '30d': 4, '90d': 5, '180d': 6 };
+  var URGENCY_ORDER = { '20m': 0, '10m': 0, '1h': 1, '1d': 2, '1w': 3, '30d': 4, '90d': 5, '180d': 6 };
 
   /* --- 模試の分類のものさし（V1.54。V1.52 の「中項目が未学習か」を置き換え） ---
      V1.52 は novel を【その中項目をまだ学んでいない】と定義した。
@@ -283,7 +288,7 @@
    *  マ  : 30d以上に到達しているときだけ有効。押下で 180d
    */
   function nextStepIndex(currentIdx, evalKey) {
-    var i10m = STEP_INDEX['10m'];
+    var i10m = STEP_INDEX['20m'];   /* V2.20：最短段（20分） */
     var i1h  = STEP_INDEX['1h'];
     var i1d  = STEP_INDEX['1d'];
     var i1w  = STEP_INDEX['1w'];
@@ -758,7 +763,7 @@
         return S.updateAtom(atomId, { weakness_pt: w.pt, hard_streak: w.hard_streak }).then(function (saved) {
           /* 10分・1時間の超早期復習に落ちた肢は、割り込み候補として拾う */
           if (updateSchedule && plan.eval === EVAL.HARD &&
-              (plan.interval_code === '10m' || plan.interval_code === '1h')) {
+              (plan.interval_code === '20m' || plan.interval_code === '10m' || plan.interval_code === '1h')) {
             Interrupt.note(saved, mode);
           }
           return {
@@ -872,7 +877,7 @@
       var boundary = isNum(ctx.boundaryHour) ? ctx.boundaryHour : 4;
       var forcedIdx = (evalKey === EVAL.MASTER) ? STEP_INDEX['180d']
                     : (evalKey === EVAL.EASY)   ? STEP_INDEX['30d']
-                    :                             STEP_INDEX['10m'];
+                    :                             STEP_INDEX['20m'];
 
       var patch = {
         last_eval        : evalKey,

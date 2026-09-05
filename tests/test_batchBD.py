@@ -156,7 +156,7 @@ with sync_playwright() as p:
       const atoms = await S.getAllAtoms();
       const c = { d30: 0, m10: 0 };
       atoms.forEach(a => { if (a.interval_code === '30d') c.d30++;
-                           else if (a.interval_code === '10m') c.m10++; });
+                           else if (a.interval_code === '20m') c.m10++; });
       return { exam: exam.length,
                withThink: exam.filter(l => typeof l.think_ms === 'number').length,
                hasField: exam.every(l => 'think_ms' in l),
@@ -167,7 +167,7 @@ with sync_playwright() as p:
     ok("パターンA（正解＋根拠ON→易）が発生する", (srs["patterns"].get("A") or 0) > 0, json.dumps(srs["patterns"]))
     ok("パターンC（不正解/根拠OFF→難）が発生する", (srs["patterns"].get("C") or 0) > 0, json.dumps(srs["patterns"]))
     ok("易は30日後の段に入る", srs["steps"]["d30"] > 0, json.dumps(srs["steps"]))
-    ok("難は10分後の段に入る", srs["steps"]["m10"] > 0, json.dumps(srs["steps"]))
+    ok("難は20分後の段に入る（V2.20）", srs["steps"]["m10"] > 0, json.dumps(srs["steps"]))
     ok("模試の記録に think_ms の欄がある（V1.78の抜けを塞いだ）", srs["hasField"], json.dumps(srs))
     ok("模試でも反応時間が入る", srs["withThink"] > 0, json.dumps(srs))
 

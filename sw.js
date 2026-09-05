@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v2.19.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
+const CACHE_NAME = 'v2.20.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,12 +25,12 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=2.19',
-  './questions.js?v=2.19',
-  './storage.js?v=2.19',
-  './scheduler.js?v=2.19',
-  './drive.js?v=2.19',
-  './license.js?v=2.19',
+  './styles.css?v=2.20',
+  './questions.js?v=2.20',
+  './storage.js?v=2.20',
+  './scheduler.js?v=2.20',
+  './drive.js?v=2.20',
+  './license.js?v=2.20',
   './20260815_main_part1_V1.38.js',
   './20260815_main_part2_V1.45.js',
   './about.html',
