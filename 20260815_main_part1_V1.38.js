@@ -1623,6 +1623,9 @@
       : '選択肢を1つ選んでください。');
 
     var exam = isExamMode();
+    /* V2.15：模試では根拠チェックを選択肢カードの「欄外」（右外側）に出す。
+       カード内にあると「選択した」と見間違える（利用者指摘）。 */
+    toggleClass($('#choice-list'), 'is-exam', exam);
     var html = atoms.map(function (a) {
       var mark = exam
         ? '<button type="button" class="choice-mark" data-kind="ground" aria-pressed="false"' +
@@ -2417,6 +2420,11 @@
      正解は認識するだけなので短く、不正解は正解肢を読む時間を確保する。 */
   var verdictTimer = null;
   function showVerdictPopup(cur) {
+    /* V2.15：模試中は出さない（利用者指摘）。
+       ①一括採点（§11）の思想に反して緊張感を壊す
+       ②模試の進行では cur の指す問題とポップアップの正解文が食い違う
+         取り違えが実機で確認された。模試中に出さないことで両方を断つ。 */
+    if (isExamMode()) { return; }
     var pop = $('#verdict-pop');
     if (!pop) { return; }
     if (state.meta && state.meta.verdict_popup_enabled === false) { return; }

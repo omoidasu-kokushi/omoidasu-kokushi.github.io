@@ -682,15 +682,9 @@ small{ font-size:var(--fs-xs); }
 .choice-body{ flex:1 1 auto; min-width:0; padding:13px 13px 13px 12px; }
 .choice-text{ display:block; font-size:var(--fs-base); line-height:1.66; }
 
-/* 消去法トグル（根拠あり） */
-.choice-card.is-eliminated{ border-left:4px solid var(--c-easy); }
-.choice-card.is-eliminated .choice-elim{
-  background:color-mix(in srgb, var(--c-easy) 16%, var(--surface));
-  color:var(--c-easy);
-}
-.choice-card.is-eliminated .choice-elim::after{
-  content:"✓"; margin-left:1px; font-size:.72rem;
-}
+/* 消去法トグル（根拠あり）
+   V2.15：カード側への色付け（縁・番号の緑）を廃止（利用者指摘：選択と紛らわしい）。
+   色が付くのはチェックマーク自身だけ。 */
 
 /* 選択中 */
 .choice-card.is-selected{
@@ -2333,8 +2327,18 @@ body.is-knock #knock-timer{ z-index:58; }
   /* V1.68：#fff 直書きをやめて ink へ（ダークでは濃色が選ばれる） */
   background:var(--c-easy); border-color:var(--c-easy); color:var(--c-easy-ink);
 }
-.choice-card.is-eliminated{ border-left:4px solid var(--c-easy); }
-.choice-card.is-eliminated .choice-num{ background:color-mix(in srgb, var(--c-easy) 12%, var(--surface-2)); color:var(--c-easy-on-soft); }
+/* V2.15：根拠チェック時にカード側へ色を回すのをやめた（利用者指摘：選択と紛らわしい）。
+   色が付くのはチェックマーク自身だけ（上の aria-pressed ルール）。 */
+.choice-card.is-eliminated{ }
+/* V2.15：模試では根拠チェックをカードの右外側（欄外）へ出す */
+#choice-list.is-exam .choice-card{ position:relative; margin-right:46px; }
+#choice-list.is-exam .choice-mark[data-kind="ground"]{
+  position:absolute; right:-46px; top:50%; transform:translateY(-50%);
+  margin-right:0;
+}
+#choice-list.is-exam .choice-mark[data-kind="ground"]:active{
+  transform:translateY(-50%) scale(1.16);
+}
 .choice-card.is-selected .choice-num{ background:var(--accent); color:var(--accent-ink); }
 
 /* 模試の初回だけ出す使い方ヒント（「言われるまで気づかない」を防ぐ） */
