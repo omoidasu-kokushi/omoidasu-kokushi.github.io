@@ -3191,3 +3191,9 @@ TOP3はタップ即「概念別弱点ノック」起動の導線なので、評�
 - 根拠チェックで選択肢カード側に色を付けない。「選択（.is-selected）」と視覚が競合する。
   チェックの状態は .choice-mark[data-kind=ground][aria-pressed] だけが持つ
 - 模試の欄外配置は #choice-list.is-exam スコープ。通常モード（★）には適用しない
+
+
+### §43 追記（V2.16）
+- `.choice-card` の overflow:hidden は番号セルの角丸切り抜きが目的。欄外チェックと両立しないため、
+  模試中だけ overflow:visible ＋ 番号セル自身に左角丸。**カードに overflow:hidden を戻すときは
+  欄外チェックが刈り取られないか必ず確認**（実機で消失した実績あり）

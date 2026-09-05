@@ -2330,8 +2330,13 @@ body.is-knock #knock-timer{ z-index:58; }
 /* V2.15：根拠チェック時にカード側へ色を回すのをやめた（利用者指摘：選択と紛らわしい）。
    色が付くのはチェックマーク自身だけ（上の aria-pressed ルール）。 */
 .choice-card.is-eliminated{ }
-/* V2.15：模試では根拠チェックをカードの右外側（欄外）へ出す */
-#choice-list.is-exam .choice-card{ position:relative; margin-right:46px; }
+/* V2.15：模試では根拠チェックをカードの右外側（欄外）へ出す
+   V2.16：.choice-card の overflow:hidden が欄外のチェックを刈り取っていた（実機で消失）。
+   模試中だけ overflow を開放し、番号セルの左角丸は自前で維持する。 */
+#choice-list.is-exam .choice-card{ position:relative; margin-right:46px; overflow:visible; }
+#choice-list.is-exam .choice-num{
+  border-radius: calc(var(--r-md) - 1.5px) 0 0 calc(var(--r-md) - 1.5px);
+}
 #choice-list.is-exam .choice-mark[data-kind="ground"]{
   position:absolute; right:-46px; top:50%; transform:translateY(-50%);
   margin-right:0;

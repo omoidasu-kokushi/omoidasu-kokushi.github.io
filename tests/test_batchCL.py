@@ -37,6 +37,9 @@ ok("カード側の色付けが消えている", ".choice-card.is-eliminated{ }"
 ok("旧・縁色ルールが残っていない", "is-eliminated{ border-left" not in css)
 ok("模試では欄外配置のスタイルがある", '#choice-list.is-exam .choice-mark[data-kind="ground"]' in css)
 ok("描画側が is-exam を付け外しする", "toggleClass($('#choice-list'), 'is-exam', exam)" in js)
+ok("模試ではカードのoverflowを開放している（V2.16：欄外チェックが刈り取られない）",
+   "overflow:visible" in css.split("#choice-list.is-exam .choice-card")[1][:120])
+ok("番号セルの左角丸を自前で維持している", "#choice-list.is-exam .choice-num" in css)
 
 from playwright.sync_api import sync_playwright
 
