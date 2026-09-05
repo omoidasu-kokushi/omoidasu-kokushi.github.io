@@ -3688,9 +3688,11 @@ var QR_MATRIX = [
           b.classList.toggle('is-active', b.dataset.hissu === r.mode);
         });
         if (box) {
+          /* V2.24：「−3」は数式の顔をしていて意味が取りにくい（利用者要望）。
+             点の単位を付け、「あと3点」「合格ラインです」の言い方に揃える。 */
           box.textContent = fill.atoms
-            ? ('必修は いま ' + d.got + '/50 相当'
-               + (d.gap ? '（合格ラインまで −' + d.gap + '）' : '（合格ラインに乗っています）')
+            ? ('必修は いま ' + d.got + '/50点 相当'
+               + (d.gap ? '（合格ラインまであと' + d.gap + '点）' : '（合格ラインです）')
                + '　いまの比率 ' + Math.round(r.share * 100) + '%'
                + (r.mode === 'auto' ? '（自動）' : '（' + HISSU_LABEL[r.mode] + '）'))
             : '必修の問題がまだありません。';
@@ -3774,7 +3776,7 @@ var QR_MATRIX = [
         if (!r.hint) { return false; }
         var d = hissuDistance(fill);
         setHtml('#hissu-hint-body',
-          '必修は いま <b>' + d.got + '/50 相当</b>（合格ラインまで −' + d.gap + '）。<br>' +
+          '必修は いま <b>' + d.got + '/50点 相当</b>（合格ラインまであと' + d.gap + '点）。<br>' +
           '自動に戻すと、新規・ランダムに必修が出る割合が ' +
           Math.round(r.share * 100) + '% → <b>' + Math.round(r.auto * 100) + '%</b> に増えます。<br>' +
           '<small>本日の復習は変わりません。</small>');
