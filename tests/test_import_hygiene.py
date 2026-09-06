@@ -36,6 +36,13 @@ ok("詰めてから連問キーを作る（順番が逆だと空白ゆれで別�
 ok("詰めた件数をレポートに出す", "source_tidied" in st and "出典の余分な空白を詰めた問題" in p2)
 ok("化けは検出だけで自動修正しない（V2.54の判断を変えていない）",
    "garble_bad" in st and "garbleFix" not in st)
+# V2.62：文字が「?」に化けた本文。助詞の化けとは壊れ方が違うので別に数える。
+ok("文字の欠けを別に数える関数がある（V2.62）", "function lostCharCheckInto" in st)
+ok("助詞の化けと別のカウンタになっている",
+   "lost_bad" in st and "lost_bad" not in st.split("function lostCharCheckInto")[0].split("garble_bad")[0])
+ok("レポートに別の行として出る", "文字が「?」に化けている疑い" in p2)
+ok("〈〉の u/x 化けは検出しないと明記してある（当て推量を入れない）",
+   "ビタミンB群" in st)
 
 def q(src, sub, stem, tag="#衛生"):
     return {"source": src, "unit": "必修", "major": "1. 健康の定義と理解",
@@ -51,6 +58,8 @@ CASE = "次の文を読み106〜108 の問いに答えよ。Aさん（68歳、�
 PAY = json.dumps({"questions": [
     # ① 分類が化けている（本文はきれい）
     q("第115回 午前問26", "筋収縮 of 機構", "衛生検査の問題。正しいのはどれか。"),
+    # ⑤ 文字が「?」に化けている（V2.62）
+    q("第112回 午後問43", "a. 総人口", "末?循環不全について正しいのはどれか。"),
     # ② 出典に全角スペース2個。連問の片割れ
     q("第114回　　午前問106", "a. 総人口", CASE + "この時点の対応で正しいのはどれか。"),
     # ③ 同じ事例の兄弟。出典はきれい
@@ -76,8 +85,11 @@ with sync_playwright() as p:
       const b = pick('第114回 午前問106');
       const c = pick('第114回 午前問107');
       const e = pick('第113回 午前問1');
+      const lost = pick('第112回 午後問43');
       const raw = qs.filter(x => /　/.test(x.source || '')).map(x => x.source);
-      return { garble_bad: r.garble_bad || 0, garble_rows: r.garble_rows || 0,
+      return { lost_bad: r.lost_bad || 0, lost_rows: r.lost_rows || 0,
+               lost_ex: r.lost_examples || [], lostKept: lost && lost.stem,
+               garble_bad: r.garble_bad || 0, garble_rows: r.garble_rows || 0,
                ex: r.garble_examples || [], tidied: r.source_tidied || 0,
                case_rows: r.case_rows || 0,
                tidiedFound: !!b, tidiedRaw: raw,
@@ -92,6 +104,13 @@ with sync_playwright() as p:
     ok("実例に分類の化けが出る",
        any("筋収縮" in x for x in d["ex"]), json.dumps(d["ex"], ensure_ascii=False))
     ok("化けは直さずそのまま入る（検出だけ）", d["aSub"] == "筋収縮 of 機構", str(d["aSub"]))
+    ok("文字が「?」に化けた本文を数える（V2.62）", d["lost_bad"] == 1,
+       json.dumps({k: d[k] for k in ("lost_bad", "lost_rows", "lost_ex")}, ensure_ascii=False))
+    ok("助詞の化けとは別に数えている（混ざらない）",
+       d["lost_rows"] == 1 and d["garble_rows"] == 1,
+       json.dumps({k: d[k] for k in ("lost_rows", "garble_rows")}))
+    ok("化けたままの本文を直さずに入れる（検出だけ）",
+       d["lostKept"] and "末?循環不全" in d["lostKept"], str(d["lostKept"])[:60])
     ok("出典の全角スペースを詰める", d["tidiedFound"], json.dumps(d, ensure_ascii=False)[:250])
     ok("詰め残しが1件も無い", d["tidiedRaw"] == [], json.dumps(d["tidiedRaw"], ensure_ascii=False))
     ok("詰めた件数を報告する（黙って直さない）", d["tidied"] == 1, str(d["tidied"]))

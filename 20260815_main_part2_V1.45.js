@@ -2978,6 +2978,15 @@ var QR_MATRIX = [
                    '出典（第114回 午前問106 など）が無いため、続けて出題できません。' +
                    '作問データに source を書くと直ります。</small>');
       }
+      /* 文字の欠け（V2.62）。助詞の化けとは壊れ方が違うので別に出す。
+         こちらは【読めない】ので、化けよりも害が大きい。 */
+      if (rep.lost_bad) {
+        lines.push('<b>⚠ 文字が「?」に化けている疑い ' + rep.lost_bad + ' 箇所（' +
+                   (rep.lost_rows || 0) + ' 問）</b>');
+        lines.push('<small>「末?循環不全」「法律?障害者総合支援法C」のように、' +
+                   '文字が欠けています。そのまま画面に出ます。例：' +
+                   esc((rep.lost_examples || []).join(' ／ ')) + '</small>');
+      }
       if (rep.garble_bad) {
         lines.push('<b>⚠ 助詞が英単語に化けている疑い ' + rep.garble_bad + ' 箇所（' +
                    (rep.garble_rows || 0) + ' 問）</b>');

@@ -1555,6 +1555,52 @@
      Quality of Life のような本物の英語を巻き込まないよう、
      **日本語文字に挟まれているときだけ**数える。 */
   var GARBLE_JP = '[぀-ヿ一-鿿ー々、。：；・（）「」]';
+  /* --- 文字が「?」に化けた本文（V2.62） ---
+     照合レーン第2便で実物を見つけた。
+       末?循環不全            ← 末梢循環不全
+       …法律?障害者総合支援法C ← …法律〈障害者総合支援法〉…
+     実測：仕上げレーン386問中6問18箇所。同梱シード453問では0件。
+     作問パイプライン側で新しく混ざり始めている。
+
+     V2.54（助詞の英単語化け）と同じ家族だが壊れ方が違うので別に数える。
+     片方だけ直すと、もう片方は素通りする。
+
+     日本語に挟まれたときだけ数える。「本当に10%?」のように
+     英数のあとに続く ? は疑問符として正しい使い方でありうる。
+
+     〈 〉が u と x に化けるパターンは検出していない。
+     日本語のとなりの1文字のアルファベットを疑うと
+     「ビタミンB群」「T細胞」「B型肝炎」を全部誤検出する。
+     区別する手がかりがデータの中に無いので、当て推量の検出は入れない。 */
+  function lostCharCheckInto(report, q, atoms, lineNo) {
+    if (!report.lost_examples) { report.lost_examples = []; }
+    var rx = new RegExp(GARBLE_JP + '[?？�□]' + GARBLE_JP, 'g');
+    var texts = [q && q.stem, q && q.overall_explanation,
+                 q && q.unit, q && q.major, q && q.medium, q && q.sub_item];
+    (atoms || []).forEach(function (a) {
+      texts.push(a && a.text); texts.push(a && a.statement); texts.push(a && a.explanation);
+    });
+    var found = 0, sample = null, m, t, i;
+    for (i = 0; i < texts.length; i++) {
+      t = texts[i];
+      if (!t) { continue; }
+      t = String(t);
+      rx.lastIndex = 0;
+      while ((m = rx.exec(t))) {
+        found++;
+        if (!sample) {
+          sample = t.slice(Math.max(0, m.index - 12), m.index + m[0].length + 12);
+        }
+      }
+    }
+    if (!found) { return; }
+    report.lost_bad = (report.lost_bad || 0) + found;
+    report.lost_rows = (report.lost_rows || 0) + 1;
+    if (report.lost_examples.length < 3) {
+      report.lost_examples.push((lineNo ? lineNo + '件目：' : '') + sample);
+    }
+  }
+
   function garbleCheckInto(report, q, atoms, lineNo) {
     if (!report.garble_examples) { report.garble_examples = []; }
     var rx = new RegExp(GARBLE_JP + '\\s?\\b(is|of|the|and|or|to|in|for|with|by)\\b\\s?' +
@@ -1649,6 +1695,7 @@
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
         tax_bad: 0, tax_examples: [],
         garble_bad: 0, garble_rows: 0, garble_examples: [],
+        lost_bad: 0, lost_rows: 0, lost_examples: [],
         tag_bad: 0, tag_bad_rows: 0, tag_examples: [],
         errors: [], warnings: [], messages: []
       };
@@ -1697,6 +1744,7 @@
         if (built.question._case_orphan) { report.case_orphan = (report.case_orphan || 0) + 1; }
         delete built.question._case_orphan;
         garbleCheckInto(report, built.question, built.atoms, i + 1);
+        lostCharCheckInto(report, built.question, built.atoms, i + 1);
         tagCheckInto(report, built.atoms, i + 1);
         if (built.question.verify_status === 'unverified') { report.unverified++; }
         (built.warnings || []).forEach(function (w) {
@@ -1747,6 +1795,7 @@
         pool_main: 0, pool_mock: 0,
         tax_bad: 0, tax_examples: [],
         garble_bad: 0, garble_rows: 0, garble_examples: [],
+        lost_bad: 0, lost_rows: 0, lost_examples: [],
         tag_bad: 0, tag_bad_rows: 0, tag_examples: [],
         errors: [], warnings: [], messages: []
       };
@@ -1838,6 +1887,7 @@
         if (qq._case_orphan) { report.case_orphan = (report.case_orphan || 0) + 1; }
         delete qq._case_orphan;
         garbleCheckInto(report, qq, atoms, idx + 1);
+        lostCharCheckInto(report, qq, atoms, idx + 1);
         tagCheckInto(report, atoms, idx + 1);
         /* 取り込み結果にプールの内訳を出す（V1.56）。
            出さないと「模試用のつもりが本体へ入っていた」に気づけない。
