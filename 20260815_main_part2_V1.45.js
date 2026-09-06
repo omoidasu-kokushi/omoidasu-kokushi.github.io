@@ -280,7 +280,8 @@
   var st = {
     dashboard : { level: 'sub_item', metric: 'retention', cfilter: 'low' },
     search    : { keyword: '', hits: [], cfilter: 'low' },
-    starred   : { filter: 'all', lv: 0 },   /* lv=0は全段階（V2.36） */
+    starred   : { filter: 'all', lv: 0,      /* lv=0は全段階（V2.36） */
+                  kw: '', exam: '', unit: '', major: '', medium: '', sub: '', tag: '' },   /* V2.41 検索 */
     random    : { scope: null, count: 10, units: [] },
     knock     : { tag: null, minutes: 5, endsAt: 0, tick: null, solved: 0 },
     memo      : null,
@@ -1942,6 +1943,49 @@ var QR_MATRIX = [
     });
   }
 
+  /* --- V2.41 ノート内検索の道具 --------------------------------------- */
+  function starExamOf(q) {
+    var m = /第(\d+)回/.exec(q.source || '');
+    return m ? ('第' + m[1] + '回') : '';
+  }
+  /* 絞り込みselectの選択肢は「★が付いている問題」から作る。
+     全問題から作ると、選んでも0件の選択肢だらけになる。 */
+  function fillStarFilterOptions(list) {
+    var sets = { exam: {}, unit: {}, major: {}, medium: {}, sub: {}, tag: {} };
+    list.forEach(function (x) {
+      var q = x.question;
+      var ex = starExamOf(q);
+      if (ex) { sets.exam[ex] = 1; }
+      if (q.unit) { sets.unit[q.unit] = 1; }
+      if (q.major) { sets.major[q.major] = 1; }
+      if (q.medium) { sets.medium[q.medium] = 1; }
+      if (q.sub_item) { sets.sub[q.sub_item] = 1; }
+      (q.atoms || []).forEach(function (a) {
+        (a.tags || []).forEach(function (t) { sets.tag[t] = 1; });
+      });
+    });
+    var map = { exam: '#star-f-exam', unit: '#star-f-unit', major: '#star-f-major',
+                medium: '#star-f-medium', sub: '#star-f-sub', tag: '#star-f-tag' };
+    Object.keys(map).forEach(function (k) {
+      var sel = $(map[k]);
+      if (!sel) { return; }
+      var cur = st.starred[k === 'sub' ? 'sub' : k];
+      var vals = Object.keys(sets[k]).sort();
+      sel.innerHTML = '<option value="">すべて</option>' + vals.map(function (v) {
+        return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
+      }).join('');
+      sel.value = vals.indexOf(cur) >= 0 ? cur : '';
+      if (sel.value !== cur) { st.starred[k === 'sub' ? 'sub' : k] = sel.value; }
+    });
+  }
+  function clearStarFilters() {
+    st.starred.kw = ''; st.starred.exam = ''; st.starred.unit = '';
+    st.starred.major = ''; st.starred.medium = ''; st.starred.sub = ''; st.starred.tag = '';
+    var inp = $('#star-search');
+    if (inp) { inp.value = ''; }
+    return renderStarredNote();
+  }
+
   /* V2.35：★の段階表示（part1のstarGlyphと同じ規則） */
   function starGlyph2(lv) {
     lv = Number(lv) || 0;
@@ -1961,6 +2005,9 @@ var QR_MATRIX = [
     return S.getStarredNote().then(function (list) {
       var f = st.starred.filter;
       var wantLv = st.starred.lv;
+      var sf = st.starred;
+      fillStarFilterOptions(list);
+      var kw = (sf.kw || '').trim().toLowerCase();
       var rows = list.filter(function (x) {
         if (f === 'question' && !(x.kind === 'question' || x.kind === 'both')) { return false; }
         if (f === 'atom' && !(x.kind === 'atom' || x.kind === 'both')) { return false; }
@@ -1972,8 +2019,33 @@ var QR_MATRIX = [
           });
           if (!qHit && !aHit) { return false; }
         }
+        /* --- V2.41 ノート内検索 --- */
+        var q = x.question;
+        if (sf.exam && starExamOf(q) !== sf.exam) { return false; }
+        if (sf.unit && q.unit !== sf.unit) { return false; }
+        if (sf.major && q.major !== sf.major) { return false; }
+        if (sf.medium && q.medium !== sf.medium) { return false; }
+        if (sf.sub && (q.sub_item || '') !== sf.sub) { return false; }
+        if (sf.tag) {
+          var tagHit = (q.atoms || []).some(function (a) {
+            return (a.tags || []).indexOf(sf.tag) >= 0;
+          });
+          if (!tagHit) { return false; }
+        }
+        if (kw) {
+          var hay = [q.stem, q.overall_explanation, q.comparison_table]
+            .concat((q.atoms || []).map(function (a) { return (a.text || '') + ' ' + (a.explanation || ''); }))
+            .join(' ').toLowerCase();
+          if (hay.indexOf(kw) < 0) { return false; }
+        }
         return true;
       });
+      var note = $('#star-hit-note');
+      if (note) {
+        var filtered = rows.length !== list.length;
+        note.hidden = !filtered;
+        if (filtered) { note.textContent = '絞り込み中：' + rows.length + ' / ' + list.length + ' 件'; }
+      }
 
       if (!rows.length) {
         setHtml('#star-list', '');
@@ -5685,6 +5757,26 @@ var QR_MATRIX = [
                         brow.getAttribute('data-scope-value'));
       }
     });
+
+    /* --- ★ノート：検索と詳しい絞り込み（V2.41） --- */
+    var starKwTimer = null;
+    on($('#star-search'), 'input', function (ev) {
+      global.clearTimeout(starKwTimer);
+      var v = ev.target.value || '';
+      starKwTimer = global.setTimeout(function () {
+        st.starred.kw = v;
+        renderStarredNote();
+      }, 220);
+    });
+    [['#star-f-exam', 'exam'], ['#star-f-unit', 'unit'], ['#star-f-major', 'major'],
+     ['#star-f-medium', 'medium'], ['#star-f-sub', 'sub'], ['#star-f-tag', 'tag']]
+      .forEach(function (pair) {
+        on($(pair[0]), 'change', function (ev) {
+          st.starred[pair[1]] = ev.target.value || '';
+          renderStarredNote();
+        });
+      });
+    on($('#star-f-clear'), 'click', function () { clearStarFilters(); });
 
     /* --- ★ノート --- */
     on($('#screen-starred'), 'click', function (ev) {
