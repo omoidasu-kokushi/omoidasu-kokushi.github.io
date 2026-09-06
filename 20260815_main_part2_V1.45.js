@@ -283,7 +283,9 @@
     starred   : { filter: 'all', lv: 0,      /* lv=0は全段階（V2.36） */
                   kw: '', exam: '', unit: '', major: '', medium: '', sub: '', tag: '',    /* V2.41 検索 */
                   flt: { major: '', medium: '', sub: '', tag: '' } },   /* V2.47 選択肢の絞り */
-    random    : { scope: null, count: 10, units: [] },
+    /* V2.69：区切り方は time か count のどちらか一方。同時に生かさない。 */
+    random    : { scope: null, count: 10, units: [], limit: 'time', minutes: 25,
+                  endsAt: 0, total: 0, tick: null },
     /* V2.57：終了条件は問題数。tick / endsAt は使わないが、
        他所から参照されても落ちないよう形は残す。 */
     knock     : { tag: null, count: 10, total: 0, endsAt: 0, tick: null, solved: 0 },
@@ -411,7 +413,14 @@
 
   /* V2.44：ランダム画面のポモドーロ表示。時間の区切りはここに任せる（裁定）。
      V2.46：文言は利用者指定・スライダーは粗い7段（QTY_STOPS）。 */
+  function isNumLike(v) { return typeof v === 'number' && isFinite(v); }
   var QTY_STOPS = [5, 10, 20, 30, 50, 80, 120];
+  /* V2.69：時間で区切るときの段。25分（ポモドーロ）を既定にする。 */
+  var TIME_STOPS = [5, 10, 15, 25, 40, 60];
+  var TIME_DEFAULT = 25;
+  /* 1問あたり約20秒＝3問/分。時間内に解ける見込みの数だけ積む。
+     足りなければ尽きた時点で終わる（V2.57と同じ。水増ししない）。 */
+  var Q_PER_MIN = 3;
   function qtyIndexOf(count) {
     var i = QTY_STOPS.indexOf(count);
     if (i >= 0) { return i; }
@@ -422,16 +431,33 @@
     });
     return best;
   }
-  function refreshQtyPomo() {
-    var btn = $('#qty-pomo');
-    if (!btn) { return; }
-    var onFlag = (M.state.meta || {}).pomodoro_enabled !== false;
-    btn.setAttribute('aria-pressed', onFlag ? 'true' : 'false');
-    cls(btn, 'is-off', !onFlag);
-    setText('#qty-pomo-big', onFlag ? '⏲ 25分間出題（推奨）' : '⏲ 時間では区切りません');
-    setText('#qty-pomo-sub', onFlag
-      ? 'ポモドーロ機能。その後5分休憩を推奨します。（タップでON/OFF）'
-      : 'ポモドーロOFF。問題数だけで区切ります。（タップでON/OFF）');
+  function timeIndexOf(min) {
+    var i = TIME_STOPS.indexOf(min);
+    if (i >= 0) { return i; }
+    var best = 0;
+    TIME_STOPS.forEach(function (v, j) {
+      if (Math.abs(v - min) < Math.abs(TIME_STOPS[best] - min)) { best = j; }
+    });
+    return best;
+  }
+
+  /* --- 区切り方の切り替え（V2.69） ---
+     時間と問題数を同時に生かさない。選んだほうのスライダーだけ出す。
+     25分のときだけポモドーロを大きく出す（ここが「推奨」の置き場所）。 */
+  function refreshQtyMode() {
+    var isTime = (st.random.limit !== 'count');
+    $$('#qty-mode .seg-btn').forEach(function (b) {
+      var on = (b.getAttribute('data-qmode') === (isTime ? 'time' : 'count'));
+      cls(b, 'is-active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var tr = $('#qty-time-row'), cr = $('#qty-count-row');
+    if (tr) { tr.hidden = !isTime; }
+    if (cr) { cr.hidden = isTime; }
+    setText('#time-range-val', st.random.minutes + '分');
+    setText('#qty-range-val', st.random.count + '問');
+    var reco = $('#qty-pomo-reco');
+    if (reco) { reco.hidden = !(isTime && st.random.minutes === TIME_DEFAULT); }
   }
 
   function openRandomSelect() {
@@ -450,11 +476,15 @@
       /* V2.44（裁定）：出題数ロックは廃止（§8-3の「初回10問で解放」は
          「押せないボタンが並ぶ」だけの見え方だった）。スライダーに現在値を映し、
          ポモドーロの状態を大きく出す。 */
+      st.random.limit = meta.random_limit || st.random.limit || 'time';
+      st.random.minutes = TIME_STOPS[timeIndexOf(
+        isNumLike(meta.random_minutes) ? meta.random_minutes : (st.random.minutes || TIME_DEFAULT))];
+      st.random.count = QTY_STOPS[qtyIndexOf(st.random.count)];
       var rng = $('#qty-range');
       if (rng) { rng.value = qtyIndexOf(st.random.count); }
-      st.random.count = QTY_STOPS[qtyIndexOf(st.random.count)];
-      setText('#qty-range-val', st.random.count + '問');
-      refreshQtyPomo();
+      var trg = $('#time-range');
+      if (trg) { trg.value = timeIndexOf(st.random.minutes); }
+      refreshQtyMode();
 
       return M.go('random');
     });
@@ -474,18 +504,64 @@
      まず初見だけで組み、0件なら同じ範囲の苦手順で組み直す。
      どちらになったかは必ず言葉で伝える。黙って中身が変わるのが
      一番混乱する。 */
+  /* --- 時間で区切る（V2.69） ---
+     残り時間を画面上部に出し、0になったらセッションを畳む。
+     畳み方は普通の終了と同じ経路を通すので、区切りの内訳（V2.58）がそのまま出る。 */
+  function mountTimeLimit(minutes) {
+    var el = $('#knock-hud');
+    if (!el) { return; }
+    doc.body.appendChild(el);
+    doc.body.classList.add('is-knock');
+    el.hidden = false;
+    setText('#knock-concept', '時間で区切る');
+    st.random.endsAt = Date.now() + minutes * 60 * 1000;
+    st.random.total = minutes * 60 * 1000;
+    global.clearInterval(st.random.tick);
+    st.random.tick = global.setInterval(tickTimeLimit, 250);
+    tickTimeLimit();
+  }
+  function tickTimeLimit() {
+    var left = st.random.endsAt - Date.now();
+    setText('#knock-count', formatClock(Math.max(0, left)));
+    var bar = $('#knock-bar-fill');
+    if (bar) { bar.style.width = Math.max(0, (left / st.random.total) * 100) + '%'; }
+    if (left > 0) { return; }
+    unmountTimeLimit();
+    M.finishSession();
+  }
+  function unmountTimeLimit() {
+    global.clearInterval(st.random.tick);
+    st.random.tick = null;
+    st.random.endsAt = 0;
+    var el = $('#knock-hud');
+    if (el) { el.hidden = true; }
+    doc.body.classList.remove('is-knock');
+    var host = $('#screen-knock');
+    if (el && host && el.parentNode === doc.body) { host.insertBefore(el, host.firstChild); }
+  }
+
   function startRandom(scope, count) {
     st.random.scope = scope || null;
     st.random.count = count || st.random.count;
+    /* V2.69：時間で区切るときは、時間内に解ける見込みの数だけ積む。
+       足りなければ尽きた時点で終わる（水増ししない）。 */
+    var byTime = (st.random.limit === 'time');
+    var want = byTime ? Math.max(3, st.random.minutes * Q_PER_MIN) : st.random.count;
     var opts = {
-      mode: 'random', count: st.random.count, scope: scope || null,
+      mode: 'random', count: want, scope: scope || null,
       newOnly: true, shuffle: true
     };
     return M.startSession(opts).then(function (sess) {
-      if (sess) { return sess; }
+      if (sess) {
+        if (byTime) {
+          M.hooks.onAbort = function () { unmountTimeLimit(); M.hooks.onAbort = null; };
+          mountTimeLimit(st.random.minutes);
+        }
+        return sess;
+      }
       /* この範囲の初見が尽きた＝克服モードへ */
       return M.startSession({
-        mode: 'conquer', count: st.random.count, scope: scope || null,
+        mode: 'conquer', count: want, scope: scope || null,
         shuffle: false
       }).then(function (s2) {
         if (!s2) {
@@ -498,6 +574,10 @@
           var buyCard = doc.getElementById('modal-buy');
           if (buyCard && !buyCard.hidden) { return null; }
           openModal('#modal-no-new'); return null;
+        }
+        if (byTime) {
+          M.hooks.onAbort = function () { unmountTimeLimit(); M.hooks.onAbort = null; };
+          mountTimeLimit(st.random.minutes);
         }
         toast('この範囲は読破ずみです。苦手な順に出題します', 3600);
         maybeShowClearedSheet();
@@ -3682,6 +3762,8 @@ var QR_MATRIX = [
     solve_now: '<button type="button" class="btn-primary btn-sm" tabindex="-1">この結果を今すぐ解く</button>',
     knock_time: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">10問</button>' +
         '<button type="button" class="seg-btn" tabindex="-1">30問</button></span>',
+    qty_mode: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">時間で区切る</button>' +
+        '<button type="button" class="seg-btn" tabindex="-1">問題数で区切る</button></span>',
     review_card: '<span class="guide-card-sample is-main">本日の復習<b class="guide-badge">12</b></span>',
     random_card: '<span class="guide-card-sample">ランダムモード（まだ解いていない問題）</span>',
     import_box: '<span class="guide-input-sample">ここに自作データ（TSV／JSON）やバックアップを貼り付け → データを取り込む</span>',
@@ -5812,6 +5894,7 @@ var QR_MATRIX = [
   var impl = {
     openRandomSelect: openRandomSelect,  startRandom: startRandom,
     startByScope: startByScope,
+    refreshQtyMode: refreshQtyMode,   /* V2.69 */
     renderRandomPick: renderRandomPick,  pickNode: pickNode,  pickBadge: pickBadge,
     maybeShowClearedSheet: maybeShowClearedSheet,
     refreshSyncBadge: refreshSyncBadge,
@@ -5960,12 +6043,23 @@ var QR_MATRIX = [
     on($('#qty-range'), 'input', function (ev) {
       var i = parseInt(ev.target.value, 10) || 0;
       st.random.count = QTY_STOPS[Math.max(0, Math.min(QTY_STOPS.length - 1, i))];
-      setText('#qty-range-val', st.random.count + '問');
+      refreshQtyMode();
+      S.setMeta('random_count', st.random.count).catch(noop);
     });
-    on($('#qty-pomo'), 'click', function () {
-      var meta = M.state.meta || {};
-      var next = !(meta.pomodoro_enabled !== false);
-      M.setPomodoroEnabled(next).then(function () { return refreshQtyPomo(); });
+    /* V2.69：時間のスライダー。25分に合わせるとポモドーロの案内が出る。 */
+    on($('#time-range'), 'input', function (ev) {
+      var i = parseInt(ev.target.value, 10) || 0;
+      st.random.minutes = TIME_STOPS[Math.max(0, Math.min(TIME_STOPS.length - 1, i))];
+      refreshQtyMode();
+      S.setMeta('random_minutes', st.random.minutes).catch(noop);
+    });
+    /* V2.69：区切り方の二択。時間と問題数を同時に生かさない。 */
+    on($('#qty-mode'), 'click', function (ev) {
+      var b = ev.target.closest('[data-qmode]');
+      if (!b) { return; }
+      st.random.limit = b.getAttribute('data-qmode');
+      refreshQtyMode();
+      S.setMeta('random_limit', st.random.limit).catch(noop);
     });
 
 

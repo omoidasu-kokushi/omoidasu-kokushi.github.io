@@ -4572,7 +4572,9 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .qty-pomo.is-off{ border-color:var(--border); opacity:.8; }
 .qty-slider-row{ margin-top:10px; }
 .qty-slider-row .qty-label{ font-size:var(--fs-sm); }
-#qty-range{ width:100%; margin-top:4px; accent-color:var(--accent); }
+/* V2.69：時間のスライダーも同じ幅にする。#qty-range にだけ width:100% が
+   付いていたため、時間側だけ track が短く、目盛りとずれた（実測）。 */
+#qty-range, #time-range{ width:100%; margin-top:4px; accent-color:var(--accent); }
 
 /* V2.45 ガイドの画面モック */
 .guide-ui-screen{ flex-direction:column; align-items:stretch; }
@@ -4660,3 +4662,18 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   font-variant-numeric:tabular-nums;
 }
 .pick-left.is-done{ color:var(--c-easy); border-color:var(--c-easy); background:transparent; }
+
+
+/* --- ランダムの区切り方（V2.69） ---
+   二択にした理由：前は「25分（ポモドーロ）」と「出題数」が同時に生きていて、
+   どちらでセッションが終わるのかが決まっていなかった。 */
+.qty-mode{ width:100%; margin:0 0 12px; }
+.qty-mode .seg-btn{ flex:1 1 0; }
+.qty-pomo-reco{
+  display:block; margin:14px 0 6px; padding:12px 14px;
+  border:2px solid var(--c-teal, var(--border-2)); border-radius:var(--r-lg, 12px);
+  background:var(--surface-2);
+}
+.qty-pomo-reco b{ display:block; font-size:var(--fs-md); margin-bottom:4px; }
+.qty-pomo-reco span{ display:block; font-size:var(--fs-sm); color:var(--text-sub); line-height:1.55; }
+.qty-pomo-reco[hidden]{ display:none !important; }
