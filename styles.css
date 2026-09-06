@@ -4604,3 +4604,12 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 /* V2.47 詳細検索：選択肢キーワード欄 */
 .star-f-wrap{ display:flex; flex-direction:column; gap:4px; flex:1 1 auto; min-width:0; }
 .star-f-search{ font-size:var(--fs-xs); padding:4px 8px; }
+
+/* V2.48 ガイド見本の追加部品 */
+.guide-chip{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:10px;
+  background:var(--surface); border:1px solid var(--border); font-size:1rem;
+}
+.guide-ui .unit-hero{ pointer-events:none; width:100%; }
+.guide-ui .rv-stem-expand{ flex:0 0 auto; }

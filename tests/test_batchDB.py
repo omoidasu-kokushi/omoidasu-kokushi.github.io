@@ -49,6 +49,10 @@ with sync_playwright() as p:
       const mockChoices = document.querySelectorAll('#guide-body .choice-list-sample .choice-card').length;
       const hasExamReview = [...document.querySelectorAll('#guide-body .guide-item-title')]
         .some(t => t.textContent.includes('提出後の復習'));
+      const hasEvalRoles = [...document.querySelectorAll('#guide-body .guide-item-title')]
+        .some(t => t.textContent.includes('評価4ボタンの役割'));
+      const noUi = [...document.querySelectorAll('#guide-body .guide-item')]
+        .filter(it => !it.querySelector('.guide-ui')).length;
       /* 目次ジャンプ */
       const rows = document.querySelectorAll('#guide-toc .guide-toc-row');
       const last = rows[rows.length - 1];
@@ -57,10 +61,12 @@ with sync_playwright() as p:
       await new Promise(r2 => setTimeout(r2, 600));
       const after = document.getElementById('guide-body').scrollTop;
       return { groups, shown: !modal.hidden, toc, secs, items, ui, mockStem, mockChoices,
-               hasExamReview, jumped: after > before };
+               hasExamReview, hasEvalRoles, noUi, jumped: after > before };
     }""")
     ok("モーダルが開き目次と本文が出る", r["shown"] and 5 <= r["toc"] <= 12 and r["secs"] == r["toc"], json.dumps(r))
-    ok("全項目が本文に並ぶ（30件以上）＋見本UIが大半に付く", r["items"] >= 30 and r["ui"] >= 20, json.dumps(r))
+    ok("全項目が本文に並ぶ（30件以上）＋見本UIがほぼ全項目に付く", r["items"] >= 30 and r["ui"] >= 33, json.dumps(r))
+    ok("評価4ボタンの役割の項がある", r["hasEvalRoles"], json.dumps(r))
+    ok("見本UIの無い項目は2つ以下", r["noUi"] <= 2, json.dumps(r))
     ok("解答画面のモックに問題文と選択肢がある", r["mockStem"] and r["mockChoices"] >= 2, json.dumps(r))
     ok("模試後の復習の項がある", r["hasExamReview"], json.dumps(r))
     ok("目次から末尾へ飛べる", r["jumped"], json.dumps(r))

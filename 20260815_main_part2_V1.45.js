@@ -3589,6 +3589,33 @@ var QR_MATRIX = [
            '<span class="erg-bar"><i class="bar-fill lv-good" style="width:82%"></i></span><span class="erg-num">82%</span></span></span>',
     search: '<span class="guide-input-sample">🔍 肝硬変</span>',
     slider: '<span class="guide-slider-sample"><b>出題数設定：30問</b><input type="range" min="5" max="120" value="30" tabindex="-1" disabled></span>',
+    stem_expand: '<span class="q-stem-sample" style="display:flex;align-items:center;gap:8px">長い問題文は途中で切れて…' +
+        '<button type="button" class="rv-stem-expand" tabindex="-1">⤢</button></span>（右の ⤢ で全文）',
+    img_toggle: '<button type="button" class="img-toggle" tabindex="-1">別冊画像を見る 📷</button>',
+    numeric: '<span class="guide-input-sample" style="max-width:10em">答え： 2</span>',
+    detail: '<button type="button" class="detail-toggle" tabindex="-1"><span class="detail-toggle-label">図解を見る</span></button>',
+    locked: '<span class="guide-erq-sample is-closed">この選択肢は期日前（評価ボタンなし・読むだけ）</span>',
+    scan: '<span class="guide-slider-sample"><b>分析スキャン精度 37%</b>' +
+        '<span class="erg-bar"><i class="bar-fill lv-mid" style="width:37%"></i></span></span>',
+    home_tip: '<span class="guide-card-sample" style="flex-direction:column;align-items:stretch;gap:2px">' +
+        '<small style="color:var(--text-mute)">ひとことメモ　1 / 35</small>本日の復習：0件を維持するのが理想です。</span>',
+    gear: '<span class="guide-chip" aria-hidden="true">⚙</span>（画面上部のヘッダー右）',
+    back: '<span class="guide-chip" aria-hidden="true">◀</span>（画面上部のヘッダー左）',
+    unit_hero: '<span class="unit-hero guide-unit-hero" tabindex="-1"><span class="unit-hero-dice">🎲</span>' +
+        '<span class="unit-hero-title">全単元ランダム</span><span class="unit-hero-sub">全 453 問から出題</span></span>',
+    rank_weight: '<label class="switch-row" style="pointer-events:none"><input type="checkbox" checked tabindex="-1">' +
+        '<span class="switch-track"><span class="switch-knob"></span></span>' +
+        '<span class="switch-text">頻出問題を優先する</span></label>',
+    tree_rows: '<span class="guide-card-sample">人体の構造と機能<b class="guide-badge">48</b></span>' +
+        '<span class="guide-card-sample" style="margin-left:14px">9. 生体の防御機構<b class="guide-badge">6</b></span>',
+    exam_card: '<span class="guide-card-sample">30問プチ模試<small style="margin-left:auto;color:var(--text-mute)">' +
+        'ユニーク選択肢15%＋普通以上40%で解禁</small></span>',
+    solve_now: '<button type="button" class="btn-primary btn-sm" tabindex="-1">この結果を今すぐ解く</button>',
+    knock_time: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">5分</button>' +
+        '<button type="button" class="seg-btn" tabindex="-1">10分</button></span>',
+    review_card: '<span class="guide-card-sample is-main">本日の復習<b class="guide-badge">12</b></span>',
+    random_card: '<span class="guide-card-sample">ランダムモード（まだ解いていない問題）</span>',
+    import_box: '<span class="guide-input-sample">ここに自作データ（TSV／JSON）やバックアップを貼り付け → データを取り込む</span>',
     star_filter: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">全段階</button>' +
            '<button type="button" class="seg-btn" data-star-level="2" tabindex="-1">★2 再学習</button>' +
            '<button type="button" class="seg-btn" tabindex="-1">✏ 名前</button></span>',
@@ -3608,7 +3635,7 @@ var QR_MATRIX = [
       '</ul>' +
       '<button type="button" class="btn-confirm" tabindex="-1">解答を確定する</button>',
     screen_explain:
-      '<span class="guide-cap">解説フェーズの画面（下のサムゾーンは固定）</span>' +
+      '<span class="guide-cap">解説画面の下側のボタン（評価と［次へ］は、いつも画面の下に出ています）</span>' +
       '<span class="guide-ui-row" style="width:100%">' +
       '<button type="button" class="sum-dot" data-eval="hard" tabindex="-1">①</button>' +
       '<button type="button" class="sum-dot is-touched" data-eval="normal" tabindex="-1">②</button>' +
@@ -3643,39 +3670,51 @@ var QR_MATRIX = [
   var GUIDE_SECTIONS = [
     { head: '問題を解く画面',
       ui: 'screen_answer',
-      items: [ { k: 'answer' }, { k: 'confirm', ui: 'confirm' }, { k: 'q_star', ui: 'q_star' },
-               { k: 'stem_expand' }, { k: 'img_toggle' }, { k: 'numeric_input' } ] },
+      items: [ { k: 'answer', ui: 'screen_answer' }, { k: 'confirm', ui: 'confirm' }, { k: 'q_star', ui: 'q_star' },
+               { k: 'stem_expand', ui: 'stem_expand' }, { k: 'img_toggle', ui: 'img_toggle' },
+               { k: 'numeric_input', ui: 'numeric' } ] },
     { head: '解説と評価',
       ui: 'screen_explain',
-      items: [ { k: 'eval', ui: 'eval' }, { k: 'next', ui: 'next' }, { k: 'qstar', ui: 'q_star' },
-               { k: 'star' }, { k: 'tagpill', ui: 'tagpill' }, { k: 'memo', ui: 'memo' },
-               { k: 'detail' }, { k: 'summary', ui: 'summary' }, { k: 'locked' } ] },
+      items: [ { k: 'eval', ui: 'eval' },
+               { ui: 'eval', step: '評価4ボタンの役割',
+                 text: '難しい＝根拠を言えなかった。20分後にもう一度出ます。' +
+                       '普通＝言えたが自信は薄い。1時間後→1日後→1週間後と延びます。' +
+                       '易しい＝他人に説明できる。初見なら30日後へ飛びます。' +
+                       'マスター＝もう出題不要。次は180日後（30日以上の段階に到達した肢だけ押せます）。' },
+               { k: 'next', ui: 'next' }, { k: 'qstar', ui: 'q_star' },
+               { k: 'star', ui: 'q_star' }, { k: 'tagpill', ui: 'tagpill' }, { k: 'memo', ui: 'memo' },
+               { k: 'detail', ui: 'detail' }, { k: 'summary', ui: 'summary' },
+               { k: 'locked', ui: 'locked' } ] },
     { head: 'ホーム画面',
       ui: 'screen_home',
-      items: [ { k: 'home_review' }, { k: 'home_knock' }, { k: 'home_random' }, { k: 'home_exam' },
-               { k: 'level', ui: 'level' }, { k: 'scan' }, { k: 'home_tip' },
-               { k: 'settings_btn' }, { k: 'back' } ] },
+      items: [ { k: 'home_review', ui: 'review_card' }, { k: 'home_knock', ui: 'knock_time' },
+               { k: 'home_random', ui: 'random_card' }, { k: 'home_exam', ui: 'exam_card' },
+               { k: 'level', ui: 'level' }, { k: 'scan', ui: 'scan' },
+               { k: 'home_tip', ui: 'home_tip' },
+               { k: 'settings_btn', ui: 'gear' }, { k: 'back', ui: 'back' } ] },
     { head: 'ランダム・単元別',
       ui: 'slider',
-      items: [ { k: 'unit_hero' }, { k: 'qty', ui: 'slider' }, { k: 'rank_weight' }, { k: 'tree' } ] },
+      items: [ { k: 'unit_hero', ui: 'unit_hero' }, { k: 'qty', ui: 'slider' },
+               { k: 'rank_weight', ui: 'rank_weight' }, { k: 'tree', ui: 'tree_rows' } ] },
     { head: '模試（力試し）',
       ui: 'exam_nav',
-      items: [ { k: 'exam' }, { k: 'ground', ui: 'ground' },
+      items: [ { k: 'exam', ui: 'exam_card' }, { k: 'ground', ui: 'ground' },
                { ui: 'exam_nav', step: '前後の移動と提出',
                  text: '模試では前の問題へ戻ってやり直せます。［一覧・提出］で全問の解答状況を見て、全問に答えると提出できます。採点は提出まで走りません。' },
                { ui: 'screen_exam_review', step: '提出後の復習',
                  text: '採点だけでは終わりません。上に単元別の得点グラフが出て、どの単元が何点足りないかが分かります。その下に全問が並び、間違えた問題は解説つきで開いた状態、正解した問題は畳んだ状態（タップで開く）。ここで弱点を確かめてから次の学習へ進んでください。' } ] },
     { head: '検索・分析・★ノート',
       ui: 'screen_starred',
-      items: [ { k: 'search', ui: 'search' }, { k: 'solve_now' }, { k: 'dashboard', ui: 'dashboard' },
-               { k: 'starred', ui: 'star_filter' }, { k: 'unstar' },
+      items: [ { k: 'search', ui: 'search' }, { k: 'solve_now', ui: 'solve_now' },
+               { k: 'dashboard', ui: 'dashboard' },
+               { k: 'starred', ui: 'star_filter' }, { k: 'unstar', ui: 'q_star' },
                { ui: 'q_star', step: '★は5段階',
                  text: '★はタップのたびに ★1→★2→★3→★4→★5→解除 と一周し、段階ごとに色が変わります（金→橙→赤→紫→青）。どの段階を何に使うかは自由です（例：★1=疑問、★2=再学習）。段階の名前は★ノートの［✏名前］で決められ、絞り込みと間違いノート印刷（★2だけ印刷など）に表示されます。' } ] },
     { head: 'タイマー・見た目',
       ui: 'pomodoro',
       items: [ { k: 'pomodoro', ui: 'pomodoro' }, { k: 'theme', ui: 'theme' } ] },
     { head: '設定',
-      items: [ { k: 'settings' } ] }
+      items: [ { k: 'settings', ui: 'import_box' } ] }
   ];
 
   function openGuideAll() {
@@ -5297,12 +5336,13 @@ var QR_MATRIX = [
                      '確定済みの評価は消えません。' },
     home_review: { step:'毎日ここから', sel:'#card-review',
                 text:'翌日以降は、まずここ。忘れかけた選択肢だけが、期日順に出てきます。' },
-    home_knock:{ step:'苦手つぶし',  sel:'#card-knock',
+    home_knock:{ step:'テーマ別 弱点ノック', sel:'#card-knock',   /* V2.48 実名に */
                 text:'苦手なテーマだけを5分・10分で集中演習できます。' },
-    home_random:{ step:'新しい問題', sel:'#card-random',
+    home_random:{ step:'ランダムモード', sel:'#card-random',   /* V2.48 実名に */
                 text:'まだ解いていない問題を増やすときはこちら。単元や大項目でも絞れます。' },
-    home_exam:{ step:'力試し',       sel:'#card-exam',
-                text:'一定量を解くと模試が解禁されます。いまは解放の進み具合が出ています。' },
+    home_exam:{ step:'力試し（模試）', sel:'#card-exam',
+                text:'一定量を解くと模試（30・60・120問）が順に解禁されます。' +
+                     '未解禁のあいだカードは灰色で、開くと一覧に解禁の条件と進み具合が出ます。' },   /* V2.48 */
 
     /* --- 動線4：ツール（初めてその画面を開いたとき） --- */
     unit_hero:{ step:'まとめて出す', sel:'#unit-hero',
@@ -5310,9 +5350,9 @@ var QR_MATRIX = [
                      '下の一覧は、名前を押すと1段深く絞り込み、' +
                      '右の🎲を押すとその範囲でそのまま始まります。' },
     qty:      { step:'出題量の設定',  sel:'#qty-block',
-                text:'時間の区切りは上のポモドーロ（25分・タップでON/OFF）。' +
-                     '出す問題数は下のスライダーで5〜120問に調整できます。',
-                place:'below' },   /* V2.44 ロック廃止に追随 */
+                text:'時間の区切りは上の「⏲25分間出題」（ポモドーロ・タップでON/OFF）。' +
+                     '問題数は下のスライダー。目盛りの数字（5〜120）に合わせて選びます。',
+                place:'below' },   /* V2.46 に追随 */
     rank_weight:{ step:'頻出を優先', sel:'#toggle-rank-weight',
                 text:'ONだと、同じ苦手さでも出やすい範囲（Sランク）を先に出します。' +
                      'OFFにすると、出題頻度を無視して純粋に苦手な順になります。',
@@ -5321,9 +5361,10 @@ var QR_MATRIX = [
                 text:'検索結果をそのまま演習できます。' +
                      'この演習は復習の予定を変えません。',
                 place:'below' },
-    unstar:   { step:'★を外す',      sel:'#star-list .star-unmark',
-                text:'★はこの一覧から直接外せます。外すとすぐ一覧から消えます。',
-                place:'below' },
+    unstar:   { step:'★の段階と外し方', sel:'#star-list .star-unmark',
+                text:'★はこの一覧からも押せます。押すたびに段階が進み（★1→…→★5）、' +
+                     '★5の次のタップで外れます。外すとすぐ一覧から消えます。',
+                place:'below' },   /* V2.48 循環仕様に追随 */
     dashboard:{ step:'弱点を見る',   sel:'#screen-dashboard .dash-controls',
                 text:'苦手な順に上から並びます。単元・大項目・中項目・小項目・テーマの5つに' +
                      '切り替えられます。行をタップすると、その範囲だけを出題します。' },
@@ -5332,11 +5373,13 @@ var QR_MATRIX = [
                      'この演習は復習スケジュールを変えません。',
                 place:'below' },
     starred:  { step:'★ノート',      sel:'#screen-starred .seg-group',
-                text:'★を付けた問題と選択肢がここに集まります。★をタップすれば外せます。',
-                place:'below' },
-    tree:     { step:'単元別',       sel:'#tree-root',
-                text:'赤いバッジは、まだ一度も解いていない選択肢の数です。',
-                place:'below' },
+                text:'★を付けた問題と選択肢がここに集まります。' +
+                     '検索と詳細検索（年度・単元・項目・タグ）で絞り込めます。',
+                place:'below' },   /* V2.48 外し方はunstar側に一本化 */
+    tree:     { step:'単元別に絞る',  sel:'#tree-root',
+                text:'ランダムの一覧で単元名を押すと、1段深く（単元→大項目）絞れます。' +
+                     '赤いバッジは、まだ一度も解いていない選択肢の数です。',
+                place:'below' },   /* V2.48 */
     exam:     { step:'模試',         sel:'#exam-list',
                 text:'解禁した模試モードは、成績が下がっても二度とロックされません。',
                 place:'below' },
