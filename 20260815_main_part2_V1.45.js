@@ -6041,6 +6041,10 @@ var QR_MATRIX = [
     runBackup: runBackup,                runRestore: runRestore,
     refreshStorage: refreshStorage,
     runResetAll: runResetAll,            setDayBoundary: setDayBoundary,
+    /* 全初期化の本体。テストから「画面で押したときと同じ道」を通すために出す。
+       S.resetAll() を直に呼ぶと markSeedConsumed() を通らず、
+       V1.81 で直した「見本が戻ってくる」を検証できない。 */
+    doResetAll: doResetAll,
     refreshBackupSize: refreshBackupSize, openResetModal: openResetModal,
     syncBeforeReset: syncBeforeReset,    driveGuardState: driveGuardState,
     fillDaylineOptions: fillDaylineOptions,

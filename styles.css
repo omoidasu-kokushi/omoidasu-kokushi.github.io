@@ -3808,7 +3808,13 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .pick-crumb .pick-crumb-sep{ opacity:.55; }
 
 /* --- 一覧の行：左が「掘る」、右が「その場で出す」 --- */
-.pick-row{ display:flex; align-items:stretch; gap:6px; margin-bottom:8px; }
+/* V2.74：min-width:0 が要る。`.pick-row` は `.major-list`（grid）の項目で、
+   グリッド項目の自動最小サイズは min-content。中身が入り切らないと
+   **枠を無視して広がる**。V2.68 で「あと◯問」バッジを足したぶん min-content が
+   増え、320px 幅で「ランダム」ボタンが画面外へ出て横スクロールが出ていた（実測：
+   ページ幅 363px／row 347px）。ここを 0 にすると項目が枠まで縮み、
+   中の flex（.pick-name の ellipsis）が働く。 */
+.pick-row{ display:flex; align-items:stretch; gap:6px; margin-bottom:8px; min-width:0; }
 
 .pick-main{
   flex:1 1 auto; min-width:0;
