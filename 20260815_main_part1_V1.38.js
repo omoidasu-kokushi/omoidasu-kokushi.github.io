@@ -877,6 +877,20 @@
     });
   }
 
+  /* 連問の連続した並びの中で、いま何問目か（V2.56）。
+     キューの並びをそのまま数える。Scheduler が隣接させてあるので、
+     ここで並べ替えの理屈をもう一度書かない。
+     1問しか入っていないときは何も出さない（「状況設定 1/1」は嘘になる）。 */
+  function casePositionIn(list, index) {
+    if (!Array.isArray(list) || !list[index] || !list[index].case_key) { return null; }
+    var key = list[index].case_key, from = index, to = index;
+    while (from > 0 && list[from - 1] && list[from - 1].case_key === key) { from--; }
+    while (to < list.length - 1 && list[to + 1] && list[to + 1].case_key === key) { to++; }
+    var len = to - from + 1;
+    if (len < 2) { return null; }
+    return { pos: index - from + 1, len: len };
+  }
+
   function setHeaderCrumb(question) {
     /* V2.12：ヘッダーに出すのは単元名だけ。ランク・階層コード・大項目以下は
        カードの q-meta（renderQuestion）に集約した。ヘッダーとカードで同じ文字が
@@ -1495,7 +1509,12 @@
     /* V2.12：単元＞大項目＞中項目＞小項目はここだけに出す（ヘッダーから移した） */
     setText('#q-path', [q.unit, q.major, q.medium, q.sub_item].filter(Boolean).join(' ＞ '));
     /* 出典が空なら「AI予想問題」と自動表示する（第3章③） */
-    setText('#q-source', (q.source && String(q.source).trim()) ? q.source : 'AI予想問題');
+    /* V2.56：連問は「いま何問目か」を出す。事例文を読み直す前に、
+       この問題が続きものだと分かるようにする。 */
+    var srcTxt = (q.source && String(q.source).trim()) ? q.source : 'AI予想問題';
+    var runPos = casePositionIn(state.session.questions, state.session.index);
+    if (runPos) { srcTxt += '　／　状況設定 ' + runPos.pos + '/' + runPos.len; }
+    setText('#q-source', srcTxt);
     setText('#q-counter', (state.session.index + 1) + ' / ' + state.session.questions.length);
 
     /* --- 問題文 ＆ 問題★ --- */
@@ -4046,6 +4065,7 @@
     cycleTheme    : cycleTheme,
     applyVisualTheme: applyVisualTheme,
     setHeaderCrumb: setHeaderCrumb,
+    casePositionIn: casePositionIn,   /* V2.56 */
     updateScanMeter: updateScanMeter,
     refreshScanSlot: refreshScanSlot,
     updateAppBadge: updateAppBadge,

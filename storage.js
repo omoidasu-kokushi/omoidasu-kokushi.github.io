@@ -222,6 +222,47 @@
     return s.slice(0, 6);
   }
 
+  /* --- 状況設定問題（連問）の識別（V2.56） ---
+     「次の文を読み106〜108の問いに答えよ。」＋「第114回 午前問107」から
+       case_key = 'C114-午前-106-108'（事例の識別子）
+       case_no  = 107（この問題の問番号）
+     を導く。作問側に列を足させない：出典と問題文から機械的に決まるので、
+     すでに手元にある過去問をそのまま取り込み直せば効く。
+
+     出典が無い（AI予想問題）ときは、事例文そのものの指紋で束ねる。
+     兄弟は事例文が完全に同じなので一致する。ただし問番号が取れないため
+     並び順は q_id 順（安定だが本来の順ではない）になる。
+     予想問題で連問を作るなら source を書くこと。 */
+  function caseInfoOf(source, stem) {
+    var out = { key: null, no: null };
+    var s2 = String(stem == null ? '' : stem);
+    var m = /次の文を読み([^。]{0,60})問いに答えよ/.exec(s2);
+    if (!m) { return out; }
+    var nums = String(m[1]).match(/\d{1,3}/g);
+    if (!nums || nums.length < 2) { return out; }
+    var from = parseInt(nums[0], 10);
+    var to = parseInt(nums[nums.length - 1], 10);
+    /* 事例の範囲としてありえない値は束ねない（誤検出で無関係な問題が
+       くっつくほうが、連問がバラけるより悪い） */
+    if (!(to > from) || (to - from) > 9) { return out; }
+
+    var ms = /第\s*(\d+)\s*回\s*(午前|午後)\s*問?\s*(\d+)/.exec(String(source == null ? '' : source));
+    if (!ms) {
+      /* 連問らしいが出典が無い。ここで問題文の指紋を作って束ねる案を試したが、
+         事例文のあとに続く設問文が兄弟ごとに違い、どこまでが事例文かを
+         問題文だけからは決められなかった（実測：31と32が別の束になった）。
+         何文字で切るかはデータ次第で当たり外れが出る＝当て推量になる。
+         外したときに起きるのは「無関係な2問が同じ事例として連続出題される」で、
+         束ねられないより悪い。よって束ねない。
+         代わりに取り込みレポートで知らせ、作問側で source を書いてもらう。 */
+      out.orphan = true;
+      return out;
+    }
+    out.key = 'C' + ms[1] + '-' + ms[2] + '-' + from + '-' + to;
+    out.no = parseInt(ms[3], 10);
+    return out;
+  }
+
   function circledToIndex(ch) {
     var i = CIRCLED.indexOf(ch);
     return i < 0 ? -1 : i;
@@ -1242,6 +1283,11 @@
       updated_at         : nowMs()
     };
 
+    var ci = caseInfoOf(source, stem);
+    question.case_key = ci.key;
+    question.case_no = ci.no;
+    question._case_orphan = !!ci.orphan;
+
     return { ok: true, question: question, atoms: atoms, warnings: warnings };
   }
 
@@ -1305,6 +1351,10 @@
          ここに落としておかないと、候補を畳んだ時点でプールが分からない。
          rank や medium と同じ理由の非正規化（§1-5）。 */
       pool           : q.pool || 'main',
+      /* 連問の識別子（V2.56）。pool と同じ理由の非正規化：
+         出題側は問題ではなくアトムから候補を組むので、
+         ここに落とさないと候補を畳んだ時点で連問だと分からない。 */
+      case_key       : q.case_key || null,
       updated_at     : nowMs()
     };
 
@@ -1611,6 +1661,9 @@
 
         report.parsed++;
         taxCheckInto(report, built.question, i + 1);
+        if (built.question.case_key) { report.case_rows = (report.case_rows || 0) + 1; }
+        if (built.question._case_orphan) { report.case_orphan = (report.case_orphan || 0) + 1; }
+        delete built.question._case_orphan;
         garbleCheckInto(report, built.question, built.atoms, i + 1);
         tagCheckInto(report, built.atoms, i + 1);
         if (built.question.verify_status === 'unverified') { report.unverified++; }
@@ -1718,6 +1771,12 @@
         /* 出題プール（V1.56）。書いていなければ 'main'。
            既存のデータを取り込み直しても、黙って模試送りにはならない。 */
         qq.pool        = normalizePool(q.pool);
+        /* 連問（V2.56）。JSONが明示していればそれを正とし、
+           無ければ出典と問題文から導く。 */
+        var ci2 = caseInfoOf(q.source, q.stem);
+        qq.case_key = (q.case_key !== undefined && q.case_key !== null) ? q.case_key : ci2.key;
+        qq.case_no = isNum(q.case_no) ? q.case_no : ci2.no;
+        qq._case_orphan = !!ci2.orphan && !qq.case_key;
         qq.atom_count  = q.atoms.length;
         qq.verify_status = q.verify_status || 'json';
         qq.created_at  = q.created_at || nowMs();
@@ -1738,6 +1797,9 @@
 
         report.parsed++;
         taxCheckInto(report, qq, idx + 1);
+        if (qq.case_key) { report.case_rows = (report.case_rows || 0) + 1; }
+        if (qq._case_orphan) { report.case_orphan = (report.case_orphan || 0) + 1; }
+        delete qq._case_orphan;
         garbleCheckInto(report, qq, atoms, idx + 1);
         tagCheckInto(report, atoms, idx + 1);
         /* 取り込み結果にプールの内訳を出す（V1.56）。

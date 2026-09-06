@@ -1079,7 +1079,9 @@
           hissu: isHissu(a.unit), mastered: 0, last_seen: 0,
           /* 出題プール（V1.56）。アトムに非正規化してある。
              古いレコードには無いので 'main' に倒す（黙って模試送りにしない）。 */
-          pool: a.pool || 'main'
+          pool: a.pool || 'main',
+          /* 連問（V2.56）。アトムに非正規化してある。 */
+          case_key: a.case_key || null
         };
         order.push(a.q_id);
       }
@@ -1436,6 +1438,109 @@
              daily_unlock: pct, daily_log: log };
   }
 
+  /* ======================================================================
+   * 状況設定問題（連問）を続けて出す（V2.56）
+   *
+   * 「次の文を読み106〜108の問いに答えよ」の3問は、本番では続けて解く。
+   * 事例文は各問の stem に丸ごと入っているので単独でも解けるが、
+   * 同じ300字を3回別の日に読まされるのは練習として本番と違う。
+   *
+   * 2つに分けてある。
+   *   orderCases      … 並べ替えだけ。問題を増やさない・減らさない。
+   *                     本日の復習はこちらだけ使う（期日の来ていない
+   *                     兄弟を引き入れると忘却スケジュールが壊れる）。
+   *   fillCaseSiblings… 片割れしか入っていないとき兄弟を引き入れる。
+   *                     【総数は絶対に増やさない】。末尾の連問でない
+   *                     問題と入れ替える。模試の問数の絶対ガード
+   *                     （§11-①）をここで破ると、60問模試が62問になる。
+   * ====================================================================== */
+
+  /* 引き入れの上限。キュー全体に対する割合。
+     10問のランダムなら4問まで、120問の模試なら36問まで。
+     本番の午後は120問中30問が状況設定なので、この比率でも
+     「連問だらけになった」にはならない。 */
+  var CASE_FILL_RATIO = 0.3;
+
+  function orderCases(questions) {
+    if (!Array.isArray(questions) || questions.length < 2) { return questions; }
+    var groups = {}, hasCase = false;
+    questions.forEach(function (q) {
+      if (!q || !q.case_key) { return; }
+      hasCase = true;
+      if (!groups[q.case_key]) { groups[q.case_key] = []; }
+      groups[q.case_key].push(q);
+    });
+    if (!hasCase) { return questions; }
+    Object.keys(groups).forEach(function (kk) {
+      groups[kk].sort(function (a, b) {
+        var na = isNum(a.case_no) ? a.case_no : 9999;
+        var nb = isNum(b.case_no) ? b.case_no : 9999;
+        if (na !== nb) { return na - nb; }
+        return String(a.q_id) < String(b.q_id) ? -1 : 1;
+      });
+    });
+    var out = [], done = {};
+    questions.forEach(function (q) {
+      if (done[q.q_id]) { return; }
+      var g = q.case_key ? groups[q.case_key] : null;
+      if (g) {
+        g.forEach(function (x) { done[x.q_id] = 1; out.push(x); });
+        delete groups[q.case_key];
+        return;
+      }
+      done[q.q_id] = 1;
+      out.push(q);
+    });
+    return out;
+  }
+
+  /* picked … 選び終わった候補（この長さが出題数）
+     allCands … トピックガードを【通す前】の候補。兄弟は同じタグを持つので、
+                ガード後から拾うと必ず消える。ここだけガードを迂回する。 */
+  function fillCaseSiblings(picked, allCands, count) {
+    if (!Array.isArray(picked) || picked.length < 2) { return picked; }
+    var inSet = {}, keys = {}, any = false, seats = 0;
+    picked.forEach(function (c) {
+      inSet[c.q_id] = 1;
+      if (c.case_key) { keys[c.case_key] = 1; any = true; } else { seats++; }
+    });
+    if (!any || !seats) { return picked; }
+
+    /* 足りていない兄弟を、事例ごとにまとめる */
+    var byKey = {}, order = [];
+    (allCands || []).forEach(function (c) {
+      if (!c || !c.case_key || inSet[c.q_id] || !keys[c.case_key]) { return; }
+      if (!byKey[c.case_key]) { byKey[c.case_key] = []; order.push(c.case_key); }
+      byKey[c.case_key].push(c);
+    });
+    if (!order.length) { return picked; }
+
+    /* 上限。割合だけで決めると、5問のキューで3問セットの2問目までしか
+       入らず【いちばん中途半端な形】になる（実測）。
+       下限2は「3問セットを最後まで入れられる」ための最小値。 */
+    var budget = Math.max(2, Math.floor((isNum(count) ? count : picked.length) * CASE_FILL_RATIO));
+    budget = Math.min(budget, seats);
+
+    /* 事例まるごと入るときだけ引き入れる。
+       入りきらない事例には手を出さない（半端に足すくらいなら足さない）。 */
+    var add = [];
+    order.forEach(function (kk) {
+      var g = byKey[kk];
+      if (add.length + g.length > budget) { return; }
+      add = add.concat(g);
+    });
+    if (!add.length) { return picked; }
+
+    /* 席を空ける。空くのは【連問でない】問題だけ。
+       連問を追い出して別の連問を入れると、追い出した側が片割れになる。 */
+    var out = picked.slice(), freed = 0, i;
+    for (i = out.length - 1; i >= 0 && freed < add.length; i--) {
+      if (!out[i].case_key) { out.splice(i, 1); freed++; }
+    }
+    return out.concat(add.slice(0, freed));
+  }
+
+
   function getReviewQueue(limit) {
     var now = nowMs();
     return S.getDueAtoms(now).then(function (atoms) {
@@ -1463,6 +1568,9 @@
         var rank = {};
         qIds.forEach(function (id, i) { rank[id] = i; });
         questions.sort(function (x, y) { return rank[x.q_id] - rank[y.q_id]; });
+        /* V2.56：期日の来た問題どうしを隣に寄せるだけ。
+           期日の来ていない兄弟は引き入れない（SRSを壊す）。 */
+        questions = orderCases(questions);
         questions.forEach(function (q) { q.due_atom_ids = dueByQ[q.q_id] || []; });
         return {
           mode: 'review',
@@ -1795,14 +1903,21 @@
             }
             return quota.then(function (picked2) {
             picked = picked2;
+            /* V2.56：連問の兄弟を引き入れる。総数は変わらない。
+               cands はガードを通す前の候補（g.list ではない）。 */
+            var beforeCase = picked.length;
+            picked = fillCaseSiblings(picked, cands, count);
+            var caseFilled = picked.length - beforeCase;
             var qIds = picked.map(function (c) { return c.q_id; });
             return S.getQuestionsFull(qIds).then(function (questions) {
               var order = {};
               qIds.forEach(function (id, i) { order[id] = i; });
               questions.sort(function (x, y) { return order[x.q_id] - order[y.q_id]; });
+              questions = orderCases(questions);   /* V2.56 */
               return {
                 mode: mode,
                 questions: questions,
+                case_filled: caseFilled,
                 candidates: pool.length,
                 prefer_frequent: preferFrequent,
                 exam_phase: examPhase(meta, nowMs(), meta.day_boundary_hour),
@@ -3092,6 +3207,8 @@
     CAP_MIN_DAYS    : CAP_MIN_DAYS,     DAILY_KEEP     : DAILY_KEEP,
     medianOf        : medianOf,         autoReviewCap  : autoReviewCap,
     resolveReviewCap: resolveReviewCap, bumpDaily      : bumpDaily,
+    orderCases      : orderCases,        /* V2.56 */
+    fillCaseSiblings: fillCaseSiblings,  /* V2.56 */
     getKnockQueue   : getKnockQueue,
     applyTopicGuard : applyTopicGuard,
     sortCandidates  : sortCandidates,
