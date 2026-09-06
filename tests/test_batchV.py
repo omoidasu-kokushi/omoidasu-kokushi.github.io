@@ -294,8 +294,13 @@ with sync_playwright() as p:
 
     r = pg.evaluate("""async (arg) => {
       const D = window.Drive, S = window.Storage;
-      // 外す（今の時刻が入る＝ドライブ側より新しい）
-      await S.toggleAtomStar(arg.aid);
+      // 外す（今の時刻が入る＝ドライブ側より新しい）。
+      // V2.35：★はタップ循環（1→…→5→解除）なので、外れるまでタップする
+      for (let i = 0; i < 6; i++) {
+        const a2 = await S.getAtom(arg.aid);
+        if (!a2.is_starred) { break; }
+        await S.toggleAtomStar(arg.aid);
+      }
       await D.syncNow();
       await D.syncNow();
       const a = await S.getAtom(arg.aid);
