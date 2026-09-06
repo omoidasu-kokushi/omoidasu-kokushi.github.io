@@ -40,9 +40,13 @@ ok("化けは検出だけで自動修正しない（V2.54の判断を変えて�
 ok("文字の欠けを別に数える関数がある（V2.62）", "function lostCharCheckInto" in st)
 ok("助詞の化けと別のカウンタになっている",
    "lost_bad" in st and "lost_bad" not in st.split("function lostCharCheckInto")[0].split("garble_bad")[0])
-ok("レポートに別の行として出る", "文字が「?」に化けている疑い" in p2)
-ok("〈〉の u/x 化けは検出しないと明記してある（当て推量を入れない）",
-   "ビタミンB群" in st)
+ok("レポートに別の行として出る", "文字が化けている疑い" in p2)
+# V2.64：数えた結果、u/x/W は「きれいなデータに1件も無い」と分かったので拾う。
+# A B C D O T G S E X K I H は A型・T細胞・ビタミンD として正しく使われるので疑わない。
+ok("u/x/W も拾う（実測でシードに0件だったため）", "[?？�□uxW]" in st)
+ok("V…Z は対のときだけ拾う（第V脳神経・Z帯を誤検出しない）",
+   "V[^Z]{1,24}Z" in st)
+ok("正しく使われる文字は疑わないと明記してある", "ビタミンD" in st)
 
 def q(src, sub, stem, tag="#衛生"):
     return {"source": src, "unit": "必修", "major": "1. 健康の定義と理解",
@@ -60,6 +64,13 @@ PAY = json.dumps({"questions": [
     q("第115回 午前問26", "筋収縮 of 機構", "衛生検査の問題。正しいのはどれか。"),
     # ⑤ 文字が「?」に化けている（V2.62）
     q("第112回 午後問43", "a. 総人口", "末?循環不全について正しいのはどれか。"),
+    # ⑥ 〈〉が u/x に、腿が W に化けている（V2.64）
+    q("第111回 午前問23", "a. 総人口",
+      "雇用の分野における男女の均等な機会及び待遇の確保等に関する法律u男女雇用機会均等法xで、"
+      "大W動脈を圧迫するのはどれか。"),
+    # ⑦ 正しく使われている英字は疑わない（誤検出よけ）
+    q("第111回 午前問24", "a. 総人口",
+      "ビタミンDとヘルパーT細胞、A型肝炎とZ帯、第V脳神経について正しいのはどれか。"),
     # ② 出典に全角スペース2個。連問の片割れ
     q("第114回　　午前問106", "a. 総人口", CASE + "この時点の対応で正しいのはどれか。"),
     # ③ 同じ事例の兄弟。出典はきれい
@@ -86,9 +97,12 @@ with sync_playwright() as p:
       const c = pick('第114回 午前問107');
       const e = pick('第113回 午前問1');
       const lost = pick('第112回 午後問43');
+      const uxw = pick('第111回 午前問23');
+      const clean2 = pick('第111回 午前問24');
       const raw = qs.filter(x => /　/.test(x.source || '')).map(x => x.source);
       return { lost_bad: r.lost_bad || 0, lost_rows: r.lost_rows || 0,
                lost_ex: r.lost_examples || [], lostKept: lost && lost.stem,
+               uxwKept: uxw && uxw.stem, cleanKept: clean2 && clean2.stem,
                garble_bad: r.garble_bad || 0, garble_rows: r.garble_rows || 0,
                ex: r.garble_examples || [], tidied: r.source_tidied || 0,
                case_rows: r.case_rows || 0,
@@ -104,10 +118,14 @@ with sync_playwright() as p:
     ok("実例に分類の化けが出る",
        any("筋収縮" in x for x in d["ex"]), json.dumps(d["ex"], ensure_ascii=False))
     ok("化けは直さずそのまま入る（検出だけ）", d["aSub"] == "筋収縮 of 機構", str(d["aSub"]))
-    ok("文字が「?」に化けた本文を数える（V2.62）", d["lost_bad"] == 1,
+    ok("文字が「?」に化けた本文を数える（V2.62）", d["lost_bad"] >= 1,
        json.dumps({k: d[k] for k in ("lost_bad", "lost_rows", "lost_ex")}, ensure_ascii=False))
+    ok("u/x/W の化けも数える（V2.64）", d["lost_rows"] == 2,
+       json.dumps({k: d[k] for k in ("lost_bad", "lost_rows", "lost_ex")}, ensure_ascii=False))
+    ok("ビタミンD・T細胞・A型・Z帯・第V脳神経は疑わない（誤検出しない）",
+       d["lost_rows"] == 2, json.dumps({"rows": d["lost_rows"]}))
     ok("助詞の化けとは別に数えている（混ざらない）",
-       d["lost_rows"] == 1 and d["garble_rows"] == 1,
+       d["lost_rows"] == 2 and d["garble_rows"] == 1,
        json.dumps({k: d[k] for k in ("lost_rows", "garble_rows")}))
     ok("化けたままの本文を直さずに入れる（検出だけ）",
        d["lostKept"] and "末?循環不全" in d["lostKept"], str(d["lostKept"])[:60])

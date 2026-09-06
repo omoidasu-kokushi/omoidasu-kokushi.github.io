@@ -1574,7 +1574,16 @@
      区別する手がかりがデータの中に無いので、当て推量の検出は入れない。 */
   function lostCharCheckInto(report, q, atoms, lineNo) {
     if (!report.lost_examples) { report.lost_examples = []; }
-    var rx = new RegExp(GARBLE_JP + '[?？�□]' + GARBLE_JP, 'g');
+    /* V2.64：拾えるものが増えた。詳しくは変更履歴を見ること。
+         ① ? ？ � □      … 文字が落ちた
+         ② u と x        … 〈 と 〉 の化け（きれいなデータに1件も無い）
+         ③ W             … 腿 の化け（大W骨・大W動脈）
+         ④ V…Z の対      … 〈 〉 の対の化け（単独のV・Zは第V脳神経・Z帯があるので疑わない）
+       A B C D O T G S E X K I H は A型・T細胞・ビタミンD として
+       正しく使われるので、いまも疑わない。 */
+    var rx = new RegExp(
+      GARBLE_JP + '[?？�□uxW]' + GARBLE_JP +
+      '|' + GARBLE_JP + 'V[^Z]{1,24}Z' + GARBLE_JP, 'g');
     var texts = [q && q.stem, q && q.overall_explanation,
                  q && q.unit, q && q.major, q && q.medium, q && q.sub_item];
     (atoms || []).forEach(function (a) {
