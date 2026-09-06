@@ -479,7 +479,17 @@
         mode: 'conquer', count: st.random.count, scope: scope || null,
         shuffle: false
       }).then(function (s2) {
-        if (!s2) { openModal('#modal-no-new'); return null; }
+        if (!s2) {
+          /* V2.50：買い切りの案内が出ているなら、その上に重ねない。
+             無料枠を使い切ると startSession は openBuyDialog() を出してから
+             null を返す。ここで無条件に別の案内を開いていたため、
+             買い切りの案内が一瞬だけ見えて消えた（利用者報告 2026-09-06）。
+             「初見が尽きた」と「無料枠が尽きた」は原因が別なので、
+             出す案内も取り違えてはいけない。 */
+          var buyCard = doc.getElementById('modal-buy');
+          if (buyCard && !buyCard.hidden) { return null; }
+          openModal('#modal-no-new'); return null;
+        }
         toast('この範囲は読破ずみです。苦手な順に出題します', 3600);
         maybeShowClearedSheet();
         return s2;
