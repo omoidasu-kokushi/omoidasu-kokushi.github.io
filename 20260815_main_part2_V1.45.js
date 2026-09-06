@@ -1368,7 +1368,8 @@
     }).slice(0, limit);
   }
 
-  function collectNoteItems(kind) {
+  function collectNoteItems(kind, starLv) {
+    starLv = Number(starLv) || 0;   /* 0=全段階（V2.37） */
     return Promise.all([S.getStarredNote(), S.getAllAtoms()]).then(function (r) {
       var starred = r[0] || [], atoms = r[1] || [];
       var hardByQ = {};
@@ -1386,6 +1387,14 @@
       var map = {};
       if (kind !== 'hard') {
         starred.forEach(function (x) {
+          if (starLv >= 1) {
+            /* V2.37 段階絞り：問題★がその段階、または肢★のどれかがその段階 */
+            var qHit = (x.q_level || 0) === starLv;
+            var aHit = Object.keys(x.atom_levels || {}).some(function (k2) {
+              return x.atom_levels[k2] === starLv;
+            });
+            if (!qHit && !aHit) { return; }
+          }
           map[x.question.q_id] = { question: x.question, marks: x.marked_atoms.slice(), why: '★',
                                    last_at: lastAt[x.question.q_id] || 0 };
         });
@@ -1441,7 +1450,7 @@
   }
 
   function buildPrintSheet(cfg) {
-    return collectNoteItems(cfg.kind).then(function (all) {
+    return collectNoteItems(cfg.kind, cfg.starLv).then(function (all) {
       var total = all.length;
       var items = limitNoteItems(all, cfg.limit);
       if (!items.length) {
@@ -1584,7 +1593,8 @@ var QR_MATRIX = [
     var limit = parseInt(($('#note-limit') || {}).value || '0', 10) || 0;
     var cols = ($('#note-cols') || {}).value || '1';
     var explain = ($('#note-explain') || {}).value || 'all';
-    return collectNoteItems(kind).then(function (all) {
+    var starLv = ($('#note-starlv') || {}).value || '0';
+    return collectNoteItems(kind, starLv).then(function (all) {
       var n = limit ? Math.min(all.length, limit) : all.length;
       if (!all.length) {
         el.textContent = '対象がまだありません（★を付けるか「難しい」を押すと集まります）';
@@ -1602,6 +1612,7 @@ var QR_MATRIX = [
   function runPrintNote() {
     var cfg = {
       kind:  ($('#note-kind') || {}).value || 'both',
+      starLv: ($('#note-starlv') || {}).value || '0',
       paper: ($('#note-paper') || {}).value || 'A4',
       cols:  ($('#note-cols') || {}).value || '1',
       explain: ($('#note-explain') || {}).value || 'all',
@@ -5829,7 +5840,7 @@ var QR_MATRIX = [
       openModal('#modal-note');
       refreshNoteCount();
     });
-    ['#note-kind', '#note-limit', '#note-cols', '#note-explain', '#note-paper'].forEach(function (sel) {
+    ['#note-kind', '#note-starlv', '#note-limit', '#note-cols', '#note-explain', '#note-paper'].forEach(function (sel) {
       on($(sel), 'change', function () { refreshNoteCount(); });
     });
     on($('#btn-report-print'), 'click', function () { runPrintReport(); });
