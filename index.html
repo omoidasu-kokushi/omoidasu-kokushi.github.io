@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.69">
+<link rel="stylesheet" href="./styles.css?v=2.70">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.69",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.70",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.69",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.70",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.69",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.70",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.69",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
+    { file: "./drive.js?v=2.70",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.69",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.70",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -467,7 +467,7 @@
           ・<a href="./terms.html" target="_blank" rel="noopener">利用規約</a>
           ・<a href="./about.html" target="_blank" rel="noopener">このアプリについて</a>
         </p>
-        <p class="build-stamp">20260906_Omoidasu_V2.69</p>
+        <p class="build-stamp">20260906_Omoidasu_V2.70</p>
       </div>
     </section>
 
@@ -674,27 +674,36 @@
         <!-- V2.69（利用者裁定）：区切り方は二択。両方を同時に生かさない。
              前は「25分（ポモドーロ）」と「出題数」が並んでいたが、
              実際に終了条件になっていたのは問題数だけで、表示と実際が食い違っていた。 -->
+        <!-- V2.70（利用者指定）：スライダー2本を常に見せ、**触ったほうが効く**。
+             V2.69 のセグメントは押す場所が2段階になり、選ばれていないほうが
+             消えるので「もう一方に何があるか」が見えなかった。
+             同時に効くことは無い（V2.69の裁定はそのまま）。 -->
         <div class="qty-block" id="qty-block">
-          <div class="seg-group qty-mode" id="qty-mode" role="group" aria-label="区切り方">
-            <button type="button" class="seg-btn is-active" data-qmode="time"
-                    aria-pressed="true">時間で区切る</button>
-            <button type="button" class="seg-btn" data-qmode="count"
-                    aria-pressed="false">問題数で区切る</button>
-          </div>
-
-          <div class="qty-slider-row" id="qty-time-row">
-            <label class="qty-label" for="time-range">時間：<b id="time-range-val">25分</b></label>
-            <input type="range" id="time-range" min="0" max="5" step="1" value="3"
-                   aria-label="時間">
-            <div class="qty-scale" aria-hidden="true">
-              <span>5</span><span>10</span><span>15</span><span>25</span><span>40</span><span>60</span>
+          <div class="qty-pick is-main is-on" id="qty-time-row" data-qmode="time">
+            <label class="qty-label" for="time-range">
+              <span class="qty-kind">時間で区切る</span>
+              <b id="time-range-val">25分</b>
+              <span class="qty-active">これで区切ります</span>
+            </label>
+            <input type="range" id="time-range" min="0" max="4" step="1" value="2"
+                   aria-label="時間で区切る">
+            <div class="qty-scale qty-scale-time" aria-hidden="true">
+              <span><em>5分</em><i>○</i></span>
+              <span><em>10分</em><i>○</i></span>
+              <span class="is-reco"><em>25分</em><i>◎</i><u>推奨</u></span>
+              <span><em>45分</em><i>○</i></span>
+              <span><em>60分</em><i>○</i></span>
             </div>
           </div>
 
-          <div class="qty-slider-row" id="qty-count-row" hidden>
-            <label class="qty-label" for="qty-range">問題数：<b id="qty-range-val">10問</b></label>
+          <div class="qty-pick is-sub" id="qty-count-row" data-qmode="count">
+            <label class="qty-label" for="qty-range">
+              <span class="qty-kind">問題数で区切る</span>
+              <b id="qty-range-val">10問</b>
+              <span class="qty-active">これで区切ります</span>
+            </label>
             <input type="range" id="qty-range" min="0" max="6" step="1" value="1"
-                   aria-label="問題数">
+                   aria-label="問題数で区切る">
             <div class="qty-scale" aria-hidden="true">
               <span>5</span><span>10</span><span>20</span><span>30</span><span>50</span><span>80</span><span>120</span>
             </div>
@@ -1377,7 +1386,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260906_Omoidasu_V2.69 / cache v2.69.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260906_Omoidasu_V2.70 / cache v2.70.0</p>
         </section>
       </div>
     </section>
@@ -2004,12 +2013,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.69"></script>
-<script src="./storage.js?v=2.69"></script>
-<script src="./scheduler.js?v=2.69"></script>
+<script src="./questions.js?v=2.70"></script>
+<script src="./storage.js?v=2.70"></script>
+<script src="./scheduler.js?v=2.70"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.69"></script>
-<script src="./license.js?v=2.69"></script>
+<script src="./drive.js?v=2.70"></script>
+<script src="./license.js?v=2.70"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

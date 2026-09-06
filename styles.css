@@ -4677,3 +4677,35 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .qty-pomo-reco b{ display:block; font-size:var(--fs-md); margin-bottom:4px; }
 .qty-pomo-reco span{ display:block; font-size:var(--fs-sm); color:var(--text-sub); line-height:1.55; }
 .qty-pomo-reco[hidden]{ display:none !important; }
+
+
+/* --- 区切り方はスライダー2本（V2.70・利用者指定） ---
+   触ったほうが効く。効いていないほうは薄くして、
+   「いま何で区切るのか」を一目で分かるようにする。
+   時間が上で大きく、問題数は一回り小さい。 */
+.qty-pick{ margin-top:12px; padding:11px 12px 7px;
+  border:1px solid var(--border); border-radius:var(--r-lg, 12px);
+  background:var(--surface); transition:opacity .15s, border-color .15s; }
+.qty-pick.is-on{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+.qty-pick:not(.is-on){ opacity:.58; }
+.qty-pick .qty-label{ display:flex; align-items:baseline; gap:8px;
+  width:100%; margin-bottom:4px; }
+.qty-pick .qty-kind{ font-weight:800; }
+.qty-pick .qty-label b{ font-size:var(--fs-lg); font-variant-numeric:tabular-nums; }
+.qty-active{ margin-left:auto; font-size:var(--fs-xs); font-weight:800; color:var(--accent); }
+.qty-pick:not(.is-on) .qty-active{ visibility:hidden; }
+/* 問題数は一回り小さい（利用者指定） */
+.qty-pick.is-sub{ padding:9px 12px 6px; }
+.qty-pick.is-sub .qty-kind{ font-size:var(--fs-sm); }
+.qty-pick.is-sub .qty-label b{ font-size:var(--fs-md); }
+/* スライダー自体は縮めない。transform:scale(.92) を当てたら track だけ短くなり、
+   目盛り（5/10/20…）と thumb の位置が実測で12pxずれた。
+   「一回り小さい」は文字の大きさと余白で出す。 */
+.qty-pick.is-sub input[type=range]{ width:100%; }
+/* 時間の目盛りは ○ ○ ◎ ○ ○（25分だけ ◎推奨） */
+.qty-scale-time span{ display:flex; flex-direction:column; align-items:center; line-height:1.25; }
+.qty-scale-time em{ font-style:normal; }
+.qty-scale-time i{ font-style:normal; font-size:11px; }
+.qty-scale-time u{ text-decoration:none; font-size:10px; font-weight:800; }
+.qty-scale-time .is-reco{ color:var(--accent); font-weight:800; }
+.qty-scale-time .is-reco i{ font-size:14px; }

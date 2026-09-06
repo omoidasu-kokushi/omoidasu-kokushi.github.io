@@ -415,8 +415,11 @@
      V2.46：文言は利用者指定・スライダーは粗い7段（QTY_STOPS）。 */
   function isNumLike(v) { return typeof v === 'number' && isFinite(v); }
   var QTY_STOPS = [5, 10, 20, 30, 50, 80, 120];
-  /* V2.69：時間で区切るときの段。25分（ポモドーロ）を既定にする。 */
-  var TIME_STOPS = [5, 10, 15, 25, 40, 60];
+  /* V2.70（利用者指定）：時間の段は 5 / 10 / 25 / 45 / 60 の5段。
+     25分（ポモドーロ）を既定にし、目盛りでも ◎ で示す。
+     V2.69 の 6段（15分・40分あり）から寄せた。旧値は timeIndexOf が
+     一番近い段へ寄せるので、保存済みの 15分・40分でも壊れない。 */
+  var TIME_STOPS = [5, 10, 25, 45, 60];
   var TIME_DEFAULT = 25;
   /* 1問あたり約20秒＝3問/分。時間内に解ける見込みの数だけ積む。
      足りなければ尽きた時点で終わる（V2.57と同じ。水増ししない）。 */
@@ -441,19 +444,16 @@
     return best;
   }
 
-  /* --- 区切り方の切り替え（V2.69） ---
-     時間と問題数を同時に生かさない。選んだほうのスライダーだけ出す。
+  /* --- 区切り方の見た目（V2.70） ---
+     2本とも見せる。効いているほうを枠で囲み、効いていないほうを薄くする。
+     消さないのは、もう一方に何があるかが見えないと選べないため（V2.69の反省）。
+     「同時に生かさない」は変えていない：効いているのは常に1つだけ。
      25分のときだけポモドーロを大きく出す（ここが「推奨」の置き場所）。 */
   function refreshQtyMode() {
     var isTime = (st.random.limit !== 'count');
-    $$('#qty-mode .seg-btn').forEach(function (b) {
-      var on = (b.getAttribute('data-qmode') === (isTime ? 'time' : 'count'));
-      cls(b, 'is-active', on);
-      b.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
     var tr = $('#qty-time-row'), cr = $('#qty-count-row');
-    if (tr) { tr.hidden = !isTime; }
-    if (cr) { cr.hidden = isTime; }
+    if (tr) { tr.hidden = false; cls(tr, 'is-on', isTime); }
+    if (cr) { cr.hidden = false; cls(cr, 'is-on', !isTime); }
     setText('#time-range-val', st.random.minutes + '分');
     setText('#qty-range-val', st.random.count + '問');
     var reco = $('#qty-pomo-reco');
@@ -3762,8 +3762,9 @@ var QR_MATRIX = [
     solve_now: '<button type="button" class="btn-primary btn-sm" tabindex="-1">この結果を今すぐ解く</button>',
     knock_time: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">10問</button>' +
         '<button type="button" class="seg-btn" tabindex="-1">30問</button></span>',
-    qty_mode: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">時間で区切る</button>' +
-        '<button type="button" class="seg-btn" tabindex="-1">問題数で区切る</button></span>',
+    /* V2.70：セグメントは無くなり、スライダー2本になった。見本も合わせる。 */
+    qty_mode: '<span class="guide-card-sample">時間で区切る<b style="margin-left:auto">25分</b></span>' +
+        '<span class="guide-card-sample" style="margin-left:14px;opacity:.58">問題数で区切る<b style="margin-left:auto">10問</b></span>',
     review_card: '<span class="guide-card-sample is-main">本日の復習<b class="guide-badge">12</b></span>',
     random_card: '<span class="guide-card-sample">ランダムモード（まだ解いていない問題）</span>',
     import_box: '<span class="guide-input-sample">ここに自作データ（TSV／JSON）やバックアップを貼り付け → データを取り込む</span>',
@@ -6040,26 +6041,37 @@ var QR_MATRIX = [
       st.random.path = (st.random.path || []).slice(0, parseInt(b.getAttribute('data-up'), 10));
       renderRandomPick();
     });
+    /* --- V2.70：触ったほうが終了条件になる ---
+       セグメントを別に置くと、押す場所が2段階になる（選ぶ→動かす）。
+       スライダーを動かした時点で意図は決まっているので、それをそのまま採る。
+       同時に効くことは無い（V2.69の裁定はそのまま）。 */
+    function pickLimit(kind) {
+      if (!kind || st.random.limit === kind) { return; }
+      st.random.limit = kind;
+      S.setMeta('random_limit', kind).catch(noop);
+    }
     on($('#qty-range'), 'input', function (ev) {
       var i = parseInt(ev.target.value, 10) || 0;
       st.random.count = QTY_STOPS[Math.max(0, Math.min(QTY_STOPS.length - 1, i))];
+      pickLimit('count');
       refreshQtyMode();
       S.setMeta('random_count', st.random.count).catch(noop);
     });
-    /* V2.69：時間のスライダー。25分に合わせるとポモドーロの案内が出る。 */
     on($('#time-range'), 'input', function (ev) {
       var i = parseInt(ev.target.value, 10) || 0;
       st.random.minutes = TIME_STOPS[Math.max(0, Math.min(TIME_STOPS.length - 1, i))];
+      pickLimit('time');
       refreshQtyMode();
       S.setMeta('random_minutes', st.random.minutes).catch(noop);
     });
-    /* V2.69：区切り方の二択。時間と問題数を同時に生かさない。 */
-    on($('#qty-mode'), 'click', function (ev) {
-      var b = ev.target.closest('[data-qmode]');
-      if (!b) { return; }
-      st.random.limit = b.getAttribute('data-qmode');
+    /* スライダーを動かさずに、枠のどこかを押しただけでも切り替わる。
+       「今の値のままそっちで区切りたい」ときにスライダーを一度ずらして
+       戻す、という手間を踏ませないため。 */
+    on($('#qty-block'), 'click', function (ev) {
+      var box = ev.target.closest('.qty-pick');
+      if (!box || ev.target.tagName === 'INPUT') { return; }
+      pickLimit(box.getAttribute('data-qmode'));
       refreshQtyMode();
-      S.setMeta('random_limit', st.random.limit).catch(noop);
     });
 
 

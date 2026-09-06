@@ -182,7 +182,9 @@ with sync_playwright() as p:
        r["un"] == r["hard"], json.dumps(r["un"], ensure_ascii=False))
     ok("読破したら「読破」と出す（空にしない）",
        "読破" in r["none"], json.dumps(r["none"], ensure_ascii=False))
-    ok("3桁は 99+ に丸める", "99+" in r["cap"], json.dumps(r["cap"]))
+    # V2.68：単位が「肢」から「問」に変わったので、丸めの桁も 999+ に上げた
+    # （範囲によっては100問超えが普通にあり、99+ だと潰れすぎる）。
+    ok("4桁は 999+ に丸める", "999+" in r["cap"], json.dumps(r["cap"], ensure_ascii=False))
 
     r = pg.evaluate("""async () => {
       const b = await window.Storage.countBadgesByScope();
