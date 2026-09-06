@@ -280,7 +280,7 @@
   var st = {
     dashboard : { level: 'sub_item', metric: 'retention', cfilter: 'low' },
     search    : { keyword: '', hits: [], cfilter: 'low' },
-    starred   : { filter: 'all' },
+    starred   : { filter: 'all', lv: 0 },   /* lv=0は全段階（V2.36） */
     random    : { scope: null, count: 10, units: [] },
     knock     : { tag: null, minutes: 5, endsAt: 0, tick: null, solved: 0 },
     memo      : null,
@@ -1879,17 +1879,30 @@ var QR_MATRIX = [
     return lv <= 0 ? '☆' : (lv === 1 ? '★' : '★' + lv);
   }
 
-  function renderStarredNote(filter) {
+  function renderStarredNote(filter, lv) {
     st.starred.filter = filter || st.starred.filter;
+    if (lv !== undefined && lv !== null) { st.starred.lv = Number(lv) || 0; }
     $$('#screen-starred .seg-btn[data-sfilter]').forEach(function (b) {
       cls(b, 'is-active', b.getAttribute('data-sfilter') === st.starred.filter);
+    });
+    $$('#star-lv-filter .seg-btn').forEach(function (b) {
+      cls(b, 'is-active', Number(b.getAttribute('data-lvfilter')) === st.starred.lv);
     });
 
     return S.getStarredNote().then(function (list) {
       var f = st.starred.filter;
+      var wantLv = st.starred.lv;
       var rows = list.filter(function (x) {
-        if (f === 'question') { return x.kind === 'question' || x.kind === 'both'; }
-        if (f === 'atom') { return x.kind === 'atom' || x.kind === 'both'; }
+        if (f === 'question' && !(x.kind === 'question' || x.kind === 'both')) { return false; }
+        if (f === 'atom' && !(x.kind === 'atom' || x.kind === 'both')) { return false; }
+        if (wantLv >= 1) {
+          /* 段階一致：問題★がその段階、または肢★のどれかがその段階（V2.36） */
+          var qHit = (x.q_level || 0) === wantLv;
+          var aHit = Object.keys(x.atom_levels || {}).some(function (k) {
+            return x.atom_levels[k] === wantLv;
+          });
+          if (!qHit && !aHit) { return false; }
+        }
         return true;
       });
 
@@ -5596,6 +5609,8 @@ var QR_MATRIX = [
     on($('#screen-starred'), 'click', function (ev) {
       var seg = ev.target.closest('.seg-btn[data-sfilter]');
       if (seg) { renderStarredNote(seg.getAttribute('data-sfilter')); return; }
+      var lvb = ev.target.closest('.seg-btn[data-lvfilter]');
+      if (lvb) { renderStarredNote(null, lvb.getAttribute('data-lvfilter')); return; }
       var un = ev.target.closest('.star-unmark');
       if (!un) { return; }
       ev.stopPropagation();
