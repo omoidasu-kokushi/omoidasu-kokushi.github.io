@@ -4621,3 +4621,21 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 }
 .guide-ui .unit-hero{ pointer-events:none; width:100%; }
 .guide-ui .rv-stem-expand{ flex:0 0 auto; }
+
+
+/* --- 区切りの内訳（V2.58） ---
+   正答率ではなく評価の内訳を出す。色は評価ボタンと同じものを使う：
+   ここだけ別の色にすると、押したボタンと結果が結びつかない。 */
+.tally{ display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 4px; justify-content:center; }
+.tally-chip{
+  display:inline-flex; align-items:baseline; gap:4px;
+  padding:5px 10px; border-radius:var(--r-pill, 999px);
+  background:var(--surface-3); border:1px solid var(--border);
+  font-size:var(--fs-sm); font-weight:700; color:var(--text-sub);
+}
+.tally-chip b{ font-size:var(--fs-md); color:var(--text); }
+.tally-chip.is-hard  { border-color:var(--c-hard);   color:var(--c-hard); }
+.tally-chip.is-normal{ border-color:var(--c-normal); color:var(--c-normal); }
+.tally-chip.is-easy  { border-color:var(--c-easy);   color:var(--c-easy); }
+.tally-chip.is-master{ border-color:var(--c-master); color:var(--c-master); }
+.tally-note{ width:100%; text-align:center; font-size:var(--fs-sm); color:var(--text-mute); margin:2px 0 0; }

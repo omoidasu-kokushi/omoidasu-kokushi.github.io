@@ -338,6 +338,12 @@
       hostIndex: 0
     },
 
+    /* --- 区切りの内訳（V2.58） ---
+       session の中ではなく state 直下に置く。endSession() が session を
+       畳んだあとに描くので、session に持たせると消える。
+       sessionId が変わったら作り直す（前のセッションの数が混ざらない）。 */
+    tally: null,
+
     /* --- 現在の1問 --- */
     current: {
       question: null,
@@ -2944,6 +2950,7 @@
 
     return commit.then(function (r) {
       state.session.answeredCount++;
+      if (mode !== 'search') { bumpTally(state.session.sessionId, r); }   /* V2.58 */
       markPomodoroActivity();   /* 無操作リセットの基準は「手が動いた時刻」 */
       if (typeof hooks.afterCommit === 'function') {
         try { hooks.afterCommit(q, state.session, r); } catch (e) { console.error('[afterCommit]', e); }
@@ -3089,6 +3096,58 @@
    * 12. セッション終了
    * ====================================================================== */
 
+  /* --- 記録された評価を数える（V2.58） ---
+     押した評価ではなく plan.eval を数える。期日前に間違えた肢は
+     門番が「難」へ降ろすので（§V2.19）、押した側を数えると
+     画面の内訳と実際のスケジュールがずれる。 */
+  function bumpTally(sessionId, r) {
+    var t = state.tally;
+    if (!t || t.sid !== sessionId) {
+      t = state.tally = { sid: sessionId, questions: 0, atoms: 0,
+                          hard: 0, normal: 0, easy: 0, master: 0,
+                          soon: 0, skipped: 0 };
+    }
+    t.questions++;
+    var list = (r && r.results) || [];
+    list.forEach(function (one) {
+      if (!one) { return; }
+      if (one.skipped) { t.skipped++; return; }
+      var ev = one.plan && one.plan.eval;
+      if (t[ev] === undefined) { return; }
+      t[ev]++; t.atoms++;
+      var ic = one.plan && one.plan.interval_code;
+      if (one.schedule_updated && (ic === '20m' || ic === '10m' || ic === '1h')) { t.soon++; }
+    });
+  }
+
+  /* 内訳を描く。数が0の評価は出さない（0の並びは読みにくいだけ）。 */
+  var TALLY_LABEL = [
+    ['hard', '難しい', 'is-hard'], ['normal', '普通', 'is-normal'],
+    ['easy', '易しい', 'is-easy'], ['master', 'マスター', 'is-master']
+  ];
+  function renderTally(sel) {
+    var el = $(sel);
+    if (!el) { return; }
+    var t = state.tally;
+    if (!t || !t.atoms) { el.hidden = true; el.innerHTML = ''; return; }
+    var html = '';
+    TALLY_LABEL.forEach(function (row) {
+      if (!t[row[0]]) { return; }
+      html += '<span class="tally-chip ' + row[2] + '">' + row[1] +
+              ' <b>' + t[row[0]] + '</b></span>';
+    });
+    /* 1行に詰めると390px幅で「戻っ／てきます」と割れる（実測）。行を分ける。 */
+    html += '<p class="tally-note">' + t.atoms + ' 肢を評価しました</p>';
+    if (t.soon) {
+      html += '<p class="tally-note">うち ' + t.soon + ' 肢は20分ほどで戻ってきます</p>';
+    }
+    if (t.skipped) {
+      html += '<p class="tally-note">まだ期日でない ' + t.skipped + ' 肢は記録していません</p>';
+    }
+    el.innerHTML = html;
+    el.hidden = false;
+  }
+
   function finishSession() {
     var s = state.session;
     var mode = s.mode;
@@ -3122,12 +3181,22 @@
             restEl.hidden = !hasRest;
           }
           if (moreEl) { moreEl.hidden = !hasRest; }
+          renderTally('#tally-review');   /* V2.58 */
           openModal('#modal-review-done');
           fireConfetti();
           /* ダイアログを閉じたあとの TOP3 ポップインは後半が担当する */
           return;
         }
         if (mode === 'knock') { return Half2.finishKnock(solved); }
+        /* V2.58：toast だけだと「終わった」以上のことが分からない。
+           正答率は出さない（§4-③：動かしているのは正誤ではなく評価）。
+           記録しないモード（単語検索）は内訳が空なので、従来どおり toast。 */
+        if (state.tally && state.tally.atoms) {
+          setText('#sess-count', solved);
+          renderTally('#tally-session');
+          openModal('#modal-session-done');
+          return;
+        }
         toast(solved + ' 問の学習が完了しました', 3000);
       });
   }
@@ -4065,6 +4134,7 @@
     cycleTheme    : cycleTheme,
     applyVisualTheme: applyVisualTheme,
     setHeaderCrumb: setHeaderCrumb,
+    renderTally: renderTally,        /* V2.58 */
     casePositionIn: casePositionIn,   /* V2.56 */
     updateScanMeter: updateScanMeter,
     refreshScanSlot: refreshScanSlot,

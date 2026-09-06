@@ -991,6 +991,7 @@
     M.endSession();
 
     setText('#knock-solved', solved || 0);
+    M.renderTally('#tally-knock');   /* V2.58 */
     return K.refreshAll({ recomputeWeakness: false })
       .then(function () { return M.refreshHome(); })
       .then(function () { return M.go('home', { replace: true }); })
