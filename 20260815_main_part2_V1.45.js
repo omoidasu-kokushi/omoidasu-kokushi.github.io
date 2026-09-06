@@ -399,18 +399,29 @@
     }).join(''));
   }
 
-  /* V2.44：ランダム画面のポモドーロ表示。時間の区切りはここに任せる（裁定）。 */
+  /* V2.44：ランダム画面のポモドーロ表示。時間の区切りはここに任せる（裁定）。
+     V2.46：文言は利用者指定・スライダーは粗い7段（QTY_STOPS）。 */
+  var QTY_STOPS = [5, 10, 20, 30, 50, 80, 120];
+  function qtyIndexOf(count) {
+    var i = QTY_STOPS.indexOf(count);
+    if (i >= 0) { return i; }
+    /* 旧値（15問など）は一番近い段へ寄せる */
+    var best = 0;
+    QTY_STOPS.forEach(function (v, j) {
+      if (Math.abs(v - count) < Math.abs(QTY_STOPS[best] - count)) { best = j; }
+    });
+    return best;
+  }
   function refreshQtyPomo() {
     var btn = $('#qty-pomo');
     if (!btn) { return; }
     var onFlag = (M.state.meta || {}).pomodoro_enabled !== false;
     btn.setAttribute('aria-pressed', onFlag ? 'true' : 'false');
     cls(btn, 'is-off', !onFlag);
-    var big = btn.querySelector('.qty-pomo-big');
-    if (big) { big.textContent = onFlag ? '🍅 25分で区切ります' : '🍅 時間では区切りません'; }
+    setText('#qty-pomo-big', onFlag ? '⏲ 25分間出題（推奨）' : '⏲ 時間では区切りません');
     setText('#qty-pomo-sub', onFlag
-      ? 'ポモドーロON。25分たつと休憩をおすすめします（タップでOFF）'
-      : 'ポモドーロOFF。問題数だけで区切ります（タップでON）');
+      ? 'ポモドーロ機能。その後5分休憩を推奨します。（タップでON/OFF）'
+      : 'ポモドーロOFF。問題数だけで区切ります。（タップでON/OFF）');
   }
 
   function openRandomSelect() {
@@ -430,7 +441,8 @@
          「押せないボタンが並ぶ」だけの見え方だった）。スライダーに現在値を映し、
          ポモドーロの状態を大きく出す。 */
       var rng = $('#qty-range');
-      if (rng) { rng.value = st.random.count; }
+      if (rng) { rng.value = qtyIndexOf(st.random.count); }
+      st.random.count = QTY_STOPS[qtyIndexOf(st.random.count)];
       setText('#qty-range-val', st.random.count + '問');
       refreshQtyPomo();
 
@@ -5808,7 +5820,8 @@ var QR_MATRIX = [
       renderRandomPick();
     });
     on($('#qty-range'), 'input', function (ev) {
-      st.random.count = parseInt(ev.target.value, 10) || 10;
+      var i = parseInt(ev.target.value, 10) || 0;
+      st.random.count = QTY_STOPS[Math.max(0, Math.min(QTY_STOPS.length - 1, i))];
       setText('#qty-range-val', st.random.count + '問');
     });
     on($('#qty-pomo'), 'click', function () {

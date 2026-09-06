@@ -13,8 +13,8 @@ def ok(n, c, d=""):
 html = io.open(os.path.join(APP, "index.html"), encoding="utf-8").read()
 p2 = sorted(glob.glob(os.path.join(APP, "*main_part2_V*.js")))[-1]
 js = io.open(p2, encoding="utf-8").read()
-ok("ポモドーロ大表示がある", 'id="qty-pomo"' in html and "25分で区切ります" in html)
-ok("スライダーがある（5〜120・5刻み）", 'id="qty-range"' in html and 'min="5" max="120" step="5"' in html)
+ok("ポモドーロ大表示がある（V2.46文言）", 'id="qty-pomo"' in html and "25分間出題（推奨）" in html and "その後5分休憩を推奨します" in html)
+ok("スライダーは粗い7段＋目盛り常時表示（V2.46）", 'id="qty-range"' in html and 'min="0" max="6"' in html and 'id="qty-scale"' in html and ">120<" in html)
 ok("旧ロックボタンが無い", 'data-qty="120" disabled' not in html and "qty-btn is-locked" not in html)
 ok("ロック描画コードも廃止", "random_qty_unlocked;" not in js.split("refreshQtyPomo")[0][-2000:])
 ok("出どころの説明がある", "まだ解いていない問題から、弱点と頻出の優先順で出します" in html)
@@ -40,15 +40,15 @@ with sync_playwright() as p:
       await new Promise(r2 => setTimeout(r2, 400));
       const rng = document.getElementById('qty-range');
       const out = { init: rng.value, initLabel: document.getElementById('qty-range-val').textContent };
-      /* スライダーを50問へ（新規データでもロックされない） */
-      rng.value = '50';
+      /* スライダーを50問（=4段目）へ（新規データでもロックされない） */
+      rng.value = '4';
       rng.dispatchEvent(new Event('input', { bubbles: true }));
       await new Promise(r2 => setTimeout(r2, 200));
       out.label50 = document.getElementById('qty-range-val').textContent;
       /* ポモドーロOFF→表示が変わりmetaも変わる */
       document.getElementById('qty-pomo').click();
       await new Promise(r2 => setTimeout(r2, 400));
-      out.pomoOffText = document.querySelector('#qty-pomo .qty-pomo-big').textContent;
+      out.pomoOffText = document.getElementById('qty-pomo-big').textContent;
       out.metaOff = (await S.loadMeta()).pomodoro_enabled;
       document.getElementById('qty-pomo').click();
       await new Promise(r2 => setTimeout(r2, 400));
@@ -58,7 +58,7 @@ with sync_playwright() as p:
       out.started = !!(sess && sess.questions && sess.questions.length > 10);
       return out;
     }""")
-    ok("初期値10問", r["init"] == "10" and r["initLabel"] == "10問", json.dumps(r, ensure_ascii=False))
+    ok("初期値10問（=1段目）", r["init"] == "1" and r["initLabel"] == "10問", json.dumps(r, ensure_ascii=False))
     ok("新規データでも50問に動かせる", r["label50"] == "50問", json.dumps(r, ensure_ascii=False))
     ok("ポモドーロON/OFFが大表示から切り替わる",
        "時間では区切りません" in r["pomoOffText"] and r["metaOff"] is False and r["metaOn"] is True,

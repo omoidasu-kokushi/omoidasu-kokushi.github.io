@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.45">
+<link rel="stylesheet" href="./styles.css?v=2.46">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.45",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=2.46",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.45",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=2.46",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.45",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=2.46",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.45",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
+    { file: "./drive.js?v=2.46",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.45",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=2.46",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -467,7 +467,7 @@
           ・<a href="./terms.html" target="_blank" rel="noopener">利用規約</a>
           ・<a href="./about.html" target="_blank" rel="noopener">このアプリについて</a>
         </p>
-        <p class="build-stamp">20260906_Omoidasu_V2.45</p>
+        <p class="build-stamp">20260906_Omoidasu_V2.46</p>
       </div>
     </section>
 
@@ -672,14 +672,20 @@
              問題数はその下のスライダー（二回り小さく）。ロックは廃止
              （初回10問解放制は「押せないボタンが並ぶ＝死んで見える」だけだった）。 -->
         <div class="qty-block" id="qty-block">
+          <!-- V2.46：文言は利用者指定。スライダーは粗い7段
+               （5/10/20/30/50/80/120）で、目盛りの数字を常時表示＝
+               「ここに持ってくると○○問」がパッと見で分かる -->
           <button type="button" class="qty-pomo" id="qty-pomo" aria-pressed="true">
-            <span class="qty-pomo-big">🍅 25分で区切ります</span>
-            <span class="qty-pomo-sub" id="qty-pomo-sub">ポモドーロON。25分たつと休憩をおすすめします（タップでON/OFF）</span>
+            <span class="qty-pomo-big" id="qty-pomo-big">⏲ 25分間出題（推奨）</span>
+            <span class="qty-pomo-sub" id="qty-pomo-sub">ポモドーロ機能。その後5分休憩を推奨します。（タップでON/OFF）</span>
           </button>
           <div class="qty-slider-row">
             <label class="qty-label" for="qty-range">出題数設定：<b id="qty-range-val">10問</b></label>
-            <input type="range" id="qty-range" min="5" max="120" step="5" value="10"
+            <input type="range" id="qty-range" min="0" max="6" step="1" value="1"
                    aria-label="出題数設定">
+            <div class="qty-scale" id="qty-scale" aria-hidden="true">
+              <span>5</span><span>10</span><span>20</span><span>30</span><span>50</span><span>80</span><span>120</span>
+            </div>
           </div>
           <p class="qty-note" id="qty-note">まだ解いていない問題から、弱点と頻出の優先順で出します。途中でホームに戻っても、解いたぶんは残ります。</p>
         </div>
@@ -1332,7 +1338,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260906_Omoidasu_V2.45 / cache v2.45.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260906_Omoidasu_V2.46 / cache v2.46.0</p>
         </section>
       </div>
     </section>
@@ -1943,12 +1949,12 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.45"></script>
-<script src="./storage.js?v=2.45"></script>
-<script src="./scheduler.js?v=2.45"></script>
+<script src="./questions.js?v=2.46"></script>
+<script src="./storage.js?v=2.46"></script>
+<script src="./scheduler.js?v=2.46"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.45"></script>
-<script src="./license.js?v=2.45"></script>
+<script src="./drive.js?v=2.46"></script>
+<script src="./license.js?v=2.46"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>
