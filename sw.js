@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v2.66.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
+const CACHE_NAME = 'v2.67.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,12 +25,12 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=2.66',
-  './questions.js?v=2.66',
-  './storage.js?v=2.66',
-  './scheduler.js?v=2.66',
-  './drive.js?v=2.66',
-  './license.js?v=2.66',
+  './styles.css?v=2.67',
+  './questions.js?v=2.67',
+  './storage.js?v=2.67',
+  './scheduler.js?v=2.67',
+  './drive.js?v=2.67',
+  './license.js?v=2.67',
   './20260815_main_part1_V1.38.js',
   './20260815_main_part2_V1.45.js',
   './about.html',
@@ -67,7 +67,10 @@ const OPTIONAL_ASSETS = [
   './images/sentakushi/113_pm66.png',
   './images/sentakushi/114_am39.png',
   './images/sentakushi/115_am16.png',
-  './images/sentakushi/115_am22.png'
+  './images/sentakushi/115_am22.png',
+  /* V2.67：choice_count_0 と分類されていたが、実際は選択肢が図だった2問 */
+  './images/sentakushi/112_pm95.png',
+  './images/sentakushi/114_am41.png'
 ];
 
 self.addEventListener('install', (event) => {
