@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v2.64.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
+const CACHE_NAME = 'v2.65.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,12 +25,12 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=2.64',
-  './questions.js?v=2.64',
-  './storage.js?v=2.64',
-  './scheduler.js?v=2.64',
-  './drive.js?v=2.64',
-  './license.js?v=2.64',
+  './styles.css?v=2.65',
+  './questions.js?v=2.65',
+  './storage.js?v=2.65',
+  './scheduler.js?v=2.65',
+  './drive.js?v=2.65',
+  './license.js?v=2.65',
   './20260815_main_part1_V1.38.js',
   './20260815_main_part2_V1.45.js',
   './about.html',
@@ -46,9 +46,17 @@ const CORE_ASSETS = [
   './icons/ogp.png'
 ];
 
-/* 取れなくても本体は動く資産（図解エンジンなど） */
+/* 取れなくても本体は動く資産（図解エンジン・別冊の線画など） */
+/* 別冊画像（V2.65）を CORE ではなく OPTIONAL に置く理由：
+   CORE は1件でも取れないとインストールごと失敗し、オフライン動作が丸ごと死ぬ。
+   別冊画像が無くても本体は動く（画像アコーディオンが出ないだけ）。
+   4枚で271KB。厚労省の線画のみで、写真・医用画像は同梱していない。 */
 const OPTIONAL_ASSETS = [
-  './vendor/mermaid.min.js'
+  './vendor/mermaid.min.js',
+  './images/bessatsu/111_am81.png',
+  './images/bessatsu/113_am23.png',
+  './images/bessatsu/114_am13.png',
+  './images/bessatsu/114_am107.png'
 ];
 
 self.addEventListener('install', (event) => {

@@ -4179,6 +4179,7 @@
     applyVisualTheme: applyVisualTheme,
     setHeaderCrumb: setHeaderCrumb,
     renderTally: renderTally,        /* V2.58 */
+    renderImageAccordion: renderImageAccordion,   /* V2.65 */
     casePositionIn: casePositionIn,   /* V2.56 */
     updateScanMeter: updateScanMeter,
     refreshScanSlot: refreshScanSlot,
