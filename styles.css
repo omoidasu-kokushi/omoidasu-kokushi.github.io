@@ -4049,12 +4049,20 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 /* ==========================================================================
    57. 選択肢ごとの解説を畳む（V1.44）
    ========================================================================== */
-.cx-exp{ margin-top:4px; }
+/* V2.53：この帯は「解説を読む」と「評価する」が縦に隣り合う。
+   実測で両者の隙間は4px、ボタンは 77×24 しかなく、
+   解説を開こうとして「難しい」を押してしまえる配置だった。
+   評価は忘却スケジュールを直接動かすので、誤タップの代償が大きい。
+   幅いっぱい・44px にして、評価ボタンとの間に12pxのすき間を置く。 */
+.cx .cx-exp{ margin:8px 0 12px; }   /* .cx .cx-exp{margin-top:1px}（高密度化・上）に
+                                       詳細度で勝つ必要がある。1pxだと上のボタンと
+                                       くっついて、やはり押し間違える。 */
 .cx-exp > summary{
-  display:inline-flex; align-items:center; gap:4px;
-  padding:3px 10px; border-radius:var(--r-pill);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  width:100%; min-height:44px; padding:8px 12px;
+  border-radius:var(--r-md, 10px);
   background:var(--surface-3); border:1px solid var(--border);
-  color:var(--text-sub); font-size:var(--fs-xs); font-weight:700;
+  color:var(--text-sub); font-size:var(--fs-sm); font-weight:700;
   cursor:pointer; list-style:none;
 }
 .cx-exp > summary::-webkit-details-marker{ display:none; }

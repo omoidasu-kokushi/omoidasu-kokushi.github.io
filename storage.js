@@ -1475,6 +1475,43 @@
     return !!_tagSet[tag];
   }
 
+  /* --- 助詞が英単語に化けた本文（V2.54） ---
+     作問パイプラインの出力に、助詞が英訳されて混ざる。
+       肝臓 is、体内の…      →「肝臓は、…」
+       発達段階 of の組合せ  →「発達段階の組合せ」
+     実測：同梱シード84箇所（V1.86までに修正済）、配布176問で23箇所。
+     Quality of Life のような本物の英語を巻き込まないよう、
+     **日本語文字に挟まれているときだけ**数える。 */
+  var GARBLE_JP = '[぀-ヿ一-鿿ー々、。：；・（）「」]';
+  function garbleCheckInto(report, q, atoms, lineNo) {
+    if (!report.garble_examples) { report.garble_examples = []; }
+    var rx = new RegExp(GARBLE_JP + '\\s?\\b(is|of|the|and|or|to|in|for|with|by)\\b\\s?' +
+                        GARBLE_JP, 'g');
+    var texts = [q && q.stem, q && q.overall_explanation];
+    (atoms || []).forEach(function (a) {
+      texts.push(a && a.text); texts.push(a && a.statement); texts.push(a && a.explanation);
+    });
+    var found = 0, sample = null, m, t, i;
+    for (i = 0; i < texts.length; i++) {
+      t = texts[i];
+      if (!t) { continue; }
+      t = String(t);
+      rx.lastIndex = 0;
+      while ((m = rx.exec(t))) {
+        found++;
+        if (!sample) {
+          sample = t.slice(Math.max(0, m.index - 12), m.index + m[0].length + 12);
+        }
+      }
+    }
+    if (!found) { return; }
+    report.garble_bad = (report.garble_bad || 0) + found;
+    report.garble_rows = (report.garble_rows || 0) + 1;
+    if (report.garble_examples.length < 3) {
+      report.garble_examples.push((lineNo ? lineNo + '件目：' : '') + sample);
+    }
+  }
+
   function tagCheckInto(report, atoms, lineNo) {
     var seen = {};
     (atoms || []).forEach(function (a) {
@@ -1531,6 +1568,7 @@
         total_lines: 0, parsed: 0, imported: 0, updated: 0,
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
         tax_bad: 0, tax_examples: [],
+        garble_bad: 0, garble_rows: 0, garble_examples: [],
         tag_bad: 0, tag_bad_rows: 0, tag_examples: [],
         errors: [], warnings: [], messages: []
       };
@@ -1573,6 +1611,7 @@
 
         report.parsed++;
         taxCheckInto(report, built.question, i + 1);
+        garbleCheckInto(report, built.question, built.atoms, i + 1);
         tagCheckInto(report, built.atoms, i + 1);
         if (built.question.verify_status === 'unverified') { report.unverified++; }
         (built.warnings || []).forEach(function (w) {
@@ -1622,6 +1661,7 @@
         skipped: 0, mismatch: 0, atoms: 0, unverified: 0,
         pool_main: 0, pool_mock: 0,
         tax_bad: 0, tax_examples: [],
+        garble_bad: 0, garble_rows: 0, garble_examples: [],
         tag_bad: 0, tag_bad_rows: 0, tag_examples: [],
         errors: [], warnings: [], messages: []
       };
@@ -1698,6 +1738,7 @@
 
         report.parsed++;
         taxCheckInto(report, qq, idx + 1);
+        garbleCheckInto(report, qq, atoms, idx + 1);
         tagCheckInto(report, atoms, idx + 1);
         /* 取り込み結果にプールの内訳を出す（V1.56）。
            出さないと「模試用のつもりが本体へ入っていた」に気づけない。

@@ -2957,6 +2957,15 @@ var QR_MATRIX = [
                    '最優先克服概念にも出てきません。例：' +
                    esc((rep.tag_examples || []).join(' ／ ')) + '</small>');
       }
+      /* 本文の化け（V2.54）。分類・タグと違い、これは**画面にそのまま出る**。
+         「肝臓 is、体内の…」を読まされるのは利用者なので、必ず知らせる。 */
+      if (rep.garble_bad) {
+        lines.push('<b>⚠ 助詞が英単語に化けている疑い ' + rep.garble_bad + ' 箇所（' +
+                   (rep.garble_rows || 0) + ' 問）</b>');
+        lines.push('<small>「肝臓 is」「段階 of の」のように、助詞が英語になっています。' +
+                   'そのまま画面に出ます。例：' +
+                   esc((rep.garble_examples || []).join(' ／ ')) + '</small>');
+      }
       if (rep.skipped) {
         lines.push('<b>スキップ ' + rep.skipped + ' 行</b>（うち正解判定の不一致 ' + rep.mismatch + ' 行）');
       }
