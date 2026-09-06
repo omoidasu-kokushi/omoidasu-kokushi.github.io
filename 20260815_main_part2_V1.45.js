@@ -2934,6 +2934,9 @@ var QR_MATRIX = [
         /* 問題を取り込んだ＝この端末に価値が乗った。ここでも要求する（V1.60）。
            すでに許可されていれば storage.js 側が何もしない。 */
         S.requestPersist().then(function () { return refreshStorage(); }).catch(noop);
+        /* V2.43：新しく入った問題にも一問一答の分割印を追いかけて付ける
+           （裁定＝自動適用を既定化）。既に付いた印はそのまま。 */
+        S.autoMarkSplittable().catch(noop);
       }
 
       return K.refreshAll({ recomputeWeakness: true });
@@ -6177,6 +6180,19 @@ var QR_MATRIX = [
        途中で閉じていた場合はチェックポイント復帰ダイアログを先に出す。 */
     return Promise.all([S.countLogs(), S.loadMeta(), S.countQuestions()]).then(function (r) {
       var logs = r[0], meta = r[1], totalQ = r[2];
+
+      /* --- 一問一答の分割印を自動で付ける（V2.43・裁定＝自動適用を既定化） ---
+         印はずっと既定false＝手動実行制で、実際に付けた人はいなかった
+         （453問すべて印なし＝一問一答は一度も出ない）。起動時に1回だけ
+         自動判定を全問へ適用する。以後の新規取り込み分は取り込み成功時に
+         追いかける（下のrunImport側）。嫌なら設定「一問一答の出しかた」の
+         「常に4択で出す」でOFF、または「全部外す」で戻せる。
+         起動を待たせないよう非同期・失敗しても起動は通す。 */
+      if (totalQ && !meta.auto_split_done) {
+        S.autoMarkSplittable().then(function (d) {
+          return S.setMeta('auto_split_done', true).then(function () { return d; });
+        }).catch(noop);
+      }
 
       /* IndexedDB が完全に空なら、同梱シードを1度だけ取り込む。
          データ0件では「問1」が存在せず、初回起動が空白で終わってしまう。 */
