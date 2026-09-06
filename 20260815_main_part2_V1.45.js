@@ -281,7 +281,8 @@
     dashboard : { level: 'sub_item', metric: 'retention', cfilter: 'low' },
     search    : { keyword: '', hits: [], cfilter: 'low' },
     starred   : { filter: 'all', lv: 0,      /* lv=0は全段階（V2.36） */
-                  kw: '', exam: '', unit: '', major: '', medium: '', sub: '', tag: '' },   /* V2.41 検索 */
+                  kw: '', exam: '', unit: '', major: '', medium: '', sub: '', tag: '',    /* V2.41 検索 */
+                  flt: { major: '', medium: '', sub: '', tag: '' } },   /* V2.47 選択肢の絞り */
     random    : { scope: null, count: 10, units: [] },
     knock     : { tag: null, minutes: 5, endsAt: 0, tick: null, solved: 0 },
     memo      : null,
@@ -1970,17 +1971,27 @@ var QR_MATRIX = [
     return m ? ('第' + m[1] + '回') : '';
   }
   /* 絞り込みselectの選択肢は「★が付いている問題」から作る。
-     全問題から作ると、選んでも0件の選択肢だらけになる。 */
+     全問題から作ると、選んでも0件の選択肢だらけになる。
+
+     V2.47：階層連動。単元を選ぶと大項目はその配下だけ、大項目を選ぶと
+     中項目はその配下だけ…と絞られる（選べない選択肢を並べない）。
+     さらに大項目・中項目・小項目・タグは、上の小さな欄のキーワードで
+     選択肢そのものを絞れる（タグが多すぎて選べない問題への答え）。 */
   function fillStarFilterOptions(list) {
+    var sf = st.starred;
     var sets = { exam: {}, unit: {}, major: {}, medium: {}, sub: {}, tag: {} };
     list.forEach(function (x) {
       var q = x.question;
       var ex = starExamOf(q);
       if (ex) { sets.exam[ex] = 1; }
       if (q.unit) { sets.unit[q.unit] = 1; }
-      if (q.major) { sets.major[q.major] = 1; }
-      if (q.medium) { sets.medium[q.medium] = 1; }
-      if (q.sub_item) { sets.sub[q.sub_item] = 1; }
+      /* 階層連動：親の選択に合う問題だけが子の選択肢を提供する */
+      var inUnit = !sf.unit || q.unit === sf.unit;
+      var inMajor = inUnit && (!sf.major || q.major === sf.major);
+      var inMedium = inMajor && (!sf.medium || q.medium === sf.medium);
+      if (inUnit && q.major) { sets.major[q.major] = 1; }
+      if (inMajor && q.medium) { sets.medium[q.medium] = 1; }
+      if (inMedium && q.sub_item) { sets.sub[q.sub_item] = 1; }
       (q.atoms || []).forEach(function (a) {
         (a.tags || []).forEach(function (t) { sets.tag[t] = 1; });
       });
@@ -1990,20 +2001,32 @@ var QR_MATRIX = [
     Object.keys(map).forEach(function (k) {
       var sel = $(map[k]);
       if (!sel) { return; }
-      var cur = st.starred[k === 'sub' ? 'sub' : k];
+      var key = (k === 'sub') ? 'sub' : k;
+      var cur = sf[key];
       var vals = Object.keys(sets[k]).sort();
+      /* 選択肢キーワード（大項目・中項目・小項目・タグのみ）。
+         いま選んでいる値は、キーワードに合わなくても残す（選択が黙って消えると
+         「絞ったのに増えた」級の混乱になる）。 */
+      var flt = (sf.flt && sf.flt[key] || '').trim().toLowerCase();
+      if (flt) {
+        vals = vals.filter(function (v) {
+          return v.toLowerCase().indexOf(flt) >= 0 || v === cur;
+        });
+      }
       sel.innerHTML = '<option value="">すべて</option>' + vals.map(function (v) {
         return '<option value="' + esc(v) + '">' + esc(v) + '</option>';
       }).join('');
       sel.value = vals.indexOf(cur) >= 0 ? cur : '';
-      if (sel.value !== cur) { st.starred[k === 'sub' ? 'sub' : k] = sel.value; }
+      if (sel.value !== cur) { sf[key] = sel.value; }
     });
   }
   function clearStarFilters() {
     st.starred.kw = ''; st.starred.exam = ''; st.starred.unit = '';
     st.starred.major = ''; st.starred.medium = ''; st.starred.sub = ''; st.starred.tag = '';
+    st.starred.flt = { major: '', medium: '', sub: '', tag: '' };
     var inp = $('#star-search');
     if (inp) { inp.value = ''; }
+    $$('.star-f-search').forEach(function (i2) { i2.value = ''; });
     return renderStarredNote();
   }
 
@@ -5880,14 +5903,29 @@ var QR_MATRIX = [
         renderStarredNote();
       }, 220);
     });
+    /* V2.47：親を選び直したら、配下の選択はリセット（存在しない組合せを残さない） */
+    var STAR_CHILDREN = { unit: ['major', 'medium', 'sub'], major: ['medium', 'sub'], medium: ['sub'] };
     [['#star-f-exam', 'exam'], ['#star-f-unit', 'unit'], ['#star-f-major', 'major'],
      ['#star-f-medium', 'medium'], ['#star-f-sub', 'sub'], ['#star-f-tag', 'tag']]
       .forEach(function (pair) {
         on($(pair[0]), 'change', function (ev) {
           st.starred[pair[1]] = ev.target.value || '';
+          (STAR_CHILDREN[pair[1]] || []).forEach(function (c) { st.starred[c] = ''; });
           renderStarredNote();
         });
       });
+    var starFltTimer = null;
+    on($('#star-adv'), 'input', function (ev) {
+      var i2 = ev.target.closest('.star-f-search');
+      if (!i2) { return; }
+      var key = i2.getAttribute('data-flt');
+      global.clearTimeout(starFltTimer);
+      var v = i2.value || '';
+      starFltTimer = global.setTimeout(function () {
+        st.starred.flt[key] = v;
+        renderStarredNote();
+      }, 200);
+    });
     on($('#star-f-clear'), 'click', function () { clearStarFilters(); });
 
     /* --- ★ノート --- */
