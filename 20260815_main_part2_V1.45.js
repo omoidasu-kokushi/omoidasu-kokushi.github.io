@@ -5257,7 +5257,7 @@ var QR_MATRIX = [
       step.textContent = ov('g.' + id + '.step', def.step || '');
 
       M.Half2.showCoachMark(def.sel, ov('g.' + id + '.text', def.text), {
-        place: def.place, nextLabel: 'わかった', bounce: !!def.bounce
+        place: def.place, nextLabel: 'OK', bounce: !!def.bounce
       });
       st.onboard.next = function () { dismissTip(); };
 
@@ -5418,7 +5418,7 @@ var QR_MATRIX = [
     layer.hidden = false;
     setText('#onb-text', text);
     var nx = $('#onb-next');
-    if (nx) { nx.textContent = opts.nextLabel || '次へ'; nx.hidden = !!opts.hideNext; }
+    if (nx) { nx.textContent = opts.nextLabel || 'OK'; nx.hidden = !!opts.hideNext; }   /* V2.42 既定をOKに */
 
     if (!target) {
       spot.style.cssText = 'width:0;height:0;top:50%;left:50%';
@@ -6140,15 +6140,8 @@ var QR_MATRIX = [
         f();
       }
     });
-    on($('#onb-skip'), 'click', function () {
-      hideCoachMark();
-      st.onboard.active = false;
-      M.hooks.afterCommit = null;
-      M.hooks.onFinish = null;
-      S.setMetaBulk({ onboarding_done: true, tutorial_finished: true, random_qty_unlocked: true });
-      M.endSession();
-      M.go('home', { replace: true }).then(function () { return M.refreshHome(); });
-    });
+    /* #onb-skip はV2.42で廃止（利用者指示）。中断したい人はアプリを
+       閉じればチェックポイント復帰（V8.01 §8-4）が受け止める。 */
     on($('#resume-continue'), 'click', function () {
       closeModals();
       S.getMeta('tutorial_answered', 0).then(function (n) { startOnboarding(n); });
