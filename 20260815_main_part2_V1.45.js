@@ -3520,43 +3520,125 @@ var QR_MATRIX = [
      （text_overrides の g.<key>.step / .text）もそのまま反映される。
      ui: は見本のボタン（押せない・本物と同じCSSクラス）。 */
   var GUIDE_UI = {
+    /* --- 部品の見本 --- */
     confirm: '<button type="button" class="btn-confirm" tabindex="-1">解答を確定する</button>',
     eval: '<button type="button" class="eval-btn eval-hard is-active" tabindex="-1"><span class="eval-label"><b>難</b><small>しい</small></span></button>' +
           '<button type="button" class="eval-btn eval-normal" tabindex="-1"><span class="eval-label"><b>普</b><small>通</small></span></button>' +
           '<button type="button" class="eval-btn eval-easy" tabindex="-1"><span class="eval-label"><b>易</b><small>しい</small></span></button>' +
-          '<button type="button" class="eval-btn eval-master" tabindex="-1"><span class="eval-label"><b>マ</b><small>スター</small></span></button>',
+          '<button type="button" class="eval-btn eval-master" tabindex="-1" disabled><span class="eval-label"><b>マ</b><small>スター</small></span></button>',
     next: '<button type="button" class="btn-next" tabindex="-1"><span class="btn-next-label">この評価で次へ</span><span class="btn-next-arrow" aria-hidden="true">▶</span></button>',
-    q_star: '<button type="button" class="star-btn" tabindex="-1">☆</button> → <button type="button" class="star-btn is-on" aria-pressed="true" tabindex="-1">★</button>',
-    ground: '<button type="button" class="choice-mark" data-kind="ground" tabindex="-1">☐</button>（右端の欄外にあります）',
+    q_star: '<button type="button" class="star-btn" tabindex="-1">☆</button>→' +
+            '<button type="button" class="star-btn" data-star-level="1" tabindex="-1">★</button>→' +
+            '<button type="button" class="star-btn" data-star-level="2" tabindex="-1">★2</button>→…→' +
+            '<button type="button" class="star-btn" data-star-level="5" tabindex="-1">★5</button>→' +
+            '<button type="button" class="star-btn" data-star-level="0" tabindex="-1">☆</button>',
+    ground: '<button type="button" class="choice-mark" data-kind="ground" tabindex="-1">☐</button>→' +
+            '<button type="button" class="choice-mark" data-kind="ground" aria-pressed="true" tabindex="-1">☑</button>（各肢の右端・欄外）',
     exam_nav: '<span class="exam-nav guide-ui-row"><button type="button" class="exam-nav-btn" tabindex="-1">◀ 前へ</button>' +
           '<button type="button" class="exam-nav-btn is-list" tabindex="-1">一覧・提出</button>' +
-          '<button type="button" class="exam-nav-btn" tabindex="-1">次へ ▶</button></span>'
+          '<button type="button" class="exam-nav-btn" tabindex="-1">次へ ▶</button></span>',
+    tagpill: '<span class="tag-pill" tabindex="-1">#人口動態統計</span><span class="tag-pill" tabindex="-1">#保健統計指標</span>',
+    memo: '<button type="button" class="cx-memo-btn" tabindex="-1">✏</button>（各肢の右）',
+    summary: '<span class="guide-ui-row"><button type="button" class="sum-dot" data-eval="hard" tabindex="-1">①</button>' +
+          '<button type="button" class="sum-dot is-touched" data-eval="normal" tabindex="-1">②</button>' +
+          '<button type="button" class="sum-dot" data-eval="easy" tabindex="-1">③</button>' +
+          '<button type="button" class="sum-dot is-star" data-eval="master" tabindex="-1">④</button></span>',
+    pomodoro: '<span class="pomo-chip" tabindex="-1"><span class="pomo-dot"></span> 24:59</span>',
+    level: '<span class="level-chip" tabindex="-1">Level 2</span><span class="level-pct">37%</span>',
+    theme: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">ライト</button>' +
+           '<button type="button" class="seg-btn" tabindex="-1">ダーク</button>' +
+           '<button type="button" class="seg-btn" tabindex="-1">セピア</button></span>',
+    dashboard: '<span class="guide-bar-sample"><span class="erg-row"><span class="erg-label">循環器</span>' +
+           '<span class="erg-bar"><i class="bar-fill lv-bad" style="width:34%"></i></span><span class="erg-num">34%</span></span>' +
+           '<span class="erg-row"><span class="erg-label">人口統計</span>' +
+           '<span class="erg-bar"><i class="bar-fill lv-good" style="width:82%"></i></span><span class="erg-num">82%</span></span></span>',
+    search: '<span class="guide-input-sample">🔍 肝硬変</span>',
+    slider: '<span class="guide-slider-sample"><b>出題数設定：30問</b><input type="range" min="5" max="120" value="30" tabindex="-1" disabled></span>',
+    star_filter: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">全段階</button>' +
+           '<button type="button" class="seg-btn" data-star-level="2" tabindex="-1">★2 再学習</button>' +
+           '<button type="button" class="seg-btn" tabindex="-1">✏ 名前</button></span>',
+
+    /* --- 画面の見本（各節の冒頭） --- */
+    screen_answer:
+      '<span class="guide-cap">解答フェーズの画面</span>' +
+      '<p class="q-stem-sample">Q. 日本の総人口について正しいのはどれか。' +
+      '<button type="button" class="star-btn" tabindex="-1">☆</button></p>' +
+      '<ul class="choice-list-sample">' +
+      '<li class="choice-card"><span class="choice-num">1</span>' +
+      '<span class="choice-text-sample">1億人を下回っている。</span>' +
+      '<button type="button" class="choice-mark" data-kind="star" tabindex="-1">☆</button></li>' +
+      '<li class="choice-card is-selected"><span class="choice-num">2</span>' +
+      '<span class="choice-text-sample">2008年をピークに減少している。</span>' +
+      '<button type="button" class="choice-mark" data-kind="star" tabindex="-1">☆</button></li>' +
+      '</ul>' +
+      '<button type="button" class="btn-confirm" tabindex="-1">解答を確定する</button>',
+    screen_explain:
+      '<span class="guide-cap">解説フェーズの画面（下のサムゾーンは固定）</span>' +
+      '<span class="guide-ui-row" style="width:100%">' +
+      '<button type="button" class="sum-dot" data-eval="hard" tabindex="-1">①</button>' +
+      '<button type="button" class="sum-dot is-touched" data-eval="normal" tabindex="-1">②</button>' +
+      '<button type="button" class="sum-dot" tabindex="-1">③</button>' +
+      '<button type="button" class="sum-dot" tabindex="-1">④</button></span>' +
+      '<span class="guide-ui-row" style="width:100%">' +
+      '<button type="button" class="eval-btn eval-hard is-active" tabindex="-1"><span class="eval-label"><b>難</b><small>しい</small></span></button>' +
+      '<button type="button" class="eval-btn eval-normal" tabindex="-1"><span class="eval-label"><b>普</b><small>通</small></span></button>' +
+      '<button type="button" class="eval-btn eval-easy" tabindex="-1"><span class="eval-label"><b>易</b><small>しい</small></span></button>' +
+      '<button type="button" class="eval-btn eval-master" tabindex="-1" disabled><span class="eval-label"><b>マ</b><small>スター</small></span></button></span>' +
+      '<button type="button" class="btn-next" tabindex="-1"><span class="btn-next-label">この評価で次へ</span><span class="btn-next-arrow">▶</span></button>',
+    screen_home:
+      '<span class="guide-cap">ホームの並び（上から毎日押す順）</span>' +
+      '<span class="guide-card-sample is-main">本日の復習　<b class="guide-badge">12</b></span>' +
+      '<span class="guide-card-sample">テーマ別 弱点ノック（5分/10分）</span>' +
+      '<span class="guide-card-sample">ランダムモード（新しい問題）</span>' +
+      '<span class="guide-card-sample">力試しモード（模試）</span>',
+    screen_exam_review:
+      '<span class="guide-cap">提出後の復習（誤答＝開く／正答＝畳む）</span>' +
+      '<span class="erg-row"><span class="erg-label">必修</span>' +
+      '<span class="erg-bar"><i class="bar-fill lv-mid" style="width:74%"></i></span><span class="erg-num">37/50</span></span>' +
+      '<span class="guide-erq-sample"><span class="er-mark is-wrong">×</span> 問12　輸血の副作用で…（解説が開いた状態）</span>' +
+      '<span class="guide-erq-sample is-closed"><span class="er-mark is-right">○</span> 問13　標準予防策で正しいのは…（タップで開く）</span>',
+    screen_starred:
+      '<span class="guide-cap">★ノート（検索と絞り込み）</span>' +
+      '<span class="guide-input-sample">🔍 ★の中を検索（問題文・選択肢・解説）</span>' +
+      '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">全段階</button>' +
+      '<button type="button" class="seg-btn" data-star-level="1" tabindex="-1">★1</button>' +
+      '<button type="button" class="seg-btn" data-star-level="2" tabindex="-1">★2</button>' +
+      '<button type="button" class="seg-btn" tabindex="-1">✏ 名前</button></span>'
   };
   var GUIDE_SECTIONS = [
     { head: '問題を解く画面',
+      ui: 'screen_answer',
       items: [ { k: 'answer' }, { k: 'confirm', ui: 'confirm' }, { k: 'q_star', ui: 'q_star' },
                { k: 'stem_expand' }, { k: 'img_toggle' }, { k: 'numeric_input' } ] },
     { head: '解説と評価',
+      ui: 'screen_explain',
       items: [ { k: 'eval', ui: 'eval' }, { k: 'next', ui: 'next' }, { k: 'qstar', ui: 'q_star' },
-               { k: 'star' }, { k: 'tagpill' }, { k: 'memo' }, { k: 'detail' },
-               { k: 'summary' }, { k: 'locked' } ] },
+               { k: 'star' }, { k: 'tagpill', ui: 'tagpill' }, { k: 'memo', ui: 'memo' },
+               { k: 'detail' }, { k: 'summary', ui: 'summary' }, { k: 'locked' } ] },
     { head: 'ホーム画面',
+      ui: 'screen_home',
       items: [ { k: 'home_review' }, { k: 'home_knock' }, { k: 'home_random' }, { k: 'home_exam' },
-               { k: 'level' }, { k: 'scan' }, { k: 'home_tip' }, { k: 'settings_btn' }, { k: 'back' } ] },
+               { k: 'level', ui: 'level' }, { k: 'scan' }, { k: 'home_tip' },
+               { k: 'settings_btn' }, { k: 'back' } ] },
     { head: 'ランダム・単元別',
-      items: [ { k: 'unit_hero' }, { k: 'qty' }, { k: 'rank_weight' }, { k: 'tree' } ] },
+      ui: 'slider',
+      items: [ { k: 'unit_hero' }, { k: 'qty', ui: 'slider' }, { k: 'rank_weight' }, { k: 'tree' } ] },
     { head: '模試（力試し）',
-      items: [ { k: 'exam' }, { k: 'ground', ui: 'ground' }, { ui: 'exam_nav', step: '前後の移動と提出',
-                text: '模試では前の問題へ戻ってやり直せます。［一覧・提出］で全問の解答状況を見て、全問に答えると提出できます。採点は提出まで走りません。' } ] },
+      ui: 'exam_nav',
+      items: [ { k: 'exam' }, { k: 'ground', ui: 'ground' },
+               { ui: 'exam_nav', step: '前後の移動と提出',
+                 text: '模試では前の問題へ戻ってやり直せます。［一覧・提出］で全問の解答状況を見て、全問に答えると提出できます。採点は提出まで走りません。' },
+               { ui: 'screen_exam_review', step: '提出後の復習',
+                 text: '採点だけでは終わりません。上に単元別の得点グラフが出て、どの単元が何点足りないかが分かります。その下に全問が並び、間違えた問題は解説つきで開いた状態、正解した問題は畳んだ状態（タップで開く）。ここで弱点を確かめてから次の学習へ進んでください。' } ] },
     { head: '検索・分析・★ノート',
-      items: [ { k: 'search' }, { k: 'solve_now' }, { k: 'dashboard' }, { k: 'starred' }, { k: 'unstar' },
+      ui: 'screen_starred',
+      items: [ { k: 'search', ui: 'search' }, { k: 'solve_now' }, { k: 'dashboard', ui: 'dashboard' },
+               { k: 'starred', ui: 'star_filter' }, { k: 'unstar' },
                { ui: 'q_star', step: '★は5段階',
-                 text: '★はタップのたびに ★1→★2→★3→★4→★5→解除 と一周します。' +
-                       'どの段階を何に使うかは自由です（例：★1=疑問、★2=再学習）。' +
-                       '各段階の名前は設定「表示のカスタマイズ＞★の段階に名前を付ける」で決められ、' +
-                       '★ノートの絞り込みと間違いノート印刷（★2だけ印刷など）に表示されます。' } ] },
+                 text: '★はタップのたびに ★1→★2→★3→★4→★5→解除 と一周し、段階ごとに色が変わります（金→橙→赤→紫→青）。どの段階を何に使うかは自由です（例：★1=疑問、★2=再学習）。段階の名前は★ノートの［✏名前］で決められ、絞り込みと間違いノート印刷（★2だけ印刷など）に表示されます。' } ] },
     { head: 'タイマー・見た目',
-      items: [ { k: 'pomodoro' }, { k: 'theme' } ] },
+      ui: 'pomodoro',
+      items: [ { k: 'pomodoro', ui: 'pomodoro' }, { k: 'theme', ui: 'theme' } ] },
     { head: '設定',
       items: [ { k: 'settings' } ] }
   ];
@@ -3571,8 +3653,10 @@ var QR_MATRIX = [
                esc(g.head) + '</button>';
       }).join(''));
       setHtml('#guide-body', secs.map(function (g, i) {
+        var headUi = g.ui && GUIDE_UI[g.ui]
+          ? '<div class="guide-ui guide-ui-screen">' + GUIDE_UI[g.ui] + '</div>' : '';
         return '<section class="guide-sec" id="gsec' + i + '">' +
-          '<h4 class="guide-sec-head">' + esc(g.head) + '</h4>' +
+          '<h4 class="guide-sec-head">' + esc(g.head) + '</h4>' + headUi +
           g.items.map(function (it) {
             var t = it.k ? TIPS[it.k] : null;
             if (it.k && !t) { return ''; }

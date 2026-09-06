@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""バッチDB：使い方を全部読む＝UI紹介型ガイド（V2.34で刷新・利用者裁定）
-V2.33のHOME_TIPS並べは意図違い（利用者：「このボタンはこう、をUIとともに」）。
-中身の正はTIPS（チュートリアルの吹き出し文）ただ1つ。見本UI付き。
-チュートリアル再実行の行は撤去（初回オンボーディングは不変）。
+"""バッチDB：使い方を全部読む＝体系的UI紹介ガイド（V2.45で増強）
+各節の冒頭に画面モック（解答画面には問題文と選択肢が見える）、ほぼ全項目に
+見本UI。模試の節に「提出後の復習」の項。中身の正はTIPSただ1つ。
 """
 import io, os, sys, glob, json
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -46,6 +45,10 @@ with sync_playwright() as p:
       const secs = document.querySelectorAll('#guide-body .guide-sec').length;
       const items = document.querySelectorAll('#guide-body .guide-item').length;
       const ui = document.querySelectorAll('#guide-body .guide-ui').length;
+      const mockStem = !!document.querySelector('#guide-body .q-stem-sample');
+      const mockChoices = document.querySelectorAll('#guide-body .choice-list-sample .choice-card').length;
+      const hasExamReview = [...document.querySelectorAll('#guide-body .guide-item-title')]
+        .some(t => t.textContent.includes('提出後の復習'));
       /* 目次ジャンプ */
       const rows = document.querySelectorAll('#guide-toc .guide-toc-row');
       const last = rows[rows.length - 1];
@@ -53,10 +56,13 @@ with sync_playwright() as p:
       last.click();
       await new Promise(r2 => setTimeout(r2, 600));
       const after = document.getElementById('guide-body').scrollTop;
-      return { groups, shown: !modal.hidden, toc, secs, items, ui, jumped: after > before };
+      return { groups, shown: !modal.hidden, toc, secs, items, ui, mockStem, mockChoices,
+               hasExamReview, jumped: after > before };
     }""")
     ok("モーダルが開き目次と本文が出る", r["shown"] and 5 <= r["toc"] <= 12 and r["secs"] == r["toc"], json.dumps(r))
-    ok("全項目が本文に並ぶ（30件以上）＋見本UIがある", r["items"] >= 30 and r["ui"] >= 5, json.dumps(r))
+    ok("全項目が本文に並ぶ（30件以上）＋見本UIが大半に付く", r["items"] >= 30 and r["ui"] >= 20, json.dumps(r))
+    ok("解答画面のモックに問題文と選択肢がある", r["mockStem"] and r["mockChoices"] >= 2, json.dumps(r))
+    ok("模試後の復習の項がある", r["hasExamReview"], json.dumps(r))
     ok("目次から末尾へ飛べる", r["jumped"], json.dumps(r))
     ok("実行時エラーなし", not errs, str(errs[:2]))
     br.close()
