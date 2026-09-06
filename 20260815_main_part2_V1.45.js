@@ -1875,13 +1875,71 @@ var QR_MATRIX = [
   }
 
   function openStarredNote() {
-    return M.go('starred').then(function () { return renderStarredNote(st.starred.filter); })
+    return M.go('starred').then(function () { return applyStarLabels(); })
+      .then(function () { return renderStarredNote(st.starred.filter); })
       .then(function (r) {
         global.setTimeout(function () {
           tip('starred').then(function (shown) { return shown ? true : tip('unstar'); });
         }, 500);
         return r;
       });
+  }
+
+  /* --- ★の段階名（V2.38） -------------------------------------------
+     meta.star_labels = ['疑問','再学習','','',''] のような5要素。
+     未設定の段階は「★n」のまま。どう使うかは利用者の自由（裁定）。 */
+  var starLabelsCache = null;
+  function loadStarLabels() {
+    if (starLabelsCache) { return Promise.resolve(starLabelsCache); }
+    return S.getMeta('star_labels', null).then(function (v) {
+      starLabelsCache = (Array.isArray(v) && v.length === 5) ? v : ['', '', '', '', ''];
+      return starLabelsCache;
+    });
+  }
+  function starLabelText(lv, labels) {
+    var name = labels && labels[lv - 1];
+    return '★' + lv + (name ? ' ' + name : '');
+  }
+  function applyStarLabels() {
+    return loadStarLabels().then(function (labels) {
+      $$('#star-lv-filter .seg-btn[data-lvfilter]').forEach(function (b) {
+        var lv = Number(b.getAttribute('data-lvfilter'));
+        if (lv >= 1) { b.textContent = starLabelText(lv, labels); }
+      });
+      var sel = $('#note-starlv');
+      if (sel) {
+        $$('option', sel).forEach(function (o) {
+          var lv = Number(o.value);
+          if (lv >= 1) { o.textContent = starLabelText(lv, labels) + ' だけ'; }
+        });
+      }
+      return labels;
+    });
+  }
+  function openStarLabels() {
+    return loadStarLabels().then(function (labels) {
+      setHtml('#star-label-rows', [1, 2, 3, 4, 5].map(function (lv) {
+        return '<label class="note-row"><span>★' + lv + '</span>' +
+          '<input type="text" class="set-select star-label-input" maxlength="10"' +
+          ' data-lv="' + lv + '" value="' + esc(labels[lv - 1] || '') + '"' +
+          ' placeholder="（名前なし）"></label>';
+      }).join(''));
+      openModal('#modal-star-labels');
+      return labels;
+    });
+  }
+  function saveStarLabels() {
+    var labels = ['', '', '', '', ''];
+    $$('#star-label-rows .star-label-input').forEach(function (i2) {
+      var lv = Number(i2.getAttribute('data-lv'));
+      if (lv >= 1 && lv <= 5) { labels[lv - 1] = (i2.value || '').trim().slice(0, 10); }
+    });
+    return S.setMeta('star_labels', labels).then(function () {
+      starLabelsCache = labels;
+      closeModals();
+      toast('★の段階名を保存しました', 2200);
+      return applyStarLabels();
+    });
   }
 
   /* V2.35：★の段階表示（part1のstarGlyphと同じ規則） */
@@ -3407,7 +3465,12 @@ var QR_MATRIX = [
       items: [ { k: 'exam' }, { k: 'ground', ui: 'ground' }, { ui: 'exam_nav', step: '前後の移動と提出',
                 text: '模試では前の問題へ戻ってやり直せます。［一覧・提出］で全問の解答状況を見て、全問に答えると提出できます。採点は提出まで走りません。' } ] },
     { head: '検索・分析・★ノート',
-      items: [ { k: 'search' }, { k: 'solve_now' }, { k: 'dashboard' }, { k: 'starred' }, { k: 'unstar' } ] },
+      items: [ { k: 'search' }, { k: 'solve_now' }, { k: 'dashboard' }, { k: 'starred' }, { k: 'unstar' },
+               { ui: 'q_star', step: '★は5段階',
+                 text: '★はタップのたびに ★1→★2→★3→★4→★5→解除 と一周します。' +
+                       'どの段階を何に使うかは自由です（例：★1=疑問、★2=再学習）。' +
+                       '各段階の名前は設定「表示のカスタマイズ＞★の段階に名前を付ける」で決められ、' +
+                       '★ノートの絞り込みと間違いノート印刷（★2だけ印刷など）に表示されます。' } ] },
     { head: 'タイマー・見た目',
       items: [ { k: 'pomodoro' }, { k: 'theme' } ] },
     { head: '設定',
@@ -5458,6 +5521,8 @@ var QR_MATRIX = [
     qrSvg: qrSvg,                        printCredit: printCredit,
     noteSheetsFor: noteSheetsFor,        limitNoteItems: limitNoteItems,
     collectNoteItems: collectNoteItems,
+    openStarLabels: openStarLabels,      saveStarLabels: saveStarLabels,
+    applyStarLabels: applyStarLabels,
     gradeExam: gradeExam,                showExamResult: showExamResult,
     buildReportSheet: buildReportSheet,  runPrintReport: runPrintReport,
     renderConflictList: renderConflictList,  openSyncConflicts: openSyncConflicts,
@@ -5836,7 +5901,9 @@ var QR_MATRIX = [
     on($('#btn-contact-close'), 'click', function () { hide('#modal-contact'); });
     on($('#btn-drive-save-id'), 'click', function () { saveDriveClientId(); });
     on($('#btn-ics'),          'click', function () { exportReviewCalendar(); });
-    on($('#btn-note-print'),   'click', function () {
+    on($('#btn-star-labels'), 'click', function () { openStarLabels(); });
+    on($('#star-labels-save'), 'click', function () { saveStarLabels(); });
+    on($('#btn-note-print'),   'click', function () { applyStarLabels();
       openModal('#modal-note');
       refreshNoteCount();
     });
