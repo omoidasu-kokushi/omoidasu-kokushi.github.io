@@ -2298,6 +2298,14 @@ body.is-knock #knock-hud{ z-index:58; }
 .vp-mark{ display:block; font-size:2.6rem; font-weight:800; line-height:1; margin-bottom:4px; }
 .vp-title{ display:block; font-size:var(--fs-xl); font-weight:800; letter-spacing:.02em; }
 .vp-answer{ margin-top:7px; font-size:var(--fs-sm); color:var(--text-sub); line-height:1.55; }
+/* V2.59：肢ごとの評価を促す一行。正解／不正解の判定そのものより弱く見せる
+   （ここが目立ちすぎると、答えが合っていたかどうかが読み取れなくなる）。 */
+.vp-coach{
+  margin:9px -8px -4px; padding:8px 10px 7px;
+  border-top:1px solid var(--border);
+  font-size:var(--fs-sm); line-height:1.5; color:var(--text-sub);
+}
+.vp-coach b{ color:var(--text); }
 .verdict-pop.is-correct .vp-card{ border-color:var(--c-easy); }
 .verdict-pop.is-correct .vp-mark,
 .verdict-pop.is-correct .vp-title{ color:var(--c-easy); }

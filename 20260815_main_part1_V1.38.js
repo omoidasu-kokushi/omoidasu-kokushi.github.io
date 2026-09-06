@@ -2508,11 +2508,31 @@
       return '<b>' + circled(a.original_num) + ' ' + escapeHtml(a.text) + '</b>';
     }).join(' と '));
 
+    /* --- 肢ごとの評価を促す一行（V2.59・利用者裁定） ---
+       評価軸は「その選択肢の裏回答が言えたか」（§4-③）であって正誤ではない。
+       正解／不正解を見た直後が、いちばんその区別を取り違える瞬間なので、
+       ここで一度だけ言い直す。次へは塞がない（案B・Cは採らなかった）。
+
+       肢が1本の出題（一問一答）では出さない。
+       「選択肢ごと」という言い回しが、そもそも当てはまらないため。 */
+    var coach = $('#vp-coach');
+    var multi = cur.atoms && cur.atoms.length > 1;
+    if (coach) {
+      if (multi) {
+        coach.innerHTML = right
+          ? '説明できなかった選択肢は <b>［難しい］</b> を押して、もう一度'
+          : '説明できた選択肢は <b>［普通］</b> か <b>［易しい］</b> を押しておこう';
+      }
+      coach.hidden = !multi;
+    }
+
     pop.className = 'verdict-pop ' + (right ? 'is-correct' : 'is-wrong');
     pop.hidden = false;
 
-    /* 正解0.6秒／不正解1.6秒／複数正解2.4秒 */
-    var ms = right ? 600 : (correctAtoms.length > 1 ? 2400 : 1600);
+    /* 正解0.6秒／不正解1.6秒／複数正解2.4秒。
+       V2.59：案内を足したぶん、正解は 0.6 秒では読めない（30字ある）。
+       案内を出すときだけ 1.8 秒にする。指は通るので待たせてはいない。 */
+    var ms = right ? (multi ? 1800 : 600) : (correctAtoms.length > 1 ? 2400 : 1600);
     global.clearTimeout(verdictTimer);
     verdictTimer = global.setTimeout(function () { hideVerdictPopup(); }, ms);
   }
