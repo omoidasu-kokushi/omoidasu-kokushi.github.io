@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v2.72.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
+const CACHE_NAME = 'v2.73.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,12 +25,12 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=2.72',
-  './questions.js?v=2.72',
-  './storage.js?v=2.72',
-  './scheduler.js?v=2.72',
-  './drive.js?v=2.72',
-  './license.js?v=2.72',
+  './styles.css?v=2.73',
+  './questions.js?v=2.73',
+  './storage.js?v=2.73',
+  './scheduler.js?v=2.73',
+  './drive.js?v=2.73',
+  './license.js?v=2.73',
   './20260815_main_part1_V1.38.js',
   './20260815_main_part2_V1.45.js',
   './about.html',
@@ -70,7 +70,26 @@ const OPTIONAL_ASSETS = [
   './images/sentakushi/115_am22.png',
   /* V2.67：choice_count_0 と分類されていたが、実際は選択肢が図だった2問 */
   './images/sentakushi/112_pm95.png',
-  './images/sentakushi/114_am41.png'
+  './images/sentakushi/114_am41.png',
+  /* V2.73：**問題文の側**に図がある16問。ここまで誰も拾っておらず、
+     図が無いまま配れば「図の③はどれか」に答えようがなかった。
+     線画・グラフ・表のみ。写真（第111回午前問37）は同梱していない。 */
+  './images/stem/111_am11.png',
+  './images/stem/111_am18.png',
+  './images/stem/111_am77.png',
+  './images/stem/112_pm25.png',
+  './images/stem/112_pm39.png',
+  './images/stem/112_pm73.png',
+  './images/stem/113_am27.png',
+  './images/stem/113_am34.png',
+  './images/stem/113_am35.png',
+  './images/stem/113_pm77.png',
+  './images/stem/114_am30.png',
+  './images/stem/114_pm45.png',
+  './images/stem/114_pm55.png',
+  './images/stem/114_pm80.png',
+  './images/stem/115_pm28.png',
+  './images/stem/115_pm77.png'
 ];
 
 self.addEventListener('install', (event) => {
