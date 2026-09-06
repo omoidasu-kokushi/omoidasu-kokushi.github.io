@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""バッチDB：使い方を全部読む＝目次つき縦スクロール（V2.33・利用者裁定）
-「チュートリアルもう一度」より「知りたい所だけ拾い読み」。中身の正はHOME_TIPS
-ただ1つ（二重管理しない）。文言の自分直し（text_overrides）も反映される。
+"""バッチDB：使い方を全部読む＝UI紹介型ガイド（V2.34で刷新・利用者裁定）
+V2.33のHOME_TIPS並べは意図違い（利用者：「このボタンはこう、をUIとともに」）。
+中身の正はTIPS（チュートリアルの吹き出し文）ただ1つ。見本UI付き。
+チュートリアル再実行の行は撤去（初回オンボーディングは不変）。
 """
 import io, os, sys, glob, json
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -14,10 +15,10 @@ html = io.open(os.path.join(APP, "index.html"), encoding="utf-8").read()
 p2 = sorted(glob.glob(os.path.join(APP, "*main_part2_V*.js")))[-1]
 js = io.open(p2, encoding="utf-8").read()
 ok("ガイド節に「全部読む」行がある", 'id="btn-guide-all"' in html)
-ok("チュートリアル再体験も残る", 'id="set-onboarding"' in html)
+ok("チュートリアル再実行の行は撤去済み", 'id="set-onboarding"' not in html)
 ok("モーダルがある", 'id="modal-guide"' in html and 'id="guide-toc"' in html and 'id="guide-body"' in html)
-ok("中身の正はHOME_TIPS", "HOME_TIPS.forEach(function (t) {" in js and "openGuideAll" in js)
-ok("文言の自分直しを通す", js.count("ov(t.id + '.label'") >= 2)
+ok("中身の正はTIPS（チュートリアル文）", "GUIDE_SECTIONS" in js and "TIPS[it.k]" in js)
+ok("文言の自分直しを通す", "ov('g.' + it.k + '.step'" in js and "ov('g.' + it.k + '.text'" in js)
 
 from playwright.sync_api import sync_playwright
 with sync_playwright() as p:
@@ -44,6 +45,7 @@ with sync_playwright() as p:
       const toc = document.querySelectorAll('#guide-toc .guide-toc-row').length;
       const secs = document.querySelectorAll('#guide-body .guide-sec').length;
       const items = document.querySelectorAll('#guide-body .guide-item').length;
+      const ui = document.querySelectorAll('#guide-body .guide-ui').length;
       /* 目次ジャンプ */
       const rows = document.querySelectorAll('#guide-toc .guide-toc-row');
       const last = rows[rows.length - 1];
@@ -51,10 +53,10 @@ with sync_playwright() as p:
       last.click();
       await new Promise(r2 => setTimeout(r2, 600));
       const after = document.getElementById('guide-body').scrollTop;
-      return { groups, shown: !modal.hidden, toc, secs, items, jumped: after > before };
+      return { groups, shown: !modal.hidden, toc, secs, items, ui, jumped: after > before };
     }""")
-    ok("モーダルが開き目次と本文が出る", r["shown"] and 5 <= r["toc"] <= 20 and r["secs"] == r["toc"], json.dumps(r))
-    ok("全話が本文に並ぶ（30件以上）", r["items"] >= 30, json.dumps(r))
+    ok("モーダルが開き目次と本文が出る", r["shown"] and 5 <= r["toc"] <= 12 and r["secs"] == r["toc"], json.dumps(r))
+    ok("全項目が本文に並ぶ（30件以上）＋見本UIがある", r["items"] >= 30 and r["ui"] >= 5, json.dumps(r))
     ok("目次から末尾へ飛べる", r["jumped"], json.dumps(r))
     ok("実行時エラーなし", not errs, str(errs[:2]))
     br.close()

@@ -4504,3 +4504,14 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .guide-item{ margin:0 0 12px; }
 .guide-item-title{ font-weight:800; margin:0 0 2px; }
 .guide-item-body{ font-size:var(--fs-sm); line-height:1.75; color:var(--text-sub); margin:0; }
+
+/* V2.34 ガイドの見本UI（本物と同じクラス・押せない） */
+.guide-ui{
+  pointer-events:none; user-select:none;
+  display:flex; gap:8px; flex-wrap:wrap; align-items:center;
+  margin:4px 0 6px; padding:8px; border-radius:10px;
+  background:var(--surface-2); border:1px dashed var(--border);
+}
+.guide-ui .btn-confirm, .guide-ui .btn-next{ width:auto; max-width:240px; }
+.guide-ui .eval-btn{ min-width:56px; }
+.guide-ui-row{ display:inline-flex; gap:6px; }

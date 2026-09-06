@@ -3337,43 +3337,77 @@ var QR_MATRIX = [
     }
   };
 
-  /* --- 使い方を全部読む（V2.33） -------------------------------------
-     中身の正は HOME_TIPS ただ1つ（二重管理しない）。label をまとまりの
-     見出しにし、目次から各まとまりへ飛ぶ。文言の書き換え（text_overrides）も
-     一言欄と同じ ov() を通すので、自分で直した文がここにも反映される。 */
+  /* --- 使い方を全部読む（V2.34で全面刷新） -----------------------------
+     V2.33はHOME_TIPS（ひとことメモ）を並べていたが、利用者の意図は
+     「チュートリアルと同じ内容＝このボタンはこう、をUIとともに」だった。
+     中身の正は TIPS（チュートリアルの吹き出し文）ただ1つ。文言の自分直し
+     （text_overrides の g.<key>.step / .text）もそのまま反映される。
+     ui: は見本のボタン（押せない・本物と同じCSSクラス）。 */
+  var GUIDE_UI = {
+    confirm: '<button type="button" class="btn-confirm" tabindex="-1">解答を確定する</button>',
+    eval: '<button type="button" class="eval-btn eval-hard is-active" tabindex="-1"><span class="eval-label"><b>難</b><small>しい</small></span></button>' +
+          '<button type="button" class="eval-btn eval-normal" tabindex="-1"><span class="eval-label"><b>普</b><small>通</small></span></button>' +
+          '<button type="button" class="eval-btn eval-easy" tabindex="-1"><span class="eval-label"><b>易</b><small>しい</small></span></button>' +
+          '<button type="button" class="eval-btn eval-master" tabindex="-1"><span class="eval-label"><b>マ</b><small>スター</small></span></button>',
+    next: '<button type="button" class="btn-next" tabindex="-1"><span class="btn-next-label">この評価で次へ</span><span class="btn-next-arrow" aria-hidden="true">▶</span></button>',
+    q_star: '<button type="button" class="star-btn" tabindex="-1">☆</button> → <button type="button" class="star-btn is-on" aria-pressed="true" tabindex="-1">★</button>',
+    ground: '<button type="button" class="choice-mark" data-kind="ground" tabindex="-1">☐</button>（右端の欄外にあります）',
+    exam_nav: '<span class="exam-nav guide-ui-row"><button type="button" class="exam-nav-btn" tabindex="-1">◀ 前へ</button>' +
+          '<button type="button" class="exam-nav-btn is-list" tabindex="-1">一覧・提出</button>' +
+          '<button type="button" class="exam-nav-btn" tabindex="-1">次へ ▶</button></span>'
+  };
+  var GUIDE_SECTIONS = [
+    { head: '問題を解く画面',
+      items: [ { k: 'answer' }, { k: 'confirm', ui: 'confirm' }, { k: 'q_star', ui: 'q_star' },
+               { k: 'stem_expand' }, { k: 'img_toggle' }, { k: 'numeric_input' } ] },
+    { head: '解説と評価',
+      items: [ { k: 'eval', ui: 'eval' }, { k: 'next', ui: 'next' }, { k: 'qstar', ui: 'q_star' },
+               { k: 'star' }, { k: 'tagpill' }, { k: 'memo' }, { k: 'detail' },
+               { k: 'summary' }, { k: 'locked' } ] },
+    { head: 'ホーム画面',
+      items: [ { k: 'home_review' }, { k: 'home_knock' }, { k: 'home_random' }, { k: 'home_exam' },
+               { k: 'level' }, { k: 'scan' }, { k: 'home_tip' }, { k: 'settings_btn' }, { k: 'back' } ] },
+    { head: 'ランダム・単元別',
+      items: [ { k: 'unit_hero' }, { k: 'qty' }, { k: 'rank_weight' }, { k: 'tree' } ] },
+    { head: '模試（力試し）',
+      items: [ { k: 'exam' }, { k: 'ground', ui: 'ground' }, { ui: 'exam_nav', step: '前後の移動と提出',
+                text: '模試では前の問題へ戻ってやり直せます。［一覧・提出］で全問の解答状況を見て、全問に答えると提出できます。採点は提出まで走りません。' } ] },
+    { head: '検索・分析・★ノート',
+      items: [ { k: 'search' }, { k: 'solve_now' }, { k: 'dashboard' }, { k: 'starred' }, { k: 'unstar' } ] },
+    { head: 'タイマー・見た目',
+      items: [ { k: 'pomodoro' }, { k: 'theme' } ] },
+    { head: '設定',
+      items: [ { k: 'settings' } ] }
+  ];
+
   function openGuideAll() {
     return loadTextOverrides().then(function () {
-      /* 目次のまとまりは「基底ラベル」＝末尾の丸数字と「：以降」を除いたもの。
-         「評価ボタン：難しい」〜「：マスター」は1つの目次項目にまとまり、
-         離れた場所の「使い方」も1箇所に集まる（拾い読みのための目次なので、
-         本文の順序より引きやすさを優先する）。 */
-      var groups = [], byBase = {};
-      HOME_TIPS.forEach(function (t) {
-        var label = ov(t.id + '.label', t.label);
-        var base = label.replace(/[：:].*$/, '').replace(/[ \u3000]*[①-⑳]$/, '');
-        var g = byBase[base];
-        if (!g) { g = { label: base, items: [] }; byBase[base] = g; groups.push(g); }
-        g.items.push(t);
+      var secs = GUIDE_SECTIONS.filter(function (g) {
+        return g.items.some(function (it) { return !it.k || TIPS[it.k]; });
       });
-      setHtml('#guide-toc', groups.map(function (g, i) {
+      setHtml('#guide-toc', secs.map(function (g, i) {
         return '<button type="button" class="guide-toc-row" data-guide-jump="gsec' + i + '">' +
-               esc(g.label) + '<small>' + g.items.length + '件</small></button>';
+               esc(g.head) + '</button>';
       }).join(''));
-      setHtml('#guide-body', groups.map(function (g, i) {
+      setHtml('#guide-body', secs.map(function (g, i) {
         return '<section class="guide-sec" id="gsec' + i + '">' +
-          '<h4 class="guide-sec-head">' + esc(g.label) + '</h4>' +
-          g.items.map(function (t) {
-            var label2 = ov(t.id + '.label', t.label);
-            var title = ov(t.id + '.title', t.title || '');
-            var head = (label2 !== g.label ? label2 + (title ? '　' : '') : '') + title;
-            var body = ov(t.id + '.body', t.body);
+          '<h4 class="guide-sec-head">' + esc(g.head) + '</h4>' +
+          g.items.map(function (it) {
+            var t = it.k ? TIPS[it.k] : null;
+            if (it.k && !t) { return ''; }
+            var step = t ? ov('g.' + it.k + '.step', t.step || '') : (it.step || '');
+            var text = t ? ov('g.' + it.k + '.text', t.text || '') : (it.text || '');
+            /* チュートリアルの「1/4 解く」のような順序番号は、読み物では邪魔 */
+            step = step.replace(/^\d+\/\d+\s*/, '');
+            var ui = it.ui && GUIDE_UI[it.ui]
+              ? '<div class="guide-ui">' + GUIDE_UI[it.ui] + '</div>' : '';
             return '<article class="guide-item">' +
-              (head ? '<p class="guide-item-title">' + esc(head) + '</p>' : '') +
-              '<p class="guide-item-body">' + esc(body).replace(/\n/g, '<br>') + '</p></article>';
+              (step ? '<p class="guide-item-title">' + esc(step) + '</p>' : '') + ui +
+              '<p class="guide-item-body">' + esc(text) + '</p></article>';
           }).join('') + '</section>';
       }).join(''));
       openModal('#modal-guide');
-      return groups.length;
+      return secs.length;
     });
   }
 
@@ -5736,11 +5770,8 @@ var QR_MATRIX = [
       var el = $('#' + b.getAttribute('data-guide-jump'));
       if (el && el.scrollIntoView) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
     });
-    on($('#set-onboarding'), 'click', function () {
-      resetTips()
-        .then(function () { return showWelcome(); })
-        .then(function () { return startOnboarding(0); });
-    });
+    /* #set-onboarding（チュートリアル再実行）はV2.34で撤去（利用者裁定）。
+       初回のオンボーディング（welcome→3問→ツアー）は今までどおり動く。 */
 
     /* ホームへ戻るたびに、未案内の動線を1つだけ出す */
     on(doc, 'click', function (ev) {
