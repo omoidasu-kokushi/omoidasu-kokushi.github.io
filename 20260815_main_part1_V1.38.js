@@ -3720,8 +3720,13 @@
       if (d) { scrollToChoice(parseInt(d.getAttribute('data-num'), 10)); }
     });
 
-    /* ポップアップはタップで即座に消せる */
-    on($('#verdict-pop'), 'click', function () { hideVerdictPopup(); });
+    /* V2.61：ポップアップのタップで閉じるハンドラを外した。
+       .verdict-pop は pointer-events:none（＝指を通す）なので、
+       このハンドラは一度も動いていなかった。
+       pointer-events を開ける道もあるが、それをやると
+       ポップアップの下にある選択肢を押せなくなる＝
+       「非ブロッキング」という意図された性質のほうを壊す。
+       動かないコードを残すより、消して意図を書き残す。 */
     on($('#rv-stem-expand'), 'click', function () {
       setText('#stem-overlay-text', state.current.question ? state.current.question.stem : '');
       show('#stem-overlay');

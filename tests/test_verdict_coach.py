@@ -31,6 +31,13 @@ ok("案内の器がある", 'id="vp-coach"' in ix)
 ok("CSSがある", ".vp-coach{" in cs)
 ok("模試では出さない（もともとポップアップ自体を出さない）",
    "if (isExamMode()) { return; }" in p1)
+# V2.61：pointer-events:none で一度も動いていなかったクリックハンドラを外した。
+# 開ける道もあるが、開けるとポップアップの下の選択肢を押せなくなる＝
+# 「非ブロッキング」という意図された性質のほうを壊す。
+ok("動かないクリックハンドラを残していない（V2.61）",
+   "$('#verdict-pop'), 'click'" not in p1)
+ok("指は通したまま（非ブロッキングを壊していない）",
+   "pointer-events:none" in cs.split(".verdict-pop{")[1].split("}")[0])
 
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
 with sync_playwright() as p:
