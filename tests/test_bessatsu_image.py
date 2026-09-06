@@ -35,6 +35,22 @@ size = sum(os.path.getsize(os.path.join(d, f)) for f in have) if have else 0
 ok("4枚あわせて400KB未満（線画なので色数を落としてある）",
    0 < size < 400 * 1024, "%dKB" % (size // 1024))
 
+# --- V2.66：選択肢が図の問題（本体の問題PDFから切り出した線画） ---
+SEN = ["112_am57.png", "113_am110.png", "113_am46.png", "113_pm21.png", "113_pm37.png",
+       "113_pm54.png", "113_pm66.png", "114_am39.png", "115_am16.png", "115_am22.png"]
+d2 = os.path.join(base, "images", "sentakushi")
+ok("選択肢画像のフォルダがある", os.path.isdir(d2))
+have2 = sorted(os.listdir(d2)) if os.path.isdir(d2) else []
+ok("選択肢画像は10枚", have2 == sorted(SEN), str(have2))
+size2 = sum(os.path.getsize(os.path.join(d2, f)) for f in have2) if have2 else 0
+ok("選択肢画像は700KB未満", 0 < size2 < 700 * 1024, "%dKB" % (size2 // 1024))
+ok("画像はぜんぶで1MB未満（PWAの配布物に載せる）",
+   (size + size2) < 1024 * 1024, "%dKB" % ((size + size2) // 1024))
+for f in SEN:
+    ok("sw.js が sentakushi/%s をキャッシュする" % f, ("./images/sentakushi/" + f) in sw)
+ok("選択肢画像も CORE に入れない", "sentakushi" not in (sw.split("CORE_ASSETS")[1].split("]")[0]
+                                                       if "CORE_ASSETS" in sw else ""))
+
 for f in IMGS:
     ok("sw.js が %s をキャッシュする" % f, ("./images/bessatsu/" + f) in sw)
 
