@@ -163,19 +163,25 @@ with sync_playwright() as p:
     ok("ボタンは面を保っている（押せることが分かる）",
        r["btnBg"] not in ("rgba(0, 0, 0, 0)", "transparent", None), json.dumps(r["btnBg"]))
 
-    # ---------- 階層バッジ：難しい（赤）が主、未学習（灰）が従 ----------
+    # ---------- 階層バッジ（V2.68で作り直し） ----------
+    # V2.67まで：難しい（赤）が主、未学習（灰）が従。**排他**だった。
+    # 利用者から「なぜ2色ある？」と指摘され、調べたら
+    # 同じ位置に比べられない2つの量が出ていた（しかも単位も肢と問で違った）。
+    # V2.68：出すのは1つだけ＝その範囲に残っている「まだ解いていない問題」の数。
+    # 観点は消さずに置き換える（本体は test_pick_badge.py）。
     r = pg.evaluate("""() => {
       const H = window.Half2Impl;
-      return { hard: H.pickBadge({ hard: 3, unlearned: 9 }),
-               un  : H.pickBadge({ hard: 0, unlearned: 9 }),
-               none: H.pickBadge({ hard: 0, unlearned: 0 }),
-               cap : H.pickBadge({ hard: 120, unlearned: 0 }) };
+      return { hard: H.pickBadge({ hard: 3, unlearned: 9, unlearned_q: 3 }),
+               un  : H.pickBadge({ hard: 0, unlearned: 9, unlearned_q: 3 }),
+               none: H.pickBadge({ hard: 0, unlearned: 0, unlearned_q: 0 }),
+               cap : H.pickBadge({ hard: 120, unlearned: 0, unlearned_q: 1200 }) };
     }""")
-    ok("難しいがあるときは赤バッジだけ",
-       "badge-line" in r["hard"] and "badge-soft" not in r["hard"], json.dumps(r["hard"]))
-    ok("難しいが0なら未学習を控えめに出す",
-       "badge-soft" in r["un"] and "badge-line" not in r["un"], json.dumps(r["un"]))
-    ok("どちらも0なら何も出さない", r["none"] == "", json.dumps(r["none"]))
+    ok("難しい肢があっても隠さず『あと◯』を出す（V2.68で排他をやめた）",
+       "あと3" in r["hard"] and "3" in r["hard"], json.dumps(r["hard"], ensure_ascii=False))
+    ok("難しいが0でも同じ出し方（出し分けをやめた）",
+       r["un"] == r["hard"], json.dumps(r["un"], ensure_ascii=False))
+    ok("読破したら「読破」と出す（空にしない）",
+       "読破" in r["none"], json.dumps(r["none"], ensure_ascii=False))
     ok("3桁は 99+ に丸める", "99+" in r["cap"], json.dumps(r["cap"]))
 
     r = pg.evaluate("""async () => {
