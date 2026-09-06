@@ -3032,9 +3032,23 @@ var QR_MATRIX = [
 
            何問入っているかを先に出す。ファイル名では中身が分からず、
            古いバックアップを選んでも気づけない。 */
+        /* --- 入口違いのガード（V2.49） ---
+           配布用の取り込みJSON（{questions:[...]} や配列）を復元ボタンで
+           開く事故が実際に起きた（「問題0問」と表示され、そのまま
+           入れ替えると学習記録が全部消える）。復元は「全消し→書き戻し」
+           なので、①取り込み形式は案内して止める ②中身0問は入れ替え
+           自体を止める。 */
+        if (!payload.stores && (Array.isArray(payload) || Array.isArray(payload.questions))) {
+          toast('このファイルは一括インポート用です。上の取り込み欄に中身を貼り付けて「データを取り込む」を押してください（足し合わせなので学習記録は消えません）', 8000);
+          return;
+        }
         var n = (payload.stores && payload.stores.questions) ? payload.stores.questions.length : 0;
         var na = (payload.stores && payload.stores.atoms) ? payload.stores.atoms.length : 0;
         var when = payload.exported_at ? new Date(payload.exported_at).toLocaleString('ja-JP') : '不明';
+        if (n === 0 && na === 0) {
+          toast('このファイルには問題が入っていないため、入れ替えを中止しました（全データ消失の防止・V2.49）', 8000);
+          return;
+        }
         M.confirmAction({
           title: 'いまの中身を入れ替えますか',
           body: 'このファイルには 問題 ' + n + '問 ／ 選択肢 ' + na + '件 が入っています'

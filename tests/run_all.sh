@@ -21,7 +21,7 @@ fi
 
 pass=0
 fail=0
-for t in "$APP_DIR"/tests/test_batch*.py "$APP_DIR"/tests/test_regress.py; do
+for t in "$APP_DIR"/tests/test_batch*.py "$APP_DIR"/tests/test_regress.py "$APP_DIR"/tests/test_restore_guard.py; do
   [ -e "$t" ] || continue
   printf '%-26s ' "$(basename "$t")"
   out="$(python3 "$t" 2>&1)"
