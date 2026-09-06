@@ -148,18 +148,18 @@ with sync_playwright() as p:
     ok("ランキングの tag は # から始まる（label と取り違えない）",
        bool(prep["tag"]) and prep["tag"].startswith("#"), json.dumps(prep))
 
-    q = pg.evaluate("""(tag) => window.Scheduler.getKnockQueue(tag, { minutes: 5 })
+    q = pg.evaluate("""(tag) => window.Scheduler.getKnockQueue(tag, { count: 10 })
           .then(q => ({ n: q.questions.length, tag: q.tag, reason: q.reason || null }))""", prep["tag"])
     ok("ノックの出題が組める", q["n"] > 0, json.dumps(q, ensure_ascii=False))
-    label_q = pg.evaluate("""(label) => window.Scheduler.getKnockQueue(label, { minutes: 5 })
+    label_q = pg.evaluate("""(label) => window.Scheduler.getKnockQueue(label, { count: 10 })
           .then(q => ({ n: q.questions.length }))""", prep["label"])
     ok("label（#なし）を渡すと1問も出ない＝取り違えは静かに空振りする",
        label_q["n"] == 0, json.dumps(label_q))
 
-    pg.evaluate("(tag) => window.Half2Impl.startKnock(tag, 5)", prep["tag"])
+    pg.evaluate("(tag) => window.Half2Impl.startKnock(tag, 10)", prep["tag"])
     pg.wait_for_timeout(1200)
     kn = pg.evaluate("""() => {
-      const t = document.querySelector('#knock-timer');
+      const t = document.querySelector('#knock-hud');
       const r = t ? t.getBoundingClientRect() : null;
       return { parent: t && t.parentElement ? t.parentElement.tagName : null,
                visible: !!(r && r.width > 0 && r.height > 0),
@@ -169,10 +169,10 @@ with sync_playwright() as p:
                cards: document.querySelectorAll('#choice-list .choice-card').length };
     }""")
     ok("ノックが始まる（モードが knock）", kn["mode"] == "knock", json.dumps(kn, ensure_ascii=False))
-    ok("タイマーは body 直下に出す（画面を移っても消えない）", kn["parent"] == "BODY", json.dumps(kn, ensure_ascii=False))
-    ok("タイマーに実寸がある", kn["visible"], json.dumps(kn, ensure_ascii=False))
-    ok("残り時間と対象の概念が出ている",
-       ("04:" in (kn["text"] or "") or "05:00" in (kn["text"] or "")) and "#" in (kn["text"] or ""),
+    ok("進み具合は body 直下に出す（画面を移っても消えない）", kn["parent"] == "BODY", json.dumps(kn, ensure_ascii=False))
+    ok("進み具合に実寸がある", kn["visible"], json.dumps(kn, ensure_ascii=False))
+    ok("進み具合（◯/◯）と対象の概念が出ている（V2.57：残り時間ではない）",
+       "/" in (kn["text"] or "") and "#" in (kn["text"] or ""),
        json.dumps(kn, ensure_ascii=False))
     ok("body に is-knock が付く", kn["bodyClass"], json.dumps(kn, ensure_ascii=False))
     ok("問題が出ている", kn["cards"] > 0, json.dumps(kn, ensure_ascii=False))

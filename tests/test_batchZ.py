@@ -196,42 +196,44 @@ with sync_playwright() as p:
       const H = window.Half2Impl, M = window.Main, S = window.Storage;
       const cs = await S.getConceptStats();
       const tag = (cs[0] && cs[0].tag) || (window.CONCEPT_TAGS_MASTER||[])[0];
-      await H.startKnock(tag, 5);
+      await H.startKnock(tag, 10);
       /* 固定の待ち時間にしない（V1.58）。混んでいるときだけ落ちるテストは、
          赤を無視する癖がつくので無いほうがまし。 */
       { const t0 = Date.now();
         while (M.state.screen !== 'quiz' && Date.now() - t0 < 8000) {
           await new Promise(r => setTimeout(r, 50)); } }
       const during = { screen: M.state.screen, mode: M.state.session.mode,
-                       shown: !document.getElementById('knock-timer').hidden,
+                       shown: !document.getElementById('knock-hud').hidden,
                        body: document.body.classList.contains('is-knock'),
-                       ticking: !!H.st.knock.tick,
-                       t: document.getElementById('knock-time').textContent };
+                       ticking: !!H.st.knock.tick,   /* V2.57：時計は無い。常に false */
+                       t: document.getElementById('knock-count').textContent };
       document.getElementById('btn-home').click();
       { const t0 = Date.now();
         while (M.state.screen !== 'home' && Date.now() - t0 < 8000) {
           await new Promise(r => setTimeout(r, 50)); } }
       await new Promise(r=>setTimeout(r,300));
-      const t1 = document.getElementById('knock-time').textContent;
+      const t1 = document.getElementById('knock-count').textContent;
       await new Promise(r=>setTimeout(r,1400));
       const after = { screen: M.state.screen,
-                      shown: !document.getElementById('knock-timer').hidden,
+                      shown: !document.getElementById('knock-hud').hidden,
                       body: document.body.classList.contains('is-knock'),
-                      ticking: !!H.st.knock.tick,
-                      t1: t1, t2: document.getElementById('knock-time').textContent,
+                      ticking: !!H.st.knock.tick,   /* V2.57：時計は無い。常に false */
+                      t1: t1, t2: document.getElementById('knock-count').textContent,
                       summary: !document.getElementById('modal-knock-summary').hidden };
       return { during, after };
     }""")
     d, a = r["during"], r["after"]
-    ok("ノックが始まると時計が出て動く",
-       d["shown"] and d["body"] and d["ticking"] and d["mode"] == "knock",
+    ok("ノックが始まると進み具合が出る（V2.57：時計ではない）",
+       d["shown"] and d["body"] and d["mode"] == "knock" and "/" in (d["t"] or ""),
        json.dumps(d, ensure_ascii=False))
+    ok("時計は動かさない（終了条件が時間ではなくなった）",
+       d["ticking"] is False, json.dumps(d, ensure_ascii=False))
     ok("ホームを押すとホームへ戻る", a["screen"] == "home", json.dumps(a, ensure_ascii=False))
-    ok("戻ったら時計の表示が消える", a["shown"] is False and a["body"] is False,
+    ok("戻ったら進み具合の表示が消える", a["shown"] is False and a["body"] is False,
        json.dumps(a, ensure_ascii=False))
-    ok("戻ったら時計が止まる（V1.42で直した不具合）",
+    ok("戻ったあとタイマーが残らない（V1.42で直した不具合／V2.57で時計自体を廃止）",
        a["ticking"] is False, json.dumps(a, ensure_ascii=False))
-    ok("戻ったあと残り時間が減り続けない", a["t1"] == a["t2"],
+    ok("戻ったあと表示が勝手に動かない", a["t1"] == a["t2"],
        "%s -> %s" % (a["t1"], a["t2"]))
     ok("中断ではまとめの画面を出さない", a["summary"] is False, json.dumps(a["summary"]))
 

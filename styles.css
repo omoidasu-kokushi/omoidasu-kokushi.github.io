@@ -247,7 +247,7 @@ small{ font-size:var(--fs-xs); }
 
 /* 数字はすべて等幅で桁ブレを防ぐ */
 .badge-line,.badge-prog,.pomo-time,.scan-label,.level-pct,.q-counter,
-.break-clock,.knock-time,.bar-val,.concept-pct,.exam-state{
+.break-clock,.knock-count,.bar-val,.concept-pct,.exam-state{
   font-family:var(--font-num);
   font-variant-numeric:tabular-nums;
   letter-spacing:.01em;
@@ -1615,7 +1615,7 @@ small{ font-size:var(--fs-xs); }
 /* ==========================================================================
    18. 概念別弱点ノック
    ========================================================================== */
-.knock-timer{
+.knock-hud{
   position:fixed; z-index:50;
   top:calc(var(--hdr-h) + var(--safe-t)); left:0; right:0;
   display:flex; align-items:center; gap:10px;
@@ -1624,7 +1624,7 @@ small{ font-size:var(--fs-xs); }
   border-bottom:1px solid var(--border);
   box-shadow:var(--shadow-1);
 }
-.knock-time{ font-size:var(--fs-xl); font-weight:800; color:var(--c-hard); min-width:64px; }
+.knock-count{ font-size:var(--fs-xl); font-weight:800; color:var(--c-hard); min-width:64px; }
 .knock-bar{ flex:1 1 auto; height:5px; border-radius:var(--r-pill); background:var(--surface-3); overflow:hidden; }
 .knock-bar i{ display:block; height:100%; background:var(--c-hard); border-radius:var(--r-pill); transition:width 1s linear; }
 .knock-tag{
@@ -2091,7 +2091,7 @@ html[data-visual="master"] .level-bar-fill{ background:linear-gradient(90deg, #E
 body.is-knock #screen-container{ padding-top:calc(var(--hdr-h) + var(--safe-t) + 46px); }
 body.is-knock .quiz-review{ top:calc(var(--hdr-h) + var(--safe-t) + 46px); }
 body.is-knock #interrupt-bar{ display:none; }
-body.is-knock #knock-timer{ z-index:58; }
+body.is-knock #knock-hud{ z-index:58; }
 
 .is-hidden{ display:none !important; }
 

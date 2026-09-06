@@ -284,7 +284,9 @@
                   kw: '', exam: '', unit: '', major: '', medium: '', sub: '', tag: '',    /* V2.41 検索 */
                   flt: { major: '', medium: '', sub: '', tag: '' } },   /* V2.47 選択肢の絞り */
     random    : { scope: null, count: 10, units: [] },
-    knock     : { tag: null, minutes: 5, endsAt: 0, tick: null, solved: 0 },
+    /* V2.57：終了条件は問題数。tick / endsAt は使わないが、
+       他所から参照されても落ちないよう形は残す。 */
+    knock     : { tag: null, count: 10, total: 0, endsAt: 0, tick: null, solved: 0 },
     memo      : null,
     exam      : { id: null, questions: [], answers: [], index: 0, startedAt: 0 },
     onboard   : { active: false, step: 0, phase: null, target: 10 },
@@ -889,29 +891,38 @@
       if (!t) { toast('先に何問か解いて、克服したいテーマを決めましょう', 3200); return null; }
       st.knock.tag = t;
       setText('#knock-target', t);
-      openModal('#modal-knock-time');
+      openModal('#modal-knock-count');
       return t;
     });
   }
 
   /* トピックガードを一時無効化し、忘却スケジュールも更新しない独立集中演習。
      評価・弱点pt・概念理解率だけは更新するため、克服がスコアに反映される。 */
-  function startKnock(tag, minutes) {
+  function startKnock(tag, count) {
     st.knock.tag = tag || st.knock.tag;
-    st.knock.minutes = minutes || 5;
+    st.knock.count = count || 10;
     st.knock.solved = 0;
 
-    return K.getKnockQueue(st.knock.tag, { minutes: st.knock.minutes }).then(function (q) {
+    return K.getKnockQueue(st.knock.tag, { count: st.knock.count }).then(function (q) {
       if (!q.questions.length) { toast(q.reason || 'このテーマの問題がありません'); return null; }
 
-      /* 時間経過だけが終了条件なので、キューを周回できるよう十分に積む */
-      var pool = q.questions.slice();
-      while (pool.length < st.knock.minutes * 4 && q.questions.length) {
-        pool = pool.concat(q.questions);
-      }
+      /* V2.57：水増ししない。
+         以前はここで
+           while (pool.length < minutes * 4) { pool = pool.concat( 同じキュー ); }
+         と同じキューを丸ごとコピーしていた。終了条件が時間だったので、
+         時間を埋めるだけの数が要ったため。テーマの問題が12問しか無ければ
+         同じ12問を3周する＝利用者が見た「同じ問題ばかり出る」の正体。
+         いまは終了条件が問題数なので、あるぶんだけ出して終わる。 */
+      var pool = q.questions.slice(0, st.knock.count);
+      st.knock.total = pool.length;
 
       closeModals();
-      mountKnockTimer(q.tag, st.knock.minutes);
+      mountKnockHud(q.tag, st.knock.total);
+      if (pool.length < st.knock.count) {
+        /* 黙って少なく出さない。周回もしない。 */
+        toast('このテーマは ' + pool.length + ' 問しかないため、' +
+              pool.length + ' 問で終わります', 4200);
+      }
 
       M.hooks.onFinish = function (sess) {
         if (sess.mode !== 'knock') { return false; }
@@ -919,13 +930,15 @@
         return true;
       };
       /* 途中で戻った・ホームを押した場合はここに来る。
-         まとめの画面もアラームも出さず、時計だけを止めて片付ける。 */
+         まとめの画面もアラームも出さず、表示だけ片付ける。 */
       M.hooks.onAbort = function (mode) {
         if (mode !== 'knock') { return; }
         abortKnock();
       };
       M.hooks.afterCommit = function (qq, sess) {
-        if (sess.mode === 'knock') { st.knock.solved++; }
+        if (sess.mode !== 'knock') { return; }
+        st.knock.solved++;
+        renderKnockHud();
       };
 
       M.state.session = {
@@ -938,52 +951,40 @@
     });
   }
 
-  function mountKnockTimer(tag, minutes) {
-    var el = $('#knock-timer');
+  function mountKnockHud(tag, total) {
+    var el = $('#knock-hud');
     if (!el) { return; }
     /* position:fixed なので、画面要素の外へ出しても位置は保たれる */
     doc.body.appendChild(el);
     doc.body.classList.add('is-knock');
     el.hidden = false;
     setText('#knock-concept', tag);
-
-    st.knock.endsAt = Date.now() + minutes * 60 * 1000;
-    global.clearInterval(st.knock.tick);
-    st.knock.tick = global.setInterval(tickKnock, 250);
-    tickKnock();
+    st.knock.total = total || st.knock.total || 0;
+    renderKnockHud();
   }
 
-  function tickKnock() {
-    var left = st.knock.endsAt - Date.now();
-    var total = st.knock.minutes * 60 * 1000;
-    setText('#knock-time', formatClock(Math.max(0, left)));
+  function renderKnockHud() {
+    var total = st.knock.total || 0;
+    var done = Math.min(st.knock.solved || 0, total);
+    setText('#knock-count', done + ' / ' + total);
     var bar = $('#knock-bar-fill');
-    if (bar) { bar.style.width = Math.max(0, (left / total) * 100) + '%'; }
-    if (left <= 0) {
-      global.clearInterval(st.knock.tick);
-      st.knock.tick = null;
-      finishKnock(st.knock.solved);
-    }
+    if (bar) { bar.style.width = (total ? (done / total) * 100 : 0) + '%'; }
   }
 
-  /* 時計を止めて後片付けだけする。まとめもアラームも出さない。
+  /* 表示を片付けるだけ。まとめもアラームも出さない。
      M.endSession() は【呼ばない】：ここは endSession から呼ばれる側なので、
      呼び返すと入れ子になる。 */
   function abortKnock() {
-    global.clearInterval(st.knock.tick);
-    st.knock.tick = null;
     st.knock.endsAt = 0;
-    unmountKnockTimer();
+    unmountKnockHud();
     M.hooks.onFinish = null;
     M.hooks.afterCommit = null;
     M.hooks.onAbort = null;
   }
 
   function finishKnock(solved) {
-    global.clearInterval(st.knock.tick);
-    st.knock.tick = null;
     st.knock.endsAt = 0;
-    unmountKnockTimer();
+    unmountKnockHud();
     M.hooks.onFinish = null;
     M.hooks.afterCommit = null;
     M.hooks.onAbort = null;
@@ -996,8 +997,8 @@
       .then(function () { openModal('#modal-knock-summary'); playAlarm(); });
   }
 
-  function unmountKnockTimer() {
-    var el = $('#knock-timer');
+  function unmountKnockHud() {
+    var el = $('#knock-hud');
     if (el) { el.hidden = true; }
     doc.body.classList.remove('is-knock');
     var host = $('#screen-knock');
@@ -3655,8 +3656,8 @@ var QR_MATRIX = [
     exam_card: '<span class="guide-card-sample">30問プチ模試<small style="margin-left:auto;color:var(--text-mute)">' +
         'ユニーク選択肢15%＋普通以上40%で解禁</small></span>',
     solve_now: '<button type="button" class="btn-primary btn-sm" tabindex="-1">この結果を今すぐ解く</button>',
-    knock_time: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">5分</button>' +
-        '<button type="button" class="seg-btn" tabindex="-1">10分</button></span>',
+    knock_time: '<span class="seg-group guide-ui-row"><button type="button" class="seg-btn is-active" tabindex="-1">10問</button>' +
+        '<button type="button" class="seg-btn" tabindex="-1">30問</button></span>',
     review_card: '<span class="guide-card-sample is-main">本日の復習<b class="guide-badge">12</b></span>',
     random_card: '<span class="guide-card-sample">ランダムモード（まだ解いていない問題）</span>',
     import_box: '<span class="guide-input-sample">ここに自作データ（TSV／JSON）やバックアップを貼り付け → データを取り込む</span>',
@@ -3694,7 +3695,7 @@ var QR_MATRIX = [
     screen_home:
       '<span class="guide-cap">ホームの並び（上から毎日押す順）</span>' +
       '<span class="guide-card-sample is-main">本日の復習　<b class="guide-badge">12</b></span>' +
-      '<span class="guide-card-sample">テーマ別 弱点ノック（5分/10分）</span>' +
+      '<span class="guide-card-sample">テーマ別 弱点ノック（10問/30問）</span>' +
       '<span class="guide-card-sample">ランダムモード（新しい問題）</span>' +
       '<span class="guide-card-sample">力試しモード（模試）</span>',
     screen_exam_review:
@@ -5069,7 +5070,9 @@ var QR_MATRIX = [
       body:'初見の問題だけが出てきます。単元や大項目でも絞れます。全部解き終えると、このカードは変貌を遂げるとか…？' },
     { id:'t14', label:'テーマ別 弱点ノック',
       title:'スキマ時間用',
-      body:'問題それぞれに振り分けられているテーマから苦手分野を分析、苦手な問題をスキマ時間でガンガン解きましょう。' },
+      body:'問題それぞれに振り分けられているテーマから苦手分野を分析、苦手な問題をスキマ時間でガンガン解きましょう。'
+           + '10問か30問を選びます（V2.57で分数指定をやめました。時間で終わらせていたころは、'
+           + '時間を埋めるために同じ問題を何周もさせていたためです）。' },
     { id:'t15', label:'力試しモード',
       title:'模試です',
       body:'模試＋その分析です。解放されてからのお楽しみ。' },
@@ -5381,7 +5384,8 @@ var QR_MATRIX = [
     home_review: { step:'毎日ここから', sel:'#card-review',
                 text:'翌日以降は、まずここ。忘れかけた選択肢だけが、期日順に出てきます。' },
     home_knock:{ step:'テーマ別 弱点ノック', sel:'#card-knock',   /* V2.48 実名に */
-                text:'苦手なテーマだけを5分・10分で集中演習できます。' },
+                text:'苦手なテーマだけを10問・30問で集中演習できます。' +
+                     'テーマの問題がそれより少なければ、あるぶんだけ出して終わります。' },
     home_random:{ step:'ランダムモード', sel:'#card-random',   /* V2.48 実名に */
                 text:'まだ解いていない問題を増やすときはこちら。単元や大項目でも絞れます。' },
     home_exam:{ step:'力試し（模試）', sel:'#card-exam',
@@ -6083,7 +6087,7 @@ var QR_MATRIX = [
     });
 
     /* --- 概念ノック --- */
-    on($('#modal-knock-time'), 'click', function (ev) {
+    on($('#modal-knock-count'), 'click', function (ev) {
       var b = ev.target.closest('[data-knock]');
       if (b) { startKnock(st.knock.tag, parseInt(b.getAttribute('data-knock'), 10)); }
     });

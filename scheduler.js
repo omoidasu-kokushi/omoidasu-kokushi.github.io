@@ -1950,9 +1950,15 @@
      トピックガードは無効、忘却スケジュールは更新しない独立モード。 */
   function getKnockQueue(tag, options) {
     options = options || {};
-    var minutes = isNum(options.minutes) ? options.minutes : 5;
-    /* 1問あたり約20秒として、時間内に解ききれる余裕を持った件数を用意する */
-    var count = isNum(options.count) ? options.count : Math.max(6, Math.round(minutes * 3));
+    /* V2.57：ノックの終了条件は【問題数】。
+       分数指定は互換のため残すが、内部では問題数へ直して扱う。
+       時間で終わらせていたころは、時間を埋めるために同じキューを
+       丸ごとコピーして水増ししていた（呼び出し側）。
+       テーマの問題が少ないと同じ問題を何周もする＝
+       「早く解くほど枯渇する」設計になっていた。 */
+    var minutes = isNum(options.minutes) ? options.minutes : null;
+    var count = isNum(options.count) ? options.count
+              : (isNum(minutes) ? Math.max(6, Math.round(minutes * 3)) : 10);
 
     var pickTag = tag
       ? Promise.resolve(tag)
@@ -1963,6 +1969,7 @@
     return pickTag.then(function (t) {
       if (!t) {
         return { mode: 'knock', questions: [], tag: null, minutes: minutes,
+                 requested: count, available: 0, short: true,
                  reason: 'まだ評価が入力されていないため、克服対象の概念を決められません' };
       }
       return buildQueue({
@@ -1971,7 +1978,12 @@
       }).then(function (q) {
         q.tag = t;
         q.minutes = minutes;
-        q.duration_ms = minutes * 60 * 1000;
+        q.duration_ms = isNum(minutes) ? minutes * 60 * 1000 : null;
+        /* 頼んだ数と、実際に出せた数の両方を返す。
+           呼び出し側が「12問しかありません」と言えるようにする。 */
+        q.requested = count;
+        q.available = q.questions ? q.questions.length : 0;
+        q.short = q.available < count;
         q.schedule_frozen = true;
         return q;
       });
