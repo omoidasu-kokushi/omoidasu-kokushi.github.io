@@ -399,6 +399,20 @@
     }).join(''));
   }
 
+  /* V2.44：ランダム画面のポモドーロ表示。時間の区切りはここに任せる（裁定）。 */
+  function refreshQtyPomo() {
+    var btn = $('#qty-pomo');
+    if (!btn) { return; }
+    var onFlag = (M.state.meta || {}).pomodoro_enabled !== false;
+    btn.setAttribute('aria-pressed', onFlag ? 'true' : 'false');
+    cls(btn, 'is-off', !onFlag);
+    var big = btn.querySelector('.qty-pomo-big');
+    if (big) { big.textContent = onFlag ? '🍅 25分で区切ります' : '🍅 時間では区切りません'; }
+    setText('#qty-pomo-sub', onFlag
+      ? 'ポモドーロON。25分たつと休憩をおすすめします（タップでOFF）'
+      : 'ポモドーロOFF。問題数だけで区切ります（タップでON）');
+  }
+
   function openRandomSelect() {
     return Promise.all([S.buildTree(), S.loadMeta()]).then(function (r) {
       var tree = r[0], meta = r[1];
@@ -412,18 +426,13 @@
 
       renderRandomPick();
 
-      /* 初回ランダム10問の完了で全出題数を永久解放する（第8章③） */
-      var unlocked = !!meta.random_qty_unlocked;
-      $$('#qty-block .qty-btn').forEach(function (b) {
-        var q = parseInt(b.getAttribute('data-qty'), 10);
-        var locked = !unlocked && q !== 10;
-        b.disabled = locked;
-        cls(b, 'is-locked', locked);
-        cls(b, 'is-active', q === st.random.count);
-      });
-      setText('#qty-note', unlocked
-        ? '出題数はすべて解放されています'
-        : '初回ランダム10問の完了で、全出題数（20/30/50/120問）が永久解放されます。');
+      /* V2.44（裁定）：出題数ロックは廃止（§8-3の「初回10問で解放」は
+         「押せないボタンが並ぶ」だけの見え方だった）。スライダーに現在値を映し、
+         ポモドーロの状態を大きく出す。 */
+      var rng = $('#qty-range');
+      if (rng) { rng.value = st.random.count; }
+      setText('#qty-range-val', st.random.count + '問');
+      refreshQtyPomo();
 
       return M.go('random');
     });
@@ -5181,10 +5190,10 @@ var QR_MATRIX = [
                 text:'この青いボタンは【いま見えている範囲すべて】から出します。' +
                      '下の一覧は、名前を押すと1段深く絞り込み、' +
                      '右の🎲を押すとその範囲でそのまま始まります。' },
-    qty:      { step:'出題数',       sel:'#qty-block',
-                text:'1回に出す問題数を変えられます。' +
-                     '最初は10問だけ、20問以上は一度使ってから開きます。',
-                place:'below' },
+    qty:      { step:'出題量の設定',  sel:'#qty-block',
+                text:'時間の区切りは上のポモドーロ（25分・タップでON/OFF）。' +
+                     '出す問題数は下のスライダーで5〜120問に調整できます。',
+                place:'below' },   /* V2.44 ロック廃止に追随 */
     rank_weight:{ step:'頻出を優先', sel:'#toggle-rank-weight',
                 text:'ONだと、同じ苦手さでも出やすい範囲（Sランク）を先に出します。' +
                      'OFFにすると、出題頻度を無視して純粋に苦手な順になります。',
@@ -5714,11 +5723,14 @@ var QR_MATRIX = [
       st.random.path = (st.random.path || []).slice(0, parseInt(b.getAttribute('data-up'), 10));
       renderRandomPick();
     });
-    on($('#qty-block'), 'click', function (ev) {
-      var b = ev.target.closest('.qty-btn');
-      if (!b || b.disabled) { return; }
-      st.random.count = parseInt(b.getAttribute('data-qty'), 10);
-      $$('#qty-block .qty-btn').forEach(function (x) { cls(x, 'is-active', x === b); });
+    on($('#qty-range'), 'input', function (ev) {
+      st.random.count = parseInt(ev.target.value, 10) || 10;
+      setText('#qty-range-val', st.random.count + '問');
+    });
+    on($('#qty-pomo'), 'click', function () {
+      var meta = M.state.meta || {};
+      var next = !(meta.pomodoro_enabled !== false);
+      M.setPomodoroEnabled(next).then(function () { return refreshQtyPomo(); });
     });
 
 

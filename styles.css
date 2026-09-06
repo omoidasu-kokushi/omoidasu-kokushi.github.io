@@ -4544,3 +4544,16 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .star-adv-rows{ display:flex; flex-direction:column; gap:6px; margin-top:8px; }
 .star-label-edit{ margin-left:auto; }
 #star-hit-note{ margin-top:6px; }
+
+/* V2.44 出題量設定（裁定：ポモドーロ大・スライダー小） */
+.qty-pomo{
+  display:flex; flex-direction:column; gap:4px; width:100%; box-sizing:border-box;
+  text-align:left; padding:14px 16px; border-radius:var(--r-lg);
+  background:var(--surface); border:2px solid var(--accent); box-shadow:var(--shadow-1);
+}
+.qty-pomo-big{ font-size:1.15rem; font-weight:900; }
+.qty-pomo-sub{ font-size:var(--fs-xs); color:var(--text-sub); }
+.qty-pomo.is-off{ border-color:var(--border); opacity:.8; }
+.qty-slider-row{ margin-top:10px; }
+.qty-slider-row .qty-label{ font-size:var(--fs-sm); }
+#qty-range{ width:100%; margin-top:4px; accent-color:var(--accent); }
