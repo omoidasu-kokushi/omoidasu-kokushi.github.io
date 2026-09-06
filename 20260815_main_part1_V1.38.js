@@ -2747,13 +2747,32 @@
         if (!okLoad) {
           /* 取得に失敗しても落とさず、コードをそのまま見せる */
           frame.innerHTML = '<pre class="mermaid-error" style="text-align:left;white-space:pre-wrap">' +
-                            escapeHtml(code) + '</pre>';
+                            escapeHtml(toVerticalFlow(code)) + '</pre>';
           return;
         }
         return drawMermaid(frame, code);
       });
     }
     return drawMermaid(frame, code);
+  }
+
+  /* --- 図解は縦に流す（V2.63・利用者指摘） ---
+     「○○⇒××⇒▲▲⇒■■」と横に続く図は、幅390pxに収めるため縮小され、
+     ノードが増えるほど文字が小さくなる。実測：配布176問の図解22枚のうち
+     18枚が flowchart LR だった。
+     縦（TD）なら幅は最長ノード1つぶんで済むので縮小がかからない。
+     分岐は Mermaid が自動で横へ広げるため、別の指示は要らない。
+
+     倒すのは**先頭の向き指定だけ**。
+     subgraph 内の `direction LR` は、意図してまとめて横に並べている場所なので触らない。
+     図種が flowchart / graph でないもの（sequenceDiagram など）も触らない。
+
+     保存データは書き換えない。描くときに倒すので、
+     取り込み直さなくても既存の図がその場で縦になる。 */
+  function toVerticalFlow(code) {
+    var s = String(code == null ? '' : code);
+    return s.replace(/^(\s*)(graph|flowchart)([ \t]+)(LR|RL)\b/,
+                     function (m, sp, kind, gap) { return sp + kind + gap + 'TD'; });
   }
 
   function drawMermaid(frame, code) {
@@ -2769,7 +2788,7 @@
         fontFamily: global.getComputedStyle(doc.body).fontFamily,
         flowchart: { htmlLabels: true, useMaxWidth: true, padding: 12, nodeSpacing: 34, rankSpacing: 40 }
       });
-      var out = global.mermaid.render(id, code);
+      var out = global.mermaid.render(id, toVerticalFlow(code));
       if (out && typeof out.then === 'function') {
         return out.then(function (r) {
           frame.innerHTML = (r && r.svg) ? r.svg : String(r);
@@ -4189,6 +4208,7 @@
     toggleDetail  : toggleDetail,
     showVerdictPopup: showVerdictPopup,
     hideVerdictPopup: hideVerdictPopup,
+    toVerticalFlow: toVerticalFlow,   /* V2.63 */
     prepareExplanationHtml: prepareExplanationHtml,
     prepareOverallHtml: prepareOverallHtml,
     levelFacts    : levelFacts,
