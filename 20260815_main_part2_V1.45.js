@@ -337,15 +337,22 @@
   /* 難しい件数（赤）を主、未学習件数（灰）を従にする。
      両方を同時に出すと、どちらを見て決めればいいのか分からなくなる。
      赤が出ているうちは赤だけを見せる。 */
+  /* --- ランダム画面のバッジ（V2.68） ---
+     出すのは1つだけ：その範囲に残っている「まだ解いていない問題」の数。
+
+     V2.67まではここに2種類の数を出し分けていた。
+       難しい肢が1本でもあれば → 赤で「難しい肢の本数」
+       無ければ               → 薄い色で「未学習の肢の本数」
+     同じ位置に**比べられない2つの量**が出ていたうえ、隣の「◯問」は
+     問題の数なので**単位も違った**（必修は「28（肢）／8問」と並んでいた）。
+
+     この画面の目的は「どの範囲から出すか決める」こと。
+     判断に要るのは、その範囲にまだ出せる問題が何問あるか。
+     難しい肢の本数は分析と弱点ノックの担当なので、ここでは出さない。 */
   function pickBadge(item) {
-    var h = Number(item.hard || 0), u = Number(item.unlearned || 0);
-    if (h > 0) {
-      return '<span class="badge-line">' + (h > 99 ? '99+' : h) + '</span>';
-    }
-    if (u > 0) {
-      return '<span class="badge-soft">' + (u > 99 ? '99+' : u) + '</span>';
-    }
-    return '';
+    var n = Number(item.unlearned_q || 0);
+    if (!n) { return '<span class="pick-left is-done">読破</span>'; }
+    return '<span class="pick-left">あと' + (n > 999 ? '999+' : n) + '</span>';
   }
 
   function renderRandomPick() {

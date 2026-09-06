@@ -2385,6 +2385,11 @@
       var mk = function () { return { unit: {}, major: {}, medium: {}, sub_item: {},
                                       medium_key: {}, sub_item_key: {}, total: 0 }; };
       var hard = mk(), unlearned = mk();
+      /* V2.68：問題単位の未学習も数える。
+         ランダム画面のバッジは「あと何問」を出すので、肢では単位が合わない
+         （8問×4肢の範囲で未学習28肢 → 「28 / 8問」と並んで読めなくなる）。
+         1肢でも未学習が残っていれば、その問題は「まだ解いていない」。 */
+      var unlearnedQ = mk(), seenQ = {};
       /* V1.86：中項目・小項目は名前が重複するので、
          単元＋大項目まで込みで数える。名前だけで数えると
          「成人看護学 ＞ 8. 呼吸機能障害 ＞ C. 検査を受ける患者の看護」の
@@ -2406,9 +2411,11 @@
           if (a.last_eval === 'hard') { bump(hard, a); }
         } else {
           bump(unlearned, a);
+          /* 同じ問題を二度数えない（問題単位） */
+          if (!seenQ[a.q_id]) { seenQ[a.q_id] = 1; bump(unlearnedQ, a); }
         }
       });
-      return { hard: hard, unlearned: unlearned };
+      return { hard: hard, unlearned: unlearned, unlearned_q: unlearnedQ };
     });
   }
 
@@ -2436,18 +2443,23 @@
       var questions = r[0];
       var badge = r[1].unlearned;     /* 既存の unlearned はそのまま維持 */
       var hard = r[1].hard;
+      var badgeQ = r[1].unlearned_q || r[1].unlearned;   /* V2.68：問題単位 */
       var unitOrder = [], unitMap = {};
       questions.forEach(function (q) {
         if (!unitMap[q.unit]) {
           unitMap[q.unit] = { key: q.unit, label: q.unit, unit_no: q.unit_no || 0,
-                              unlearned: badge.unit[q.unit] || 0, hard: hard.unit[q.unit] || 0, count: 0, children: {}, order: [] };
+                              unlearned: badge.unit[q.unit] || 0, hard: hard.unit[q.unit] || 0,
+                              unlearned_q: badgeQ.unit[q.unit] || 0,
+                              count: 0, children: {}, order: [] };
           unitOrder.push(q.unit);
         }
         var u = unitMap[q.unit];
         u.count++;
         if (!u.children[q.major]) {
           u.children[q.major] = { key: q.major, label: q.major,
-                                  unlearned: badge.major[q.major] || 0, hard: hard.major[q.major] || 0, count: 0, children: {}, order: [] };
+                                  unlearned: badge.major[q.major] || 0, hard: hard.major[q.major] || 0,
+                                  unlearned_q: badgeQ.major[q.major] || 0,
+                                  count: 0, children: {}, order: [] };
           u.order.push(q.major);
         }
         var mj = u.children[q.major];
@@ -2460,7 +2472,9 @@
           mj.children[q.medium] = { key: mkey, label: q.medium,
                                     unit: q.unit, major: q.major, medium: q.medium,
                                     unlearned: badge.medium_key[mkey] || 0,
-                                    hard: hard.medium_key[mkey] || 0, count: 0, q_ids: [] };
+                                    hard: hard.medium_key[mkey] || 0,
+                                    unlearned_q: badgeQ.medium_key[mkey] || 0,
+                                    count: 0, q_ids: [] };
           mj.order.push(q.medium);
         }
         var md = mj.children[q.medium];
@@ -2474,12 +2488,12 @@
         .map(function (u) {
           return {
             key: u.key, label: u.label, count: u.count,
-            unlearned: u.unlearned, hard: u.hard,
+            unlearned: u.unlearned, hard: u.hard, unlearned_q: u.unlearned_q,
             children: u.order.map(function (mk) {
               var mj = u.children[mk];
               return {
                 key: mj.key, label: mj.label, count: mj.count,
-                unlearned: mj.unlearned, hard: mj.hard,
+                unlearned: mj.unlearned, hard: mj.hard, unlearned_q: mj.unlearned_q,
                 children: mj.order.map(function (dk) { return mj.children[dk]; })
                                    .sort(byHeadNo)
               };

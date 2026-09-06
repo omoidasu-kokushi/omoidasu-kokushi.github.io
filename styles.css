@@ -4647,3 +4647,16 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .tally-chip.is-easy  { border-color:var(--c-easy);   color:var(--c-easy); }
 .tally-chip.is-master{ border-color:var(--c-master); color:var(--c-master); }
 .tally-note{ width:100%; text-align:center; font-size:var(--fs-sm); color:var(--text-mute); margin:2px 0 0; }
+
+
+/* --- ランダム画面「あと◯問」（V2.68） ---
+   ここに出る数は1種類だけ（まだ解いていない問題の数）。
+   2色に塗り分けていたころは、色ごとに別の量を出していて読めなかった。 */
+.pick-left{
+  flex:0 0 auto; margin-left:auto; padding:2px 9px;
+  border-radius:var(--r-pill, 999px);
+  background:var(--surface-3); border:1px solid var(--border);
+  color:var(--text-sub); font-size:var(--fs-sm); font-weight:700;
+  font-variant-numeric:tabular-nums;
+}
+.pick-left.is-done{ color:var(--c-easy); border-color:var(--c-easy); background:transparent; }
