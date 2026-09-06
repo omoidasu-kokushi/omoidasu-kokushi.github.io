@@ -1428,6 +1428,10 @@
         info: q
       };
 
+      /* V2.72：休憩中に解きはじめたら、休憩を打ち切る。
+         止めずにいると、ヘッダーは休憩色のまま残り時間を上書きし続け、
+         5分後に「休憩おわり」が解いている最中に出ていた（実測）。 */
+      Half2.abortBreakIfSolving();
       startPomodoro();
       return go('quiz').then(function () {
         renderQuestion();
@@ -3385,6 +3389,9 @@
     p.lastActiveAt = Date.now();
     savePomodoroState();
     updatePomoUi();
+    /* V2.72：ここで一度描く。tick は1秒おきなので、描かないと
+       休憩あけの1秒間だけ休憩の残り（05:00）が残る（実測）。 */
+    if (p.running) { tickPomodoro(); }
     return p;
   }
 

@@ -17,9 +17,15 @@ p2 = open(os.path.join(base, "20260815_main_part2_V1.45.js"), encoding="utf-8").
 sw = open(os.path.join(base, "sw.js"), encoding="utf-8").read()
 ix = open(os.path.join(base, "index.html"), encoding="utf-8").read()
 
-m = re.search(r"function startRandom\([\s\S]*?\n  \}", p2)
+# V2.71 で startRandom は「開始前の確認」と「実際に始める処理」に割れた。
+# 買い切りの案内を守る番人は startRandomNow の側にいる。
+# 観点は変えず、見る場所だけ移す（片方が無くなったら気づけるよう両方見る）。
+m0 = re.search(r"function startRandom\([\s\S]*?\n  \}", p2)
+m = re.search(r"function startRandomNow\([\s\S]*?\n  \}", p2)
 body = m.group(0) if m else ""
-ok("startRandomが見つかる", bool(m))
+ok("startRandomが見つかる", bool(m0))
+ok("startRandomNowが見つかる（V2.71で分かれた）", bool(m))
+ok("入口から startRandomNow へ渡している", "startRandomNow(scope, count)" in (m0.group(0) if m0 else ""))
 ok("買い切りの案内が開いていたら初見なしを開かない",
    "modal-buy" in body and "buyCard.hidden" in body)
 ok("上書き防止はopenModalより前に効く",

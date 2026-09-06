@@ -5049,14 +5049,33 @@ var QR_MATRIX = [
     if (left <= 0) { endBreak(true); }
   }
 
+  /* --- 休憩を打ち切る（V2.72） ---
+     休憩中に問題を解きはじめたときに呼ばれる。
+     通知は出さない（もう解いているので用がない）。 */
+  function abortBreakIfSolving() {
+    if (!st.breakT.tick) { return false; }
+    endBreak(false);
+    toast('休憩を切り上げました。ここから新しい25分を数えます', 3600);
+    return true;
+  }
+
   function endBreak(natural) {
+    var wasRunning = !!st.breakT.tick;
     global.clearInterval(st.breakT.tick);
     st.breakT.tick = null;
+    st.breakT.endsAt = 0;
     var chip = $('#pomodoro-chip');
     if (chip) { cls(chip, 'is-break', false); }
     closeModals();
 
     if (natural) { notify('休憩おわり', '次の25分を始めましょう'); }
+
+    /* V2.72：休憩を挟んだら、必ず新しい25分にする。
+       前は M.startPomodoro() を呼ぶだけで、pomodoroIsFresh() が真なので
+       **前の25分を引き継いでいた**。実測：休憩前に20分使っていると
+       休憩あけの残りは5分。休憩したのに5分後にまた「25分経過」が鳴る。
+       ポモドーロは「25分集中 → 休憩 → 新しい25分」。引き継ぐのは筋が違う。 */
+    if (wasRunning) { M.restartPomodoro(); }
 
     return S.getMeta('pomodoro_session_count', 0).then(function (c) {
       /* 25分×4回達成で長めの休憩を提案する */
@@ -6049,6 +6068,7 @@ var QR_MATRIX = [
     buildTextPack: buildTextPack,        importTextPack: importTextPack,
     exportTextPack: exportTextPack,      textUi: textUi,
     startBreak: startBreak,              openLongBreakDialog: openLongBreakDialog,
+    abortBreakIfSolving: abortBreakIfSolving,   /* V2.72 */
     /* V2.71：この区切りがポモドーロ由来だったか。内訳の休憩ボタンの出し分け。 */
     endedByPomodoro: function () { return !!st.random.endedByPomo; },
     requestNotifyPermission: requestNotifyPermission,
