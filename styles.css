@@ -4520,3 +4520,18 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 [data-star-level="2"], [data-star-level="3"],
 [data-star-level="4"], [data-star-level="5"]{ letter-spacing:-.04em; }
 .star-btn[data-star-level="0"]{ opacity:.55; }
+
+/* V2.40 段階ごとに色を変える（利用者指示：直観的に見分けられるように）。
+   1=金（従来の★の色感）→2=橙→3=赤→4=紫→5=青。
+   ライト・ダーク両方で背景とのコントラストが取れる中間彩度を選んだ。
+   対象＝★が出る4種類のボタン全部（出題画面・解説・★ノート）。 */
+.star-btn[data-star-level="1"], .choice-mark[data-star-level="1"],
+.cx-star[data-star-level="1"], .star-unmark[data-star-level="1"]{ color:#D89E00; }
+.star-btn[data-star-level="2"], .choice-mark[data-star-level="2"],
+.cx-star[data-star-level="2"], .star-unmark[data-star-level="2"]{ color:#E8731A; }
+.star-btn[data-star-level="3"], .choice-mark[data-star-level="3"],
+.cx-star[data-star-level="3"], .star-unmark[data-star-level="3"]{ color:#DE4B4B; }
+.star-btn[data-star-level="4"], .choice-mark[data-star-level="4"],
+.cx-star[data-star-level="4"], .star-unmark[data-star-level="4"]{ color:#9C57D6; }
+.star-btn[data-star-level="5"], .choice-mark[data-star-level="5"],
+.cx-star[data-star-level="5"], .star-unmark[data-star-level="5"]{ color:#3D7EF0; }
