@@ -165,7 +165,7 @@ with sync_playwright() as p:
     # ---- 使い方カード：タイトル重複の解消
     tips = pg.evaluate("window.Half2Impl.HOME_TIPS")
     numbered = [t for t in tips if t["label"][-1] in "①②③④"]
-    ok("番号をラベル側に持つカードが14件（F で設定④を削除）", len(numbered) == 14, str(len(numbered)))
+    ok("番号をラベル側に持つカードが13件（V2.39で忘却曲線④を削除）", len(numbered) == 13, str(len(numbered)))
     # V1.20：利用者が忘却曲線①〜④にタイトルを付けた。空であることは不変条件ではない。
     # 守るべきは「ラベルと同じ文字列を太字でもう一度出さない」ほう。
     ok("番号付きカードのタイトルがラベルの焼き直しになっていない",

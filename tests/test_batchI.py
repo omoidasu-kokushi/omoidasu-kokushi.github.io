@@ -57,7 +57,7 @@ with sync_playwright() as p:
         await S.setMeta('home_tip_index', i); await H.renderHomeTips();
         out.push(Math.round(el.getBoundingClientRect().height)); }
       return out; }""")
-    ok("34件すべて同じ高さ（画面が跳ねない）", len(set(hs)) == 1,
+    ok("35件すべて同じ高さ（画面が跳ねない）", len(set(hs)) == 1,
        "min=%s max=%s spread=%s" % (min(hs), max(hs), max(hs) - min(hs)))
     ok("高さは0ではない（実測値が入っている）", min(hs) > 100, str(min(hs)))
     ok("高さは min-height で指定されている",
@@ -75,7 +75,7 @@ with sync_playwright() as p:
         await S.setMeta('home_tip_index', i); await H.renderHomeTips();
         out.push(Math.round(el.getBoundingClientRect().height)); }
       return out; }""")
-    ok("320px幅でも34件すべて同じ高さ", len(set(h320)) == 1,
+    ok("320px幅でも35件すべて同じ高さ", len(set(h320)) == 1,
        "min=%s max=%s" % (min(h320), max(h320)))
     ok("狭い画面のほうが高い（測り直しが効いている）", min(h320) >= min(hs),
        "320px=%s / 390px=%s" % (min(h320), min(hs)))
@@ -93,14 +93,14 @@ with sync_playwright() as p:
       const d=c(); await H.advanceHomeTip();
       const e=c(); await H.retreatHomeTip();
       return [a,b,d,e,c()]; }""")
-    ok("1件目で[前へ]を押すと末尾（34）へ回る", seq[1] == "34 / 34", json.dumps(seq))
-    ok("そこから[次の話]で1件目へ戻る", seq[2] == "1 / 34", json.dumps(seq))
-    ok("[次の話]は2件目へ進む", seq[3] == "2 / 34", json.dumps(seq))
-    ok("[前へ]は1件目へ戻る", seq[4] == "1 / 34", json.dumps(seq))
+    ok("1件目で[前へ]を押すと末尾（35）へ回る", seq[1] == "35 / 35", json.dumps(seq))
+    ok("そこから[次の話]で1件目へ戻る", seq[2] == "1 / 35", json.dumps(seq))
+    ok("[次の話]は2件目へ進む", seq[3] == "2 / 35", json.dumps(seq))
+    ok("[前へ]は1件目へ戻る", seq[4] == "1 / 35", json.dumps(seq))
     pg.click("#home-tip-prev")
     pg.wait_for_timeout(400)
     ok("実際にタップしても戻る",
-       pg.evaluate("document.getElementById('home-tip-count').textContent") == "34 / 34",
+       pg.evaluate("document.getElementById('home-tip-count').textContent") == "35 / 35",
        pg.evaluate("document.getElementById('home-tip-count').textContent"))
 
     # ---------- 3. 文言の編集 ----------
@@ -116,7 +116,7 @@ with sync_playwright() as p:
                emptyDef: c.filter(r=>r.def==='').length }; }""")
     ok("編集できる文の一覧が作れる", cat["n"] > 100, json.dumps(cat, ensure_ascii=False))
     ok("idに重複が無い（別の項目に化けない）", cat["n"] == cat["uniq"], json.dumps(cat))
-    ok("一言欄は34件×3項目＝102件", cat["tips"] == 102, str(cat["tips"]))
+    ok("一言欄は35件×3項目＝105件", cat["tips"] == 105, str(cat["tips"]))
     ok("ガイドも一覧に入っている", cat["guides"] > 0 and cat["hasGuide"], json.dumps(cat))
     ok("一言欄のidが安定キーになっている", cat["hasT01"])
 

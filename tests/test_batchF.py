@@ -36,7 +36,7 @@ with sync_playwright() as p:
     tips = pg.evaluate("window.Half2Impl.HOME_TIPS")
     body_all = "".join(t["body"] for t in tips)
     labels = [t["label"] for t in tips]
-    ok("一言欄は34件（33 − 削除3 ＋ 追加4）", len(tips) == 34, str(len(tips)))
+    ok("一言欄は35件（V2.39：t12削除・t36/t37追加）", len(tips) == 35, str(len(tips)))
 
     # --- 削除3件
     ok("削除：設定④が消えている", "設定 ④" not in labels, str([l for l in labels if l.startswith("設定")]))

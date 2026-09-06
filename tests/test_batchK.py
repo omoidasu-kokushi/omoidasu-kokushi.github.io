@@ -234,7 +234,7 @@ with sync_playwright() as p:
     # ---------- 一言欄 ----------
     tips = pg.evaluate("window.Half2Impl.HOME_TIPS")
     byid = {x["id"]: x for x in tips}
-    ok("一言欄は34件のまま", len(tips) == 34, str(len(tips)))
+    ok("一言欄は35件のまま（V2.39後）", len(tips) == 35, str(len(tips)))
     ok("ポモドーロ①にタイトルが付いた", byid["t23"]["title"] == "持続可能な勉強法",
        json.dumps(byid["t23"], ensure_ascii=False))
     ok("ポモドーロ②にタイトルが付いた", byid["t24"]["title"] == "こまめな休憩", byid["t24"]["title"])

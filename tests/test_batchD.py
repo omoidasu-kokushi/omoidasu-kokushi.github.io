@@ -213,7 +213,7 @@ with sync_playwright() as p:
 
     # ---- 使い方カード
     tips = pg.evaluate("window.Half2Impl.HOME_TIPS")
-    ok("使い方カードは34件（F で 3削除・4追加）", len(tips) == 34, str(len(tips)))
+    ok("使い方カードは35件（V2.39でt12削除・t36/t37追加）", len(tips) == 35, str(len(tips)))
     body_all = "".join(t["body"] for t in tips)
     # V1.22 で利用者が「臨床検査技師」を「とある医療系の」に変えた。
     # 資格名ではなく、3枚それぞれに固有の言い回しがあることで見る。

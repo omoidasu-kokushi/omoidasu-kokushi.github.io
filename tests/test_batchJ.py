@@ -249,7 +249,7 @@ with sync_playwright() as p:
 
     # ---------- 一言欄 ----------
     tips = pg.evaluate("window.Half2Impl.HOME_TIPS")
-    ok("一言欄は34件のまま", len(tips) == 34, str(len(tips)))
+    ok("一言欄は35件のまま（V2.39後）", len(tips) == 35, str(len(tips)))
     t16 = [x for x in tips if x["id"] == "t16"][0]
     t17 = [x for x in tips if x["id"] == "t17"][0]
     ok("t16 のラベルが「弱点分析」に変わった", t16["label"] == "弱点分析", json.dumps(t16, ensure_ascii=False))
