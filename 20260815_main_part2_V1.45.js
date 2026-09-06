@@ -278,6 +278,7 @@
 
   /* 後半モジュールのローカル状態 */
   var st = {
+    pomoResume: null,      /* V2.71：開始前の確認の返し先 */
     dashboard : { level: 'sub_item', metric: 'retention', cfilter: 'low' },
     search    : { keyword: '', hits: [], cfilter: 'low' },
     starred   : { filter: 'all', lv: 0,      /* lv=0は全段階（V2.36） */
@@ -285,7 +286,9 @@
                   flt: { major: '', medium: '', sub: '', tag: '' } },   /* V2.47 選択肢の絞り */
     /* V2.69：区切り方は time か count のどちらか一方。同時に生かさない。 */
     random    : { scope: null, count: 10, units: [], limit: 'time', minutes: 25,
-                  endsAt: 0, total: 0, tick: null },
+                  endsAt: 0, total: 0, tick: null,
+                  /* V2.71：ポモドーロの続きで区切るときの持ち物 */
+                  limitMs: 0, fromPomo: false, endedByPomo: false },
     /* V2.57：終了条件は問題数。tick / endsAt は使わないが、
        他所から参照されても落ちないよう形は残す。 */
     knock     : { tag: null, count: 10, total: 0, endsAt: 0, tick: null, solved: 0 },
@@ -507,25 +510,38 @@
   /* --- 時間で区切る（V2.69） ---
      残り時間を画面上部に出し、0になったらセッションを畳む。
      畳み方は普通の終了と同じ経路を通すので、区切りの内訳（V2.58）がそのまま出る。 */
-  function mountTimeLimit(minutes) {
+  /* V2.71：ms で受ける。ポモドーロの続きで区切るときは端数が出るため
+     （残り18分32秒など）、分に丸めると HUD とヘッダーがずれる。 */
+  function mountTimeLimit(ms, fromPomo) {
     var el = $('#knock-hud');
     if (!el) { return; }
     doc.body.appendChild(el);
     doc.body.classList.add('is-knock');
     el.hidden = false;
-    setText('#knock-concept', '時間で区切る');
-    st.random.endsAt = Date.now() + minutes * 60 * 1000;
-    st.random.total = minutes * 60 * 1000;
+    setText('#knock-concept', fromPomo ? 'ポモドーロの続き' : '時間で区切る');
+    st.random.fromPomo = !!fromPomo;
+    st.random.endsAt = Date.now() + ms;
+    st.random.total = ms;
     global.clearInterval(st.random.tick);
     st.random.tick = global.setInterval(tickTimeLimit, 250);
     tickTimeLimit();
   }
   function tickTimeLimit() {
-    var left = st.random.endsAt - Date.now();
+    /* ポモドーロ由来なら、残りはポモドーロから取る。
+       別々に数えると、片方だけ無操作で畳まれたときに食い違う。 */
+    var left = st.random.fromPomo
+      ? M.pomodoroLeftMs()
+      : (st.random.endsAt - Date.now());
     setText('#knock-count', formatClock(Math.max(0, left)));
     var bar = $('#knock-bar-fill');
     if (bar) { bar.style.width = Math.max(0, (left / st.random.total) * 100) + '%'; }
     if (left > 0) { return; }
+    /* 二重に鳴らさない。ここで畳むので、ポモドーロ側の
+       「25分経過しました」シートは出さない（notified を立てる）。 */
+    if (st.random.fromPomo) {
+      M.state.pomodoro.notified = true;
+      st.random.endedByPomo = true;
+    }
     unmountTimeLimit();
     M.finishSession();
   }
@@ -540,13 +556,81 @@
     if (el && host && el.parentNode === doc.body) { host.insertBefore(el, host.firstChild); }
   }
 
+  /* --- 開始前の確認（V2.71・利用者指定） ---
+     「残り○○分間出題します」を先に告げてから始める。
+
+     ポモドーロが動いていないとき（OFF・停止中・間が空きすぎ）は
+     何も出さない。出すのは、**時計が2本になりかけているとき**だけ。
+
+     残り3分未満のときだけ既定を変えて［先に5分休憩する］にする。
+     2分の集中を積んでも値打ちが薄く、ポモドーロは区切って休むためにある。 */
+  var POMO_RESUME_MIN_MS = 3 * 60 * 1000;
+
+  function askPomodoroResume() {
+    var left = M.pomodoroLeftMs();
+    if (!left) {
+      /* ポモドーロは効いていない。選んだ分数でそのまま切る。 */
+      st.random.fromPomo = false;
+      st.random.limitMs = st.random.minutes * 60 * 1000;
+      return Promise.resolve(true);
+    }
+    var short = (left < POMO_RESUME_MIN_MS);
+    setText('#pr-title', short ? 'ポモドーロはもうすぐ終わります' : 'ポモドーロの続きです');
+    setHtml('#pr-body', short
+      ? '残り<b id="pr-left">' + formatClock(left) + '</b>です。ここで区切ると、すぐ休憩になります。'
+      : '残り<b id="pr-left">' + formatClock(left) + '</b>で区切ります。');
+    setText('#pr-note', short
+      ? '先に5分休んでから、新しい25分で始めるほうが集中が戻ります。'
+      : 'いま動いている25分の続きです。［25分にし直す］を押すと、ここから数え直します。');
+    setText('#pr-go', short ? '先に5分休憩する' : 'このまま始める');
+
+    return new Promise(function (resolve) {
+      st.pomoResume = function (kind) {
+        st.pomoResume = null;
+        closeModals();
+        if (kind === 'break') {
+          startBreak(5);
+          resolve(false);                     /* 出題は始めない */
+          return;
+        }
+        if (kind === 'fresh') {
+          M.restartPomodoro();
+        }
+        st.random.fromPomo = true;
+        st.random.limitMs = M.pomodoroLeftMs();
+        resolve(true);
+      };
+      /* 短いときの主ボタンは休憩。長いときは「このまま」。 */
+      $('#pr-go').setAttribute('data-kind', short ? 'break' : 'keep');
+      M.openModal('#modal-pomo-resume');
+    });
+  }
+
   function startRandom(scope, count) {
+    /* V2.71：時間で区切るときは、先に「残り○○で区切ります」を告げる。 */
+    if (st.random.limit === 'time') {
+      return askPomodoroResume().then(function (go) {
+        return go ? startRandomNow(scope, count) : null;
+      });
+    }
+    st.random.fromPomo = false;
+    return startRandomNow(scope, count);
+  }
+
+  function startRandomNow(scope, count) {
     st.random.scope = scope || null;
     st.random.count = count || st.random.count;
+    st.random.endedByPomo = false;
     /* V2.69：時間で区切るときは、時間内に解ける見込みの数だけ積む。
        足りなければ尽きた時点で終わる（水増ししない）。 */
     var byTime = (st.random.limit === 'time');
-    var want = byTime ? Math.max(3, st.random.minutes * Q_PER_MIN) : st.random.count;
+    /* V2.71：ポモドーロが動いていれば、その残りが区切りになる。
+       決めるのは askPomodoroResume（開始前のポップアップ）。 */
+    var limitMs = byTime ? (st.random.limitMs || st.random.minutes * 60 * 1000) : 0;
+    var fromPomo = byTime && !!st.random.fromPomo;
+    var want = byTime
+      ? Math.max(3, Math.round(limitMs / 60000) * Q_PER_MIN)
+      : st.random.count;
     var opts = {
       mode: 'random', count: want, scope: scope || null,
       newOnly: true, shuffle: true
@@ -555,7 +639,7 @@
       if (sess) {
         if (byTime) {
           M.hooks.onAbort = function () { unmountTimeLimit(); M.hooks.onAbort = null; };
-          mountTimeLimit(st.random.minutes);
+          mountTimeLimit(limitMs, fromPomo);
         }
         return sess;
       }
@@ -577,7 +661,7 @@
         }
         if (byTime) {
           M.hooks.onAbort = function () { unmountTimeLimit(); M.hooks.onAbort = null; };
-          mountTimeLimit(st.random.minutes);
+          mountTimeLimit(limitMs, fromPomo);
         }
         toast('この範囲は読破ずみです。苦手な順に出題します', 3600);
         maybeShowClearedSheet();
@@ -5965,6 +6049,8 @@ var QR_MATRIX = [
     buildTextPack: buildTextPack,        importTextPack: importTextPack,
     exportTextPack: exportTextPack,      textUi: textUi,
     startBreak: startBreak,              openLongBreakDialog: openLongBreakDialog,
+    /* V2.71：この区切りがポモドーロ由来だったか。内訳の休憩ボタンの出し分け。 */
+    endedByPomodoro: function () { return !!st.random.endedByPomo; },
     requestNotifyPermission: requestNotifyPermission,
     openContact: openContact,        SUPPORT_EMAIL: SUPPORT_EMAIL,
     sendContact: sendContact,        copyContact: copyContact,
@@ -6067,6 +6153,18 @@ var QR_MATRIX = [
     /* スライダーを動かさずに、枠のどこかを押しただけでも切り替わる。
        「今の値のままそっちで区切りたい」ときにスライダーを一度ずらして
        戻す、という手間を踏ませないため。 */
+    /* V2.71：開始前の確認。押した側を askPomodoroResume へ返す。 */
+    on($('#modal-pomo-resume'), 'click', function (ev) {
+      var b = ev.target.closest('#pr-go, #pr-fresh');
+      if (!b || !st.pomoResume) { return; }
+      st.pomoResume(b.id === 'pr-fresh' ? 'fresh' : (b.getAttribute('data-kind') || 'keep'));
+    });
+    /* V2.71：区切りの内訳から、そのまま5分休憩へ。 */
+    on($('#sess-break'), 'click', function () {
+      M.closeModals();
+      startBreak(5);
+    });
+
     on($('#qty-block'), 'click', function (ev) {
       var box = ev.target.closest('.qty-pick');
       if (!box || ev.target.tagName === 'INPUT') { return; }

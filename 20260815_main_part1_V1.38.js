@@ -3233,6 +3233,10 @@
         if (state.tally && state.tally.atoms) {
           setText('#sess-count', solved);
           renderTally('#tally-session');
+          /* V2.71：ポモドーロで区切れて終わったときだけ休憩をすすめる。
+             区切りの内訳と休憩の勧めを1枚にまとめ、モーダルを重ねない。 */
+          var brk = $('#sess-break');
+          if (brk) { brk.hidden = !Half2.endedByPomodoro(); }
           openModal('#modal-session-done');
           return;
         }
@@ -3362,6 +3366,26 @@
       ? POMODORO_IDLE_QUIZ_MS : POMODORO_IDLE_MS;
     var last = p.lastActiveAt || p.startedAt;
     return (Date.now() - last) < idleLimit;
+  }
+
+  /* --- ポモドーロの残り（V2.71） ---
+     ランダムの「時間で区切る」がこれを見て、時計を2本にしないようにする。
+     動いていない・OFF・間が空きすぎた、のときは 0 を返す。 */
+  function pomodoroLeftMs() {
+    var p = state.pomodoro;
+    if (!p.enabled || !p.running || !pomodoroIsFresh()) { return 0; }
+    return Math.max(0, p.limitMs - (Date.now() - p.startedAt));
+  }
+  /* いまから新しい25分にする。休憩あけと「新しく25分にする」で使う。 */
+  function restartPomodoro() {
+    var p = state.pomodoro;
+    p.startedAt = Date.now();
+    p.limitMs = POMODORO_MS;
+    p.notified = false;
+    p.lastActiveAt = Date.now();
+    savePomodoroState();
+    updatePomoUi();
+    return p;
   }
 
   function startPomodoro() {
@@ -4281,6 +4305,8 @@
     stopPomodoro  : stopPomodoro,
     markPomodoroActivity: markPomodoroActivity,
     pomodoroIsFresh     : pomodoroIsFresh,
+    pomodoroLeftMs      : pomodoroLeftMs,   /* V2.71 */
+    restartPomodoro     : restartPomodoro,  /* V2.71 */
     savePomodoroState   : savePomodoroState,
     checkPomodoro : checkPomodoro,
     updatePomoUi  : updatePomoUi,
