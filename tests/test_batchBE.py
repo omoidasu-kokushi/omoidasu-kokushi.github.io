@@ -55,8 +55,29 @@ with sync_playwright() as p:
     pg.wait_for_timeout(700)
 
     # ---------- 早期復習割り込み ----------
+    # V2.55（利用者裁定）：既定では発火しない。
+    # 「20分後が期日なのに数分で同じ問題が戻る」ため止めた。
+    off = pg.evaluate("""async () => {
+      const K = window.Scheduler, S = window.Storage;
+      K.Interrupt.endSession();
+      const a = (await S.getAllAtoms())[0];
+      const noted = K.Interrupt.note({ atom_id:a.atom_id, q_id:a.q_id, interval_code:'20m' }, 'random');
+      const b = await K.Interrupt.begin('random');
+      return { enabled: K.INTERRUPT_ENABLED, noted: noted,
+               trigger: K.Interrupt.shouldTrigger('random'), started: b.started };
+    }""")
+    ok("既定では割り込みを許可しない（V2.55裁定）", off["enabled"] is False, json.dumps(off))
+    ok("既定では蓄積もしない", off["noted"] is False, json.dumps(off))
+    ok("既定では発火しない", off["trigger"] is False, json.dumps(off))
+    ok("既定では割り込みを開始できない", off["started"] is False, json.dumps(off))
+
+    # 実装そのものは残してある（戻したくなったら1箇所で戻せる）。
+    # 入口だけ開けて、従来の動きと絶対ガードを確かめる。
     it = pg.evaluate("""async () => {
       const K = window.Scheduler, S = window.Storage;
+      const ALLOW = ['new', 'random'];
+      const orig = K.Interrupt.isAllowed;
+      K.Interrupt.isAllowed = function (m) { return ALLOW.indexOf(m) >= 0; };
       K.Interrupt.endSession();
       const atoms = (await S.getAllAtoms()).slice(0, 12);
       let noted = 0;
@@ -75,32 +96,38 @@ with sync_playwright() as p:
       out.begin = { started: b.started, n: (b.questions||[]).length };
       const blocked = await K.Interrupt.begin('review');
       out.blocked = { started: blocked.started, reason: blocked.reason || null };
+      K.Interrupt.isAllowed = orig;
+      K.Interrupt.endSession();
       return out;
     }""")
-    ok("許可モードで蓄積できる", it["noted"] >= 3, json.dumps(it)[:160])
+    ok("（入口を開ければ）許可モードで蓄積できる", it["noted"] >= 3, json.dumps(it)[:160])
     ok("同じ問題は1件に畳まれる", it["uniqueQ"] >= 3, json.dumps(it)[:160])
-    ok("ランダムでは発火する", it["allow"]["random"], json.dumps(it["allow"]))
+    ok("（入口を開ければ）ランダムで発火する", it["allow"]["random"], json.dumps(it["allow"]))
     ok("新規でも発火する（許可モード）", it["allow"]["new"] is not None, json.dumps(it["allow"]))
     ok("【絶対ガード】本日の復習では発火しない", it["allow"]["review"] is False, json.dumps(it["allow"]))
     ok("【絶対ガード】力試し模試では発火しない", it["allow"]["exam"] is False, json.dumps(it["allow"]))
     ok("【絶対ガード】弱点ノックでは発火しない", it["allow"]["knock"] is False, json.dumps(it["allow"]))
     ok("【絶対ガード】単語検索の演習では発火しない", it["allow"]["search"] is False, json.dumps(it["allow"]))
     ok("【絶対ガード】単元別学習では発火しない", it["allow"]["tree"] is False, json.dumps(it["allow"]))
-    ok("割り込みは3問ちょうど出す", it["begin"]["started"] and it["begin"]["n"] == 3, json.dumps(it["begin"]))
+    ok("（入口を開ければ）割り込みは3問ちょうど出す", it["begin"]["started"] and it["begin"]["n"] == 3, json.dumps(it["begin"]))
     ok("禁止モードから始めようとしても始まらない",
        it["blocked"]["started"] is False and bool(it["blocked"]["reason"]), json.dumps(it["blocked"]))
 
     # 蓄積を許さないモードでは note そのものが通らない
     note = pg.evaluate("""async () => {
       const K = window.Scheduler, S = window.Storage;
+      const ALLOW = ['new', 'random'];
+      const orig = K.Interrupt.isAllowed;
+      K.Interrupt.isAllowed = function (m) { return ALLOW.indexOf(m) >= 0; };
       K.Interrupt.endSession();
       const a = (await S.getAllAtoms())[0];
       return { review: K.Interrupt.note({ atom_id:a.atom_id, q_id:a.q_id, interval_code:'10m' }, 'review'),
                exam:   K.Interrupt.note({ atom_id:a.atom_id, q_id:a.q_id, interval_code:'10m' }, 'exam'),
-               random: K.Interrupt.note({ atom_id:a.atom_id, q_id:a.q_id, interval_code:'10m' }, 'random') };
+               random: K.Interrupt.note({ atom_id:a.atom_id, q_id:a.q_id, interval_code:'10m' }, 'random'),
+               _restore: (K.Interrupt.isAllowed = orig, true) };
     }""")
     ok("禁止モードでは蓄積すらしない", note["review"] is False and note["exam"] is False, json.dumps(note))
-    ok("許可モードでは蓄積する", note["random"] is True, json.dumps(note))
+    ok("（入口を開ければ）許可モードでは蓄積する", note["random"] is True, json.dumps(note))
 
     # ---------- 概念別弱点ノック ----------
     prep = pg.evaluate("""async () => {

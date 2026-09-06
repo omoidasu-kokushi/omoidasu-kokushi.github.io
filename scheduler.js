@@ -119,6 +119,13 @@
   var NO_RECORD_MODES = ['search'];
   /* 早期復習割り込みを許可するモード（絶対ガード：これ以外は完全禁止） */
   var INTERRUPT_ALLOWED_MODES = ['new', 'random'];
+  /* V2.55（利用者裁定 2026-09-06）：早期復習割り込みは発火させない。
+     「難しい」は20分後が期日なのに、割り込みは期日を待たずに
+     数分で同じ問題を差し込んでいた。利用者の実感は
+     「範囲が少ないから引き延ばされた」。期日が来たら
+     『本日の復習』で拾う、という素直な流れに戻す。
+     実装は消さない。戻すときはここを true にするだけでよい。 */
+  var INTERRUPT_ENABLED = false;
   /* トピックガードを無効化するモード */
   var GUARD_DISABLED_MODES = ['knock', 'review', 'search', 'exam'];
 
@@ -2615,7 +2622,12 @@
     run: 0,            /* 連続割り込みの累計（上限5） */
     hostMode: null,
 
-    isAllowed: function (mode) { return has(INTERRUPT_ALLOWED_MODES, mode); },
+    isAllowed: function (mode) {
+      /* V2.55：入口をここ1箇所に集約する。note も shouldTrigger も begin も
+         すべてここを通るので、false にすれば割り込みは起きない。 */
+      if (!INTERRUPT_ENABLED) { return false; }
+      return has(INTERRUPT_ALLOWED_MODES, mode);
+    },
 
     note: function (atom, mode) {
       if (!this.isAllowed(mode)) { return false; }
@@ -3007,6 +3019,7 @@
     INTERRUPT_MAX_RUN: INTERRUPT_MAX_RUN,
     MASTER_UNLOCK_FROM: MASTER_UNLOCK_FROM,
     INTERRUPT_ALLOWED_MODES: INTERRUPT_ALLOWED_MODES,
+    INTERRUPT_ENABLED: INTERRUPT_ENABLED,
     NO_SCHEDULE_MODES: NO_SCHEDULE_MODES,
     NO_RECORD_MODES  : NO_RECORD_MODES,
 
