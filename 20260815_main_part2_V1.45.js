@@ -1873,6 +1873,12 @@ var QR_MATRIX = [
       });
   }
 
+  /* V2.35：★の段階表示（part1のstarGlyphと同じ規則） */
+  function starGlyph2(lv) {
+    lv = Number(lv) || 0;
+    return lv <= 0 ? '☆' : (lv === 1 ? '★' : '★' + lv);
+  }
+
   function renderStarredNote(filter) {
     st.starred.filter = filter || st.starred.filter;
     $$('#screen-starred .seg-btn[data-sfilter]').forEach(function (b) {
@@ -1908,7 +1914,9 @@ var QR_MATRIX = [
           '<small class="num-code">' + esc(q.num_code || '') + '</small>' +
           '<span class="star-item-kind">' + kindLabel(x.kind) + '</span>' +
           '<button type="button" class="star-unmark" data-unstar="question" data-qid="' + esc(q.q_id) + '"' +
-          ' aria-label="問題★を外す">' + (qStar ? '★' : '☆') + '</button></div>' +
+          ' data-star-level="' + (x.q_level || 0) + '"' +
+          ' aria-label="問題★の段階を進める（★5の次で外れます）">' +
+          starGlyph2(qStar ? (x.q_level || 1) : 0) + '</button></div>' +
           '<div class="star-item-body">' +
           '<p class="star-stem' + (qStar ? ' is-marked' : '') + '">' + esc(q.stem) + '</p>' +
           '<div class="star-choices">' + (q.atoms || []).map(function (a) {
@@ -1916,7 +1924,9 @@ var QR_MATRIX = [
                    '<span class="star-choice-num">' + circled(a.original_num) + '</span>' +
                    '<span>' + esc(a.text) + (a.is_correct ? '　【正】' : '') + '</span>' +
                    '<button type="button" class="star-unmark" data-unstar="atom" data-atom="' + esc(a.atom_id) + '"' +
-                   ' aria-label="選択肢★を外す">' + (marked[a.atom_id] ? '★' : '☆') + '</button></div>';
+                   ' data-star-level="' + (x.atom_levels && x.atom_levels[a.atom_id] || 0) + '"' +
+                   ' aria-label="選択肢★の段階を進める（★5の次で外れます）">' +
+                   starGlyph2(marked[a.atom_id] ? (x.atom_levels && x.atom_levels[a.atom_id] || 1) : 0) + '</button></div>';
           }).join('') + '</div>' +
           '<div class="explanation-body">' + M.prepareExplanationHtml(q.overall_explanation || '') + '</div>' +
           (q.comparison_table ? '<div class="explanation-body">' + M.prepareExplanationHtml(q.comparison_table) + '</div>' : '') +

@@ -1297,6 +1297,7 @@
 
     if (prev) {
       rec.is_starred       = !!prev.is_starred;
+      rec.star_level       = starLevelOf(prev);   /* V2.35 段階も失わせない */
       rec._star            = prev.is_starred ? 1 : 0;
       /* 書き換えた解説は、再インポートで絶対に失わせない。
          この2行の追加漏れが、気づかれないままメモ全消失を招く。 */
@@ -2441,11 +2442,29 @@
 
   /* ★は「付いている集合」ではなく「いつそうしたか」で持つ。
      集合の足し算にすると、片方の端末で外した★が
-     もう片方から毎回よみがえって、二度と外せなくなる。 */
+     もう片方から毎回よみがえって、二度と外せなくなる。
+
+     V2.35：★は1〜5の段階（利用者裁定・案A＝タップで1→2→…→5→解除と循環）。
+     is_starred は「star_level >= 1」の意味で残す（★ノート・印刷・同期・
+     既存バックアップの互換のため）。star_level の無い古い記録は
+     is_starred から 1/0 と読む。 */
+  function starLevelOf(rec) {
+    if (!rec) { return 0; }
+    if (rec.star_level !== undefined && rec.star_level !== null) {
+      return Math.max(0, Math.min(5, Number(rec.star_level) || 0));
+    }
+    return rec.is_starred ? 1 : 0;
+  }
+
+  function nextStarLevel(rec) {
+    var lv = (starLevelOf(rec) + 1) % 6;
+    return { star_level: lv, is_starred: lv >= 1, star_updated_at: nowMs() };
+  }
+
   function toggleQuestionStar(qId) {
     return getQuestion(qId).then(function (q) {
       if (!q) { throw new Error('問題が見つかりません: ' + qId); }
-      return updateQuestion(qId, { is_starred: !q.is_starred, star_updated_at: nowMs() })
+      return updateQuestion(qId, nextStarLevel(q))
         .then(function (r) { return bumpDirty(1).then(function () { return r; }); });
     });
   }
@@ -2453,7 +2472,7 @@
   function toggleAtomStar(atomId) {
     return getAtom(atomId).then(function (a) {
       if (!a) { throw new Error('選択肢が見つかりません: ' + atomId); }
-      return updateAtom(atomId, { is_starred: !a.is_starred, star_updated_at: nowMs() })
+      return updateAtom(atomId, nextStarLevel(a))
         .then(function (r) { return bumpDirty(1).then(function () { return r; }); });
     });
   }
@@ -2466,11 +2485,14 @@
     ]).then(function (r) {
       var starQ = r[0], starA = r[1];
       var qids = {};
-      starQ.forEach(function (q) { qids[q.q_id] = { q_id: q.q_id, kind: 'question', marked_atoms: [] }; });
+      starQ.forEach(function (q) { qids[q.q_id] = { q_id: q.q_id, kind: 'question', marked_atoms: [],
+        q_level: starLevelOf(q), atom_levels: {} }; });
       starA.forEach(function (a) {
-        if (!qids[a.q_id]) { qids[a.q_id] = { q_id: a.q_id, kind: 'atom', marked_atoms: [] }; }
+        if (!qids[a.q_id]) { qids[a.q_id] = { q_id: a.q_id, kind: 'atom', marked_atoms: [],
+          q_level: 0, atom_levels: {} }; }
         else if (qids[a.q_id].kind === 'question') { qids[a.q_id].kind = 'both'; }
         qids[a.q_id].marked_atoms.push(a.atom_id);
+        qids[a.q_id].atom_levels[a.atom_id] = starLevelOf(a);   /* V2.35 */
       });
       var keys = Object.keys(qids);
       return getQuestionsFull(keys).then(function (full) {
@@ -2478,7 +2500,9 @@
           return {
             question     : q,
             kind         : qids[q.q_id].kind,
-            marked_atoms : qids[q.q_id].marked_atoms
+            marked_atoms : qids[q.q_id].marked_atoms,
+            q_level      : qids[q.q_id].q_level || 0,       /* V2.35 */
+            atom_levels  : qids[q.q_id].atom_levels || {}
           };
         });
       });
@@ -3650,6 +3674,7 @@
     updateQuestionsBulk: updateQuestionsBulk,
     toggleQuestionStar : toggleQuestionStar,
     toggleAtomStar     : toggleAtomStar,
+    starLevelOf        : starLevelOf,
     countBadgesByScope : countBadgesByScope,
     getStarredNote     : getStarredNote,
 

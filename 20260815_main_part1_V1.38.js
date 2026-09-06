@@ -1500,8 +1500,8 @@
 
     /* --- 問題文 ＆ 問題★ --- */
     setText('#q-stem-text', q.stem);
-    setStarButton('#q-star', !!q.is_starred);
-    setStarButton('#rv-star', !!q.is_starred);
+    setStarButton('#q-star', S.starLevelOf(q));
+    setStarButton('#rv-star', S.starLevelOf(q));
 
     /* --- 画像アコーディオン --- */
     renderImageAccordion(q);
@@ -1652,8 +1652,9 @@
         ? '<button type="button" class="choice-mark" data-kind="ground" aria-pressed="false"' +
           ' aria-label="根拠を説明できた（消去完了）">☐</button>'
         : '<button type="button" class="choice-mark" data-kind="star" aria-pressed="' +
-          (a.is_starred ? 'true' : 'false') + '" aria-label="この選択肢に★を付ける">' +
-          (a.is_starred ? '★' : '☆') + '</button>';
+          (a.is_starred ? 'true' : 'false') + '" data-star-level="' + S.starLevelOf(a) +
+          '" aria-label="この選択肢に★を付ける（タップで段階が1つ進みます）">' +
+          starGlyph(S.starLevelOf(a)) + '</button>';
       return '<li class="choice-card" data-atom-id="' + escapeHtml(a.atom_id) + '" data-num="' + a.original_num + '">' +
              '<span class="choice-num">' + a.original_num + '</span>' +
              '<button type="button" class="choice-body">' +
@@ -1776,9 +1777,11 @@
     /* ★は解答前でも付けられる（この場に思ったことを逃さないため） */
     S.toggleAtomStar(id).then(function (saved) {
       var atom = state.current.atoms.filter(function (a) { return a.atom_id === id; })[0];
-      if (atom) { atom.is_starred = saved.is_starred; }
+      var lv = S.starLevelOf(saved);
+      if (atom) { atom.is_starred = saved.is_starred; atom.star_level = lv; }
       btn.setAttribute('aria-pressed', saved.is_starred ? 'true' : 'false');
-      btn.textContent = saved.is_starred ? '★' : '☆';
+      btn.setAttribute('data-star-level', String(lv));
+      btn.textContent = starGlyph(lv);
     }).catch(function (e) { toast('★を保存できませんでした：' + e.message, 3600); });
   }
 
@@ -1870,7 +1873,7 @@
     if (rank) { rank.textContent = q.rank; rank.className = 'rank-badge ' + q.rank; }
     setText('#rv-code', q.num_code || '');
     setText('#rv-stem-text', q.stem);
-    setStarButton('#rv-star', !!q.is_starred);
+    setStarButton('#rv-star', S.starLevelOf(q));
     var sc = $('#rv-stem-scroll');
     if (sc) { sc.scrollTop = 0; }
     fitStemHeight();
@@ -2158,7 +2161,9 @@
              (picked ? '<span class="cx-pick">あなたの答え</span>' : '') +
              '<button type="button" class="cx-memo-btn" aria-label="この選択肢の解説を書き換える">✏</button>' +
              '<button type="button" class="cx-star" aria-pressed="' + (a.is_starred ? 'true' : 'false') +
-             '" aria-label="この選択肢に★を付ける">' + (a.is_starred ? '★' : '☆') + '</button>' +
+             '" data-star-level="' + S.starLevelOf(a) +
+             '" aria-label="この選択肢に★を付ける（タップで段階が1つ進みます）">' +
+             starGlyph(S.starLevelOf(a)) + '</button>' +
              '</div>' +
              '<div class="cx-exp explanation-body">' + renderAtomBody(a) + '</div>' +
              evalArea +
@@ -2819,21 +2824,33 @@
     });
   }
 
-  function setStarButton(sel, on) {
+  /* V2.35：★は1〜5の段階。0=☆／1=★／2〜5=★に段数を添える。
+     真偽値で呼ぶ古い呼び出しも 1/0 として通す（互換）。 */
+  function starGlyph(lv) {
+    lv = (typeof lv === 'number') ? lv : (lv ? 1 : 0);
+    return lv <= 0 ? '☆' : (lv === 1 ? '★' : '★' + lv);
+  }
+  function setStarButton(sel, lv) {
     var el = $(sel);
     if (!el) { return; }
-    el.setAttribute('aria-pressed', on ? 'true' : 'false');
-    el.textContent = on ? '★' : '☆';
+    lv = (typeof lv === 'number') ? lv : (lv ? 1 : 0);
+    el.setAttribute('aria-pressed', lv >= 1 ? 'true' : 'false');
+    el.setAttribute('data-star-level', String(lv));
+    el.textContent = starGlyph(lv);
   }
 
   function toggleCurrentQuestionStar() {
     var q = state.current.question;
     if (!q) { return Promise.resolve(); }
     return S.toggleQuestionStar(q.q_id).then(function (saved) {
+      var lv = S.starLevelOf(saved);
       q.is_starred = saved.is_starred;
-      setStarButton('#q-star', saved.is_starred);
-      setStarButton('#rv-star', saved.is_starred);
-      toast(saved.is_starred ? 'この問題に★を付けました' : '★を外しました', 1600);
+      q.star_level = lv;
+      setStarButton('#q-star', lv);
+      setStarButton('#rv-star', lv);
+      toast(lv === 0 ? '★を外しました'
+        : lv === 1 ? 'この問題に★を付けました（さらにタップで★2〜★5）'
+        : '★' + lv + ' にしました', 1800);
     });
   }
 
@@ -2841,10 +2858,12 @@
   function toggleAtomStarById(atomId, btn) {
     return S.toggleAtomStar(atomId).then(function (saved) {
       var atom = state.current.atoms.filter(function (a) { return a.atom_id === atomId; })[0];
-      if (atom) { atom.is_starred = saved.is_starred; }
+      var lv = S.starLevelOf(saved);
+      if (atom) { atom.is_starred = saved.is_starred; atom.star_level = lv; }
       if (btn) {
         btn.setAttribute('aria-pressed', saved.is_starred ? 'true' : 'false');
-        btn.textContent = saved.is_starred ? '★' : '☆';
+        btn.setAttribute('data-star-level', String(lv));
+        btn.textContent = starGlyph(lv);
       }
       renderSummary();
     });

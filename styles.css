@@ -4515,3 +4515,8 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .guide-ui .btn-confirm, .guide-ui .btn-next{ width:auto; max-width:240px; }
 .guide-ui .eval-btn{ min-width:56px; }
 .guide-ui-row{ display:inline-flex; gap:6px; }
+
+/* V2.35 ★の段階（1〜5）。数字つき★が潰れないように少しだけ字間を締める */
+[data-star-level="2"], [data-star-level="3"],
+[data-star-level="4"], [data-star-level="5"]{ letter-spacing:-.04em; }
+.star-btn[data-star-level="0"]{ opacity:.55; }

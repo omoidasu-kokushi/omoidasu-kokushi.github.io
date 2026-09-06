@@ -999,9 +999,14 @@
     list.forEach(function (x) {
       var at = Number(x.star_updated_at || 0);
       if (!x.is_starred && !at) { return; }   /* 触られていないものは運ばない */
-      out.push({ id: x[idKey], on: !!x.is_starred, at: at });
+      /* V2.35：段階（1〜5）も運ぶ。無い相手（旧版）が read しても on/at だけで
+         今までどおり動く。旧台帳に lv が無ければ on から 1/0 と読む。 */
+      out.push({ id: x[idKey], on: !!x.is_starred, at: at, lv: S.starLevelOf(x) });
     });
     return out;
+  }
+  function starLvOfRow(r) {
+    return (r.lv !== undefined && r.lv !== null) ? Number(r.lv) : (r.on ? 1 : 0);
   }
 
   function mergeStars(a, b) {
@@ -1244,9 +1249,11 @@
         /* ★は台帳と無関係。解いていない肢にも付く。 */
         var st = starA[a.atom_id];
         if (st && (!!a.is_starred !== !!st.on ||
+                   S.starLevelOf(a) !== starLvOfRow(st) ||
                    Number(a.star_updated_at || 0) !== Number(st.at || 0))) {
           patch = patch || {};
           patch.is_starred = !!st.on;
+          patch.star_level = starLvOfRow(st);   /* V2.35 */
           patch.star_updated_at = Number(st.at || 0);
         }
         if (patch) { patches[a.atom_id] = patch; }
@@ -1264,8 +1271,10 @@
           var st = want[q.q_id];
           if (!st) { return; }
           if (!!q.is_starred === !!st.on &&
+              S.starLevelOf(q) === starLvOfRow(st) &&
               Number(q.star_updated_at || 0) === Number(st.at || 0)) { return; }
-          qp[q.q_id] = { is_starred: !!st.on, star_updated_at: Number(st.at || 0) };
+          qp[q.q_id] = { is_starred: !!st.on, star_level: starLvOfRow(st),
+                         star_updated_at: Number(st.at || 0) };
         });
         return S.updateQuestionsBulk(qp).then(function () { return touched; });
       });
