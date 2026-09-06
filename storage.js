@@ -233,6 +233,20 @@
      兄弟は事例文が完全に同じなので一致する。ただし問番号が取れないため
      並び順は q_id 順（安定だが本来の順ではない）になる。
      予想問題で連問を作るなら source を書くこと。 */
+  /* --- 出典の空白ゆれを詰める（V2.60） ---
+     実測：342ファイル中17問で「第113回  午後問104」（全角スペース2個）。
+     効く場所が3つある。
+       ・画面の出典表示が間延びする
+       ・照合レーンの台帳と文字列一致しない
+       ・V2.56 の連問キー（case_key）の元になる
+     q_id は stem のハッシュなので、ゆれても重複レコードにはならない。
+     詰めるのは空白だけ。数字や語の並びには触らない。 */
+  function tidySource(v) {
+    if (v == null) { return v; }
+    var t = String(v).replace(/　/g, ' ').replace(/[ \t]+/g, ' ').trim();
+    return t;
+  }
+
   function caseInfoOf(source, stem) {
     var out = { key: null, no: null };
     var s2 = String(stem == null ? '' : stem);
@@ -1071,6 +1085,7 @@
   var SPLIT_NO  = ['', '0', 'false', 'no', 'n', 'x', '不可', '×'];
 
   function buildQuestionFromRow(cells, ctx) {
+    var question_source_tidied = false;
     var warnings = [];
 
     if (!cells || cells.length < 12) {
@@ -1283,11 +1298,18 @@
       updated_at         : nowMs()
     };
 
+    /* V2.60：連問キーを作る前に詰める。詰めてから作らないと、
+       同じ事例が空白ゆれで別の束になる。 */
+    var srcTidy = tidySource(source);
+    if (srcTidy !== source) { question_source_tidied = true; }
+    source = srcTidy;
     var ci = caseInfoOf(source, stem);
+    question.source = source;
     question.case_key = ci.key;
     question.case_no = ci.no;
     question._case_orphan = !!ci.orphan;
 
+    question._source_tidied = question_source_tidied;
     return { ok: true, question: question, atoms: atoms, warnings: warnings };
   }
 
@@ -1537,7 +1559,15 @@
     if (!report.garble_examples) { report.garble_examples = []; }
     var rx = new RegExp(GARBLE_JP + '\\s?\\b(is|of|the|and|or|to|in|for|with|by)\\b\\s?' +
                         GARBLE_JP, 'g');
-    var texts = [q && q.stem, q && q.overall_explanation];
+    /* V2.60：分類（単元・大項目・中項目・小項目）と出典も見る。
+       V2.54 は本文しか見ていなかったため、
+         sub_item「筋収縮 of 機構」（＝「筋収縮の機構」）
+       のような化けが素通りし、「⚠出題基準に無い分類」としてだけ出ていた。
+       それを読んだ人は分類表のほうを疑う。原因を言わない警告は、
+       間違った場所を直させる。 */
+    var texts = [q && q.stem, q && q.overall_explanation,
+                 q && q.unit, q && q.major, q && q.medium, q && q.sub_item,
+                 q && q.source];
     (atoms || []).forEach(function (a) {
       texts.push(a && a.text); texts.push(a && a.statement); texts.push(a && a.explanation);
     });
@@ -1662,6 +1692,8 @@
         report.parsed++;
         taxCheckInto(report, built.question, i + 1);
         if (built.question.case_key) { report.case_rows = (report.case_rows || 0) + 1; }
+        if (built.question._source_tidied) { report.source_tidied = (report.source_tidied || 0) + 1; }
+        delete built.question._source_tidied;
         if (built.question._case_orphan) { report.case_orphan = (report.case_orphan || 0) + 1; }
         delete built.question._case_orphan;
         garbleCheckInto(report, built.question, built.atoms, i + 1);
@@ -1773,7 +1805,10 @@
         qq.pool        = normalizePool(q.pool);
         /* 連問（V2.56）。JSONが明示していればそれを正とし、
            無ければ出典と問題文から導く。 */
-        var ci2 = caseInfoOf(q.source, q.stem);
+        var srcTidy2 = tidySource(q.source);
+        qq._source_tidied = (srcTidy2 !== q.source);
+        qq.source = srcTidy2;
+        var ci2 = caseInfoOf(qq.source, q.stem);
         qq.case_key = (q.case_key !== undefined && q.case_key !== null) ? q.case_key : ci2.key;
         qq.case_no = isNum(q.case_no) ? q.case_no : ci2.no;
         qq._case_orphan = !!ci2.orphan && !qq.case_key;
@@ -1798,6 +1833,8 @@
         report.parsed++;
         taxCheckInto(report, qq, idx + 1);
         if (qq.case_key) { report.case_rows = (report.case_rows || 0) + 1; }
+        if (qq._source_tidied) { report.source_tidied = (report.source_tidied || 0) + 1; }
+        delete qq._source_tidied;
         if (qq._case_orphan) { report.case_orphan = (report.case_orphan || 0) + 1; }
         delete qq._case_orphan;
         garbleCheckInto(report, qq, atoms, idx + 1);

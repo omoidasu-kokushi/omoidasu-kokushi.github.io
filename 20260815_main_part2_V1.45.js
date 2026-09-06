@@ -2963,6 +2963,12 @@ var QR_MATRIX = [
          「肝臓 is、体内の…」を読まされるのは利用者なので、必ず知らせる。 */
       /* 連問（V2.56）。束ねた数と、束ねられなかった数の両方を出す。
          出典が無いと束ねられない＝作問側で source を書けば直る、と分かる形にする。 */
+      /* V2.60：詰めたことを黙っていない。作問側の保存設定の合図なので、
+         気づけないと次も同じところで混ざる。 */
+      if (rep.source_tidied) {
+        lines.push('出典の余分な空白を詰めた問題　<b>' + rep.source_tidied + '</b> 問' +
+                   '<small>（例：「第113回　　午後問104」→「第113回 午後問104」）</small>');
+      }
       if (rep.case_rows) {
         lines.push('状況設定（連問）として束ねた問題　<b>' + rep.case_rows + '</b> 問');
       }
@@ -2975,8 +2981,9 @@ var QR_MATRIX = [
       if (rep.garble_bad) {
         lines.push('<b>⚠ 助詞が英単語に化けている疑い ' + rep.garble_bad + ' 箇所（' +
                    (rep.garble_rows || 0) + ' 問）</b>');
-        lines.push('<small>「肝臓 is」「段階 of の」のように、助詞が英語になっています。' +
-                   'そのまま画面に出ます。例：' +
+        lines.push('<small>「肝臓 is」「筋収縮 of 機構」のように、助詞が英語になっています。' +
+                   '本文だけでなく<b>分類（単元・大項目・中項目・小項目）</b>も見ています。' +
+                   '分類が化けていると「出題基準に無い分類」の原因になります。例：' +
                    esc((rep.garble_examples || []).join(' ／ ')) + '</small>');
       }
       if (rep.skipped) {
