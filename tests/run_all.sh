@@ -21,7 +21,7 @@ fi
 
 pass=0
 fail=0
-for t in "$APP_DIR"/tests/test_batch*.py "$APP_DIR"/tests/test_regress.py "$APP_DIR"/tests/test_restore_guard.py "$APP_DIR"/tests/test_buy_dialog_overwrite.py "$APP_DIR"/tests/test_tax_slash.py "$APP_DIR"/tests/test_tax_fullwidth.py "$APP_DIR"/tests/test_exp_button_size.py "$APP_DIR"/tests/test_garble_report.py "$APP_DIR"/tests/test_case_series.py "$APP_DIR"/tests/test_knock_count.py "$APP_DIR"/tests/test_session_tally.py "$APP_DIR"/tests/test_verdict_coach.py "$APP_DIR"/tests/test_import_hygiene.py "$APP_DIR"/tests/test_mermaid_vertical.py "$APP_DIR"/tests/test_bessatsu_image.py "$APP_DIR"/tests/test_stem_image.py "$APP_DIR"/tests/test_narrow_320.py "$APP_DIR"/tests/test_pick_badge.py "$APP_DIR"/tests/test_qty_mode.py "$APP_DIR"/tests/test_pomo_resume.py "$APP_DIR"/tests/test_break_restart.py; do
+for t in "$APP_DIR"/tests/test_batch*.py "$APP_DIR"/tests/test_regress.py "$APP_DIR"/tests/test_restore_guard.py "$APP_DIR"/tests/test_buy_dialog_overwrite.py "$APP_DIR"/tests/test_tax_slash.py "$APP_DIR"/tests/test_tax_fullwidth.py "$APP_DIR"/tests/test_exp_button_size.py "$APP_DIR"/tests/test_garble_report.py "$APP_DIR"/tests/test_case_series.py "$APP_DIR"/tests/test_knock_count.py "$APP_DIR"/tests/test_session_tally.py "$APP_DIR"/tests/test_verdict_coach.py "$APP_DIR"/tests/test_import_hygiene.py "$APP_DIR"/tests/test_mermaid_vertical.py "$APP_DIR"/tests/test_bessatsu_image.py "$APP_DIR"/tests/test_stem_image.py "$APP_DIR"/tests/test_narrow_320.py "$APP_DIR"/tests/test_interrupt_guard.py "$APP_DIR"/tests/test_pick_badge.py "$APP_DIR"/tests/test_qty_mode.py "$APP_DIR"/tests/test_pomo_resume.py "$APP_DIR"/tests/test_break_restart.py; do
   [ -e "$t" ] || continue
   printf '%-26s ' "$(basename "$t")"
   out="$(python3 "$t" 2>&1)"
