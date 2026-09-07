@@ -4071,16 +4071,53 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .cx .cx-exp{ margin:8px 0 12px; }   /* .cx .cx-exp{margin-top:1px}（高密度化・上）に
                                        詳細度で勝つ必要がある。1pxだと上のボタンと
                                        くっついて、やはり押し間違える。 */
+/* V2.76：**押せると分からなかった。**
+   実測（390px・ライト）：44px の幅いっぱいの面なのに
+     背景 #ECF1F7（surface-3＝奥まった面）
+     文字 #56657A（text-sub＝補助文字色）
+     枠   #DAE2EC（border。ほぼ見えない）
+     影   none ／ 文字 12.48px
+   これは多くのUIで「無効なボタン」に使う配色そのものです。
+   大きいのに沈んでいるので、押せる場所ではなく「仕切り」に見えます。
+   利用者からの報告：学生が解説の存在に気づいていなかった。
+
+   閉じているとき＝これから押す状態なので、主役の配色にします。
+     ・面と枠をアクセント色に。文字もアクセント色・太さ800
+     ・下に2pxの影を敷いて、押し込める面に見せる
+     ・先頭に ▸ を置く（記号があるだけで、走査する目に引っかかる）
+       絵文字は使いません。実測で 📖 が豆腐（□）になりました。
+       ▸（U+25B8）は絵文字の異体字を持たない幾何学記号で、
+       このアプリの「元の解説を見る」で既に使っていて化けていません。
+     ・文字を fs-sm → fs-md へ（12.5px → 14px 相当）
+   開いたあと＝もう読んでいるので、主張を下げて本文の邪魔をしない。
+   ここを地味に戻さないと、4肢ぶんの帯が本文より目立ちます。 */
 .cx-exp > summary{
   display:flex; align-items:center; justify-content:center; gap:6px;
-  width:100%; min-height:44px; padding:8px 12px;
+  width:100%; min-height:46px; padding:9px 12px;
   border-radius:var(--r-md, 10px);
-  background:var(--surface-3); border:1px solid var(--border);
-  color:var(--text-sub); font-size:var(--fs-sm); font-weight:700;
+  background:var(--accent-soft);
+  border:2px solid var(--accent);
+  box-shadow:0 2px 0 var(--accent);
+  color:var(--accent-on-soft, var(--accent));
+  font-size:var(--fs-md); font-weight:800; letter-spacing:.02em;
   cursor:pointer; list-style:none;
+  transition:transform .08s ease, box-shadow .08s ease, background .15s ease;
 }
+.cx-exp > summary::before{
+  content:"\25B8";              /* ▸ 閉じている＝これから開く */
+  font-size:1.15em; line-height:1; margin-right:1px;
+}
+/* 押した瞬間に沈む。影のぶんだけ下げると、面が押し込まれたように見える。 */
+.cx-exp > summary:active{ transform:translateY(2px); box-shadow:0 0 0 var(--accent); }
 .cx-exp > summary::-webkit-details-marker{ display:none; }
-.cx-exp[open] > summary{ background:var(--accent-soft); color:var(--accent); }
+
+/* 開いたあとは静かにする。読む邪魔をしない。 */
+.cx-exp[open] > summary{
+  background:transparent; border-color:var(--border); box-shadow:none;
+  color:var(--text-sub); font-weight:700; font-size:var(--fs-sm);
+  min-height:34px; padding:5px 10px;
+}
+.cx-exp[open] > summary::before{ content:"\25BE"; opacity:.7; }  /* ▾ 開いている */
 .cx-exp .explanation-body{ margin-top:5px; font-size:var(--fs-sm); line-height:1.7; }
 
 /* 「まだありません」ではなく「書いてみる」。
