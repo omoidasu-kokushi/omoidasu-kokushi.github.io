@@ -17,6 +17,22 @@
 使い方
     cd <repo> && python3 -m http.server 8900 &
     python3 tools/journey_all.py --import /path/past_import.json
+
+【V1.01】--profile を足した。**⑧が一度も完走していなかった**ため。
+
+  ⑧「いじわる模試を120問UIから最後まで」はUI操作で約100秒かかる。
+  ②「解き切るまで回す」だけで数十秒あるので、①〜⑧を1回で通すと
+  MCP経由のシェルの2分の壁を越え、⑧は毎回途中で切られていた。
+  JALL_FROM/JALL_TO で節は選べるが、③以降は
+  **②で作った「全部マスター」の状態が要る**ので、単独では走らない。
+
+  そこで、②までを1回走らせてブラウザのプロファイル（IndexedDB ごと）を
+  ディスクに残し、次の呼び出しはその続きから始められるようにする。
+
+    1回目  python3 tools/journey_all.py --import <json> --profile /tmp/jp --stop-after 2
+    2回目  python3 tools/journey_all.py --profile /tmp/jp --resume     （JALL_FROM=8 JALL_TO=8）
+
+  --resume のときは取り込みも②も走らせない。プロファイルの中身をそのまま使う。
 """
 import argparse, json, os, sys, time
 
@@ -108,13 +124,41 @@ def main():
     ap.add_argument("--cap", type=int, default=400, help="1周でさばく問題数")
     ap.add_argument("--accuracy", type=float, default=1.0,
                     help="正解率。Level 5（全アトムのマスター化）は定義上100%%でしか到達しない")
+    # V1.01：2分の壁をまたぐための3つ。既定では今までと同じ動きをする。
+    ap.add_argument("--profile", default=None,
+                    help="ブラウザのプロファイルを置く場所。IndexedDB ごと残る")
+    ap.add_argument("--stop-after", type=int, default=0,
+                    help="この節まで終えたら止める（2＝解き切ったところで止める）")
+    ap.add_argument("--resume", action="store_true",
+                    help="取り込みも②も走らせない。--profile の続きから始める")
     a = ap.parse_args()
 
     from playwright.sync_api import sync_playwright
     with sync_playwright() as pw:
-        br, ctx, pg = new_page(pw)
+        br, ctx, pg = new_page(pw, profile=a.profile)
         errs = []
         pg.on("pageerror", lambda e: errs.append(str(e)))
+
+        if a.resume:
+            say("===== 続きから（--resume）=====")
+            say("  取り込みも②も走らせません。プロファイルの中身をそのまま使います。")
+            pg.goto(a.url, wait_until="load")
+            pg.wait_for_function("window.__APP_READY === true", timeout=180000)
+            pg.wait_for_timeout(1500)
+            tour_skip(pg); close_modals(pg)
+            pg.evaluate("async () => { await window.Scheduler.refreshAll({recomputeWeakness:true}); }")
+            s = pg.evaluate(SNAP)
+            say("  いまの状態: " + json.dumps(s, ensure_ascii=False))
+            C("続きから始められている（未解答が0＝②を通ったあと）",
+              s["unlearned"] == 0, "未解答%d" % s["unlearned"])
+            globals()["PG"] = pg
+            from journey_all_modes import check_modes   # noqa
+            check_modes(pg, say, C, errs)
+            say("\n===== まとめ =====")
+            say("  失敗 %d件 %s" % (len(FAILS), FAILS if FAILS else ""))
+            ctx.close()
+            if br: br.close()
+            sys.exit(1 if FAILS else 0)
 
         say("===== ① 起動して過去問を取り込む =====")
         pg.goto(a.url, wait_until="load")
@@ -189,6 +233,14 @@ def main():
         C("ここまでJSエラーが出ない", not errs, json.dumps(errs[:3], ensure_ascii=False))
 
         json.dump({"snapshot": s}, open(os.path.join(APP, "tmp_allmaster.json"), "w"), ensure_ascii=False)
+        if a.stop_after and a.stop_after <= 2:
+            say("\n（--stop-after 2 なのでここで止めます。"
+                "続きは --profile %s --resume で）" % a.profile)
+            say("\n===== まとめ =====")
+            say("  失敗 %d件 %s" % (len(FAILS), FAILS if FAILS else ""))
+            ctx.close()
+            if br: br.close()
+            sys.exit(1 if FAILS else 0)
         say("\n（この状態のまま、モードごとの確認へ）")
         globals()["PG"] = pg
         from journey_all_modes import check_modes   # noqa
