@@ -155,6 +155,10 @@ with sync_playwright() as p:
           memoShown: /自分のメモ/.test(b), memoOrigFold: /memo-orig-inline/.test(b),
           noExpWrite: /cx-write/.test(c), noExpFold: /cx-exp/.test(c),
           noExpChip: /vd-chip/.test(c),
+          /* V2.77：「自分の言葉で書く」は解説行から見出し行へ移した。
+             同じ機能のボタンが1肢に2つあったため（✏ と ✎自分の言葉で書く）。
+             入口が残っていることは、見出し行を作る関数で確かめる。 */
+          headWrite: /cx-write-inline/.test(M.writeBtnInline()),
           segActive: [...document.querySelectorAll('#set-explain-mode .seg-btn')]
                        .filter(x => x.classList.contains('is-active'))
                        .map(x => x.getAttribute('data-explain')),
@@ -174,17 +178,25 @@ with sync_playwright() as p:
     ok("open：最初から本文が出る", op["openBody"] and not op["fold"], json.dumps(op))
     ok("どのモードでも正誤は必ず見える",
        bt["chip"] and hd["chip"] and op["chip"], json.dumps([bt["chip"], hd["chip"], op["chip"]]))
-    ok("隠しているときは「自分の言葉で書く」を出す",
-       bt["write"] and hd["write"] and not op["write"],
+    # V2.77：解説行には出さなくなった（見出し行へ移動）。
+    # 観点「どのモードでも自分の言葉で書く入口がある」はそのまま残し、
+    # 見る場所だけを見出し行に変える。
+    ok("解説行にはもう「書く」を置かない（見出し行へ移した）",
+       not bt["write"] and not hd["write"] and not op["write"],
        json.dumps([bt["write"], hd["write"], op["write"]]))
+    ok("どのモードでも「自分の言葉で書く」の入口はある（見出し行）",
+       bt["headWrite"] and hd["headWrite"] and op["headWrite"],
+       json.dumps([bt["headWrite"], hd["headWrite"], op["headWrite"]]))
     ok("自分で書いたメモはどのモードでも必ず出す",
        bt["memoShown"] and hd["memoShown"] and op["memoShown"], json.dumps("memo"))
     ok("hidden では元の解説の折りたたみも出さない",
        bt["memoOrigFold"] and (not hd["memoOrigFold"]) and op["memoOrigFold"],
        json.dumps([bt["memoOrigFold"], hd["memoOrigFold"], op["memoOrigFold"]]))
-    ok("元から解説が無い肢は、モードに関係なく「書く」だけ",
-       all(x["noExpWrite"] and not x["noExpFold"] and x["noExpChip"] for x in (bt, hd, op)),
-       json.dumps([[x["noExpWrite"], x["noExpFold"]] for x in (bt, hd, op)]))
+    # V2.77：解説が無い肢も、解説行は正誤チップだけになった。
+    # 「書く」は見出し行にあるので、ここでは畳みを出さないことと正誤が見えることを見る。
+    ok("元から解説が無い肢は、モードに関係なく畳みを出さず正誤だけ",
+       all((not x["noExpFold"]) and x["noExpChip"] for x in (bt, hd, op)),
+       json.dumps([[x["noExpWrite"], x["noExpFold"], x["noExpChip"]] for x in (bt, hd, op)]))
     ok("設定の3択が選択中と一致する",
        bt["segActive"] == ["button"] and hd["segActive"] == ["hidden"]
        and op["segActive"] == ["open"],

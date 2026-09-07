@@ -2006,6 +2006,21 @@
            '\u270e 自分の言葉で書く</button>';
   }
 
+  /* V2.77：同じ機能のボタンが1肢に2つあった。
+       ・見出し行の ✏（アイコンだけ）
+       ・解説行の ✎ 自分の言葉で書く（文字）
+     どちらも cx-memo-btn で、押すと同じ書き換え欄が開く。
+     利用者の指摘：「このままの文字のボタンとお気に入り横と2か所ある」。
+
+     見出し行の1つに寄せる。アイコンだけだと何の絵か分からないので、
+     残すほうを**文字**にする。★の左に置く。
+     これで解説行は「⇒誤り ＋ 解説を見る」だけになり、行が1本減る。 */
+  function writeBtnInline() {
+    return '<button type="button" class="cx-write cx-write-inline cx-memo-btn"' +
+           ' aria-label="この選択肢の解説を自分の言葉で書き換える">' +
+           '\u270e 自分の言葉で書く</button>';
+  }
+
   /* 書き換えがあればそれを本文として出し、元の解説は折りたたんで残す。
      消えたのではなく畳まれているだけ、と分かる形にする。 */
   function renderAtomBody(a) {
@@ -2027,14 +2042,26 @@
     var mode = explainMode();
     var raw = a.explanation && String(a.explanation).trim();
 
-    /* 元から解説が無いなら、モードに関係なく「書く」だけを出す。 */
-    if (!raw) { return verdictChipOnly(a) + writePrompt(); }
-    if (mode === 'open') { return prepareAtomExplanation(a.explanation, a); }
+    /* V2.77：「自分の言葉で書く」は見出し行へ移した（writeBtnInline）。
+       ここでは出さない。同じボタンが1肢に2つあると、どちらを押すのか迷う。 */
 
-    var head = verdictChipOnly(a) + writePrompt();
-    if (mode === 'hidden') { return head; }
-    return head +
-           '<details class="cx-exp"><summary>解説を見る</summary>' +
+    /* 元から解説が無いなら、正誤だけを出す。 */
+    if (!raw) { return verdictChipOnly(a); }
+    if (mode === 'open') { return prepareAtomExplanation(a.explanation, a); }
+    if (mode === 'hidden') { return verdictChipOnly(a); }
+
+    /* V2.77：「⇒誤り」と「解説を見る」を**同じ行**にする。
+       これまでは
+           ⇒誤り ✎ 自分の言葉で書く
+                          [解説を見る]
+       と2行を使っていた。正誤は summary の中に入れられるので、
+           ⇒誤り [解説を見る]
+       の1行で足りる。開くと本文側が「⇒誤り：…」を出すので、
+       開いたあとの summary は畳む手がかりだけでよい（CSSで小さく灰色にする）。 */
+    return '<details class="cx-exp"><summary>' +
+           verdictChipOnly(a) +
+           '<span class="cx-exp-cta">解説を見る</span>' +
+           '</summary>' +
            '<div class="explanation-body">' +
            prepareAtomExplanation(a.explanation, a) +
            '</div></details>';
@@ -2188,11 +2215,18 @@
              '<span class="cx-num">' + circled(a.original_num) + '</span>' +
              '<span class="cx-text">' + escapeHtml(a.text) + '</span>' +
              (picked ? '<span class="cx-pick">あなたの答え</span>' : '') +
-             '<button type="button" class="cx-memo-btn" aria-label="この選択肢の解説を書き換える">✏</button>' +
+             /* V2.77：「書く」と★を1つの塊にする。
+                実測：「あなたの答え」バッジが付く肢で、選択肢の本文が
+                1行1〜2文字まで潰れていた（flex項目が4つ横並びで、
+                本文だけが min-width:0 で縮み切るため）。
+                塊にして、入り切らないときは塊ごと次の行へ回す。 */
+             '<span class="cx-acts">' +
+             writeBtnInline() +   /* V2.77：✏ から文字へ。★の左に置く */
              '<button type="button" class="cx-star" aria-pressed="' + (a.is_starred ? 'true' : 'false') +
              '" data-star-level="' + S.starLevelOf(a) +
              '" aria-label="この選択肢に★を付ける（タップで段階が1つ進みます）">' +
              starGlyph(S.starLevelOf(a)) + '</button>' +
+             '</span>' +
              '</div>' +
              '<div class="cx-exp explanation-body">' + renderAtomBody(a) + '</div>' +
              evalArea +
@@ -4199,6 +4233,7 @@
     refreshHome   : refreshHome,
     explainMode   : explainMode,
     renderAtomBody: renderAtomBody,
+    writeBtnInline: writeBtnInline,   /* V2.77：見出し行の「自分の言葉で書く」 */
     hideSplash    : hideSplash,
     splashSay     : splashSay,
     resolveSplash : resolveSplash,
@@ -4252,6 +4287,7 @@
     prepareAtomExplanation: prepareAtomExplanation,
     MERMAID_SOURCES: MERMAID_SOURCES,
     renderAtomBody: renderAtomBody,
+    writeBtnInline: writeBtnInline,   /* V2.77：見出し行の「自分の言葉で書く」 */
     renderChoiceBlocks: renderChoiceBlocks,
     unionTags     : unionTags,
     fitStemHeight : fitStemHeight,

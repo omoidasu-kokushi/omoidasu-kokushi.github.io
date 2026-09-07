@@ -54,8 +54,10 @@ ok("閉じているときの面はアクセント色", "background:var(--accent-
 ok("枠は2pxのアクセント色", "border:2px solid var(--accent);" in blk)
 ok("下に影がある", "box-shadow:0 2px 0 var(--accent);" in blk)
 ok("押した瞬間に沈む", "translateY(2px)" in blk)
-ok("記号は ▸（エスケープで書く）", "\\25B8" in blk)
+ok("記号は ▸（エスケープで書く）", "\\25B8" in cs)
 ok("開いたら ▾ になる", "\\25BE" in cs)
+ok("V2.77：記号は CTA の中（summary 直下ではない）",
+   ".cx-exp > summary .cx-exp-cta::before" in cs)
 # 絵文字（サロゲートペア／絵文字ブロック）が混ざっていないこと
 emoji = re.findall(r"[\U0001F300-\U0001FAFF☀-➿]", blk)
 ok("絵文字を使っていない（豆腐になる）", not emoji, emoji[:5])
@@ -68,7 +70,12 @@ INJECT = """() => {
   const host = document.querySelector('.cx') || document.body;
   const d = document.createElement('details');
   d.className = 'cx-exp';
-  d.innerHTML = '<summary>解説を見る</summary>'
+  /* V2.77：summary の中は「⇒正誤」＋「解説を見る」。記号は CTA の ::before。 */
+  d.innerHTML = '<summary>'
+              +   '<span class="cx-arrow">⇒</span>'
+              +   '<span class="vd-chip" data-verdict="wrong">誤り</span>'
+              +   '<span class="cx-exp-cta">解説を見る</span>'
+              + '</summary>'
               + '<div class="explanation-body">本文</div>';
   host.appendChild(d);
   return true;
@@ -81,7 +88,8 @@ M = """() => {
            bg: c.backgroundColor, fg: c.color, bd: c.borderColor,
            bw: c.borderWidth, sh: c.boxShadow,
            fs: parseFloat(c.fontSize), fw: c.fontWeight,
-           mark: getComputedStyle(e, '::before').content };
+           /* V2.77：記号は summary ではなく CTA の ::before に移った */
+           mark: getComputedStyle(e.querySelector('.cx-exp-cta') || e, '::before').content };
 }"""
 
 def rgb(s):

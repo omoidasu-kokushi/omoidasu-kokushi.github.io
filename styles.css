@@ -2146,6 +2146,33 @@ body.is-knock #knock-hud{ z-index:58; }
 /* 番号と本文を同じ行に置き、正誤は解説側の「⇒ 誤り：」に集約する。
    番号・正誤チップだけで1行使うのは冗長で、4肢ぶんで約88px失う。 */
 .cx-line{ display:flex; align-items:flex-start; gap:6px; margin-bottom:2px; }
+/* V2.77：見出し行に「✎ 自分の言葉で書く」を置いた（★の左）。
+   同じ機能のボタンが1肢に2つあったのを1つに寄せたもの。
+   本文（.cx-text）が縮めるように min-width:0 を入れる。
+   入れないと、flex 項目の自動最小サイズは min-content なので、
+   長い選択肢のときにボタンが枠の外へ出る（V2.74 と同じ理屈）。 */
+.cx-line .cx-text{ min-width:0; }
+/* V2.77：入り切らないときは「書く＋★」の塊ごと次の行へ回す。
+   実測：「あなたの答え」バッジが付く肢で、本文が1行1〜2文字まで潰れていた。
+   flex 項目が 番号／本文／バッジ／書く／★ の5つ横並びで、
+   min-width:0 の本文だけが縮み切るため。
+   本文に 60% の基準幅を与え、塊は wrap で落とす。 */
+.cx-line{ flex-wrap:wrap; }
+.cx-line .cx-text{ flex:1 1 60%; }
+.cx-acts{
+  flex:0 0 auto; margin-left:auto;
+  display:inline-flex; align-items:center; gap:2px;
+}
+
+/* .cx-write-inline の中身は、.cx-write の定義より後ろに置く必要がある。
+   （このファイルは詳細度が同じものは後勝ち。.cx-write は 4200行台にあり、
+     ここに書くと背景・破線枠・寸法が上書きされてしまう。V2.77 で実測。） */
+
+@media (max-width:360px){
+  /* 320px では文字が入り切らないので、ここだけ短くする。
+     アイコンだけに戻すと「何の絵か分からない」問題が戻るので、語を削る。 */
+  .cx-write-inline{ font-size:10px; padding:2px 6px; }
+}
 .cx-num{
   flex:0 0 auto; font-family:var(--font-num);
   font-size:var(--fs-md); font-weight:800; color:var(--text-sub);
@@ -4091,8 +4118,15 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
      ・文字を fs-sm → fs-md へ（12.5px → 14px 相当）
    開いたあと＝もう読んでいるので、主張を下げて本文の邪魔をしない。
    ここを地味に戻さないと、4肢ぶんの帯が本文より目立ちます。 */
+/* V2.77：summary の中に「⇒誤り」を入れて1行にした。
+   これまでは
+       ⇒誤り ✎ 自分の言葉で書く
+                      [解説を見る]
+   と2行を使っていた。正誤チップを summary に入れれば
+       ⇒誤り [解説を見る]
+   の1行で足りる。左に正誤、右に押す面。中央寄せから両端寄せへ変える。 */
 .cx-exp > summary{
-  display:flex; align-items:center; justify-content:center; gap:6px;
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
   width:100%; min-height:46px; padding:9px 12px;
   border-radius:var(--r-md, 10px);
   background:var(--accent-soft);
@@ -4111,13 +4145,54 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .cx-exp > summary:active{ transform:translateY(2px); box-shadow:0 0 0 var(--accent); }
 .cx-exp > summary::-webkit-details-marker{ display:none; }
 
-/* 開いたあとは静かにする。読む邪魔をしない。 */
-.cx-exp[open] > summary{
-  background:transparent; border-color:var(--border); box-shadow:none;
-  color:var(--text-sub); font-weight:700; font-size:var(--fs-sm);
-  min-height:34px; padding:5px 10px;
+/* 正誤チップは summary の左端。押す面（CTA）は右端。 */
+.cx-exp > summary .cx-arrow,
+.cx-exp > summary .vd-chip{ flex:0 0 auto; }
+.cx-exp > summary .cx-exp-cta{
+  flex:0 0 auto; margin-left:auto;
+  display:inline-flex; align-items:center; gap:5px;
 }
-.cx-exp[open] > summary::before{ content:"\25BE"; opacity:.7; }  /* ▾ 開いている */
+/* ▸ は CTA の直前に置く（summary の先頭ではなく、押す面の中に） */
+.cx-exp > summary::before{ content:none; }
+.cx-exp > summary .cx-exp-cta::before{
+  content:"\25B8"; font-size:1.15em; line-height:1;
+}
+
+/* V2.77：開いたあとの消し方が足りなかった（利用者の指摘）。
+   V2.76 は「枠を薄く・文字を text-sub」までしかやっていなかったので、
+   本文のすぐ上に、本文と同じくらいの大きさの帯が残っていた。
+
+   開くと本文の側が「⇒誤り：…」を出す。**正誤は本文が持つ**ので、
+   summary に残す仕事は「畳む手がかり」だけになる。そこで
+     ・正誤チップを隠す（本文と二重になる）
+     ・文言を「閉じる」に変える
+     ・灰色・極小にして、右端へ寄せる
+     ・column-reverse で summary を本文の**下**へ回す
+   最後の1つで、開いた見た目が
+
+       ⇒誤り：Purkinje線維は、His束から分岐した…
+                                        ▾ 閉じる
+
+   となり、読み始めの位置が本文の先頭になる。 */
+.cx-exp[open]{ display:flex; flex-direction:column-reverse; }
+.cx-exp[open] > summary{
+  background:transparent; border:none; box-shadow:none;
+  color:var(--text-mute, var(--text-sub)); font-weight:600;
+  font-size:var(--fs-xs); letter-spacing:0;
+  min-height:0; padding:2px 4px 0; margin-top:2px;
+  justify-content:flex-end; opacity:.7;
+}
+.cx-exp[open] > summary:hover{ opacity:1; }
+.cx-exp[open] > summary .cx-arrow,
+.cx-exp[open] > summary .vd-chip{ display:none; }
+.cx-exp[open] > summary .cx-exp-cta{ font-size:inherit; }
+.cx-exp[open] > summary .cx-exp-cta::before{ content:"\25BE"; font-size:1em; }
+/* 文字も「解説を見る」から「閉じる」へ。中身はJSで書かず、ここで差し替える。 */
+.cx-exp[open] > summary .cx-exp-cta{ font-size:0; }
+.cx-exp[open] > summary .cx-exp-cta::before{ font-size:var(--fs-xs); }
+.cx-exp[open] > summary .cx-exp-cta::after{
+  content:"閉じる"; font-size:var(--fs-xs); margin-left:4px;
+}
 .cx-exp .explanation-body{ margin-top:5px; font-size:var(--fs-sm); line-height:1.7; }
 
 /* 「まだありません」ではなく「書いてみる」。
@@ -4138,6 +4213,22 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
   background:var(--surface-2); border:1px dashed var(--border-2);
   color:var(--text-mute); font-size:var(--fs-xs); font-weight:700;
 }
+.cx-write-inline{
+  align-self:flex-start; margin-left:auto; margin-right:2px;
+  max-width:48%;
+  /* 「文字だけにして」（利用者）。破線のピルは、選択肢の本文の隣に置くと
+     本文と競う。枠と面を外して、押せる文字だけにする。
+     押せることは ✎ と色で示す。 */
+  background:none; border:none;
+  color:var(--text-mute); font-weight:600;
+  /* 面と枠を外しても、**指で押す目標は36px以上**が要る（test_batchAP）。
+     実測：padding を 2px にしたら当たり判定が34pxになり、退行として出た。
+     見た目は文字だけのまま、透明な余白で高さだけを確保する。 */
+  min-height:36px; padding:0 6px;
+  display:inline-flex; align-items:center;
+}
+.cx-write-inline:hover{ color:var(--accent); text-decoration:underline; }
+
 .cx-write:active{ background:var(--accent-soft); color:var(--accent); }
 
 /* ==========================================================================
