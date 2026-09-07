@@ -1937,8 +1937,88 @@
   /* 解説文の冒頭にある「① 誤り：」は、行頭の番号と重複して冗長になる。
      丸数字を ⇒ に置き換え、「⇒ 誤り：…」の形に畳む。
      解説に正誤の記述が無い場合は、こちらで補って必ず示す。 */
+  /* V2.78：解説の頭に「肢そのもの」が丸ごと繰り返されている。
+     実測（同梱シード453問・全469肢）：**245肢（52%）** がこの形。
+
+       生データ  <br>① × 現在の総人口約1億2,400万人で…を維持する見込み
+                 ⇒ 誤り：総人口は2008年をピークに一貫して減少しており…
+
+     このうち画面に新しく足すものは**「⇒ 誤り：」より後ろだけ**。
+       ①      … 肢番号。すでに .cx-num に出ている
+       ×      … 正誤。すでに .vd-chip に出ている
+       肢文    … すでに .cx-text に出ている
+       ⇒誤り： … prepareAtomExplanation が自分で足す
+
+     結果、画面には「誤り」が3回、肢文が2回出ていた（実測）。
+
+       ⇒誤り  ▸解説を見る
+       ⇒誤り：① × 現在の総人口約1億2,400万人で… ⇒ 誤り：総人口は2008年を…
+
+     切りすぎないための条件を2つ置く。
+       ・落とす部分に**肢文の頭が実際に入っている**こと
+         （理由の中にたまたま「⇒誤り：」があるだけの文を切らない）
+       ・落とした残りが空にならないこと
+         （「② ○ ② 常勤の保健師又は看護師 ⇒ 正解」のように理由が無い肢がある）
+     どちらかを満たさなければ、1文字も触らない。 */
+  var ECHO_RE = /^[\s]*(?:<br\s*\/?>[\s]*)*[①-⑳][\s]*[×○✕◯]?[\s\S]{0,200}?⇒[\s]*(?:誤り|正解)[\s]*[:：][\s]*/i;
+
+  /* V2.78：もう1つの形。「⇒」も「×」も無く、番号と正誤語だけが頭に付く。
+       ② 誤り。患者に対する具体的な看護ケアの…を決定するステップは「計画立案」であり…
+     実測：この形が167肢あった（描画で正誤語が3回以上出ていたもの）。
+     番号も正誤も、すでに .cx-num と .vd-chip が出しているので、頭のぶんは要らない。
+     ここで落とすのは**番号と正誤語だけ**。肢文の繰り返しは
+     理由の文と一体になっていることが多いので触らない（切ると意味が壊れる）。 */
+  var LEAD_RE = /^[\s]*(?:<br\s*\/?>[\s]*)*(?:[①-⑳][\s]*)?(?:[×○✕◯][\s]*)?(?:(?:誤り|正解|正しい|誤っている)[\s]*[。．．：:、][\s]*)/;
+
+  function stripAtomLead(html) {
+    var t = String(html || '');
+    var m = LEAD_RE.exec(t);
+    if (!m || !m[0]) { return t; }
+    var rest = t.slice(m[0].length);
+    /* 落として空になるなら触らない */
+    if (!rest.replace(/<[^>]*>/g, '').trim()) { return t; }
+    return rest;
+  }
+
+  function stripAtomEcho(html, atom) {
+    var t = String(html || '');
+    var m = ECHO_RE.exec(t);
+    if (!m) { return t; }
+    var rest = t.slice(m[0].length);
+    if (!rest.replace(/<[^>]*>/g, '').trim()) { return t; }   /* 切ると空になる */
+    var text = String((atom && atom.text) || '').replace(/\s+/g, '');
+    if (text.length < 2) { return t; }
+    var head = m[0].replace(/<[^>]*>/g, '').replace(/\s+/g, '');
+
+    /* 肢文が短いとき（「大腸菌」「否認」「怒り」など）は、
+       6字のウィンドウが作れない。実測10件がこれで漏れていた。
+         ① ○ 大腸菌 ⇒ 正解：糞便汚染および…
+       この形は、番号・○×・⇒正解： を外した芯が肢文そのものになる。
+       短い肢は**丸ごと一致したときだけ**落とす（偶然の一致を避ける）。 */
+    if (text.length < 6) {
+      var core = head.replace(/^[①-⑳]/, '')
+                     .replace(/^[×○✕◯]/, '')
+                     .replace(/⇒(?:誤り|正解)[:：]$/, '');
+      return (core === text) ? rest : t;
+    }
+    /* 肢文の頭だけを見るのでは足りない。実測10件が漏れた。
+         肢   「臍帯には、2本の臍静脈と1本の臍動脈が通っており…」
+         解説 「① × 2本の臍静脈と1本の臍動脈が通っており… ⇒ 誤り：…」
+       のように、解説側が肢文を**言い換えたり頭を省いたり**する。
+       そこで、肢文を6字ずつずらして見て、1つでも丸ごと入っていれば
+       「肢の繰り返し」と判断する。6字の一致は偶然では起きにくい。 */
+    var i, win, found = false;
+    for (i = 0; i + 6 <= text.length; i++) {
+      win = text.slice(i, i + 6);
+      if (head.indexOf(win) >= 0) { found = true; break; }
+    }
+    if (!found) { return t; }
+    return rest;
+  }
+
   function prepareAtomExplanation(html, atom) {
-    var out = prepareExplanationHtml(html || '');
+    var out = prepareExplanationHtml(
+                stripAtomLead(stripAtomEcho(html, atom)) || '');   /* V2.78 */
     out = out.replace(/^\s*(?:・|<br\s*\/?>)+\s*/i, '');
 
     var re = /(<span\b[^>]*data-verdict="[^"]*"[^>]*>)\s*[①-⑳]\s*/;
@@ -4233,6 +4313,8 @@
     refreshHome   : refreshHome,
     explainMode   : explainMode,
     renderAtomBody: renderAtomBody,
+    stripAtomEcho : stripAtomEcho,    /* V2.78：肢の繰り返しを落とす */
+    stripAtomLead : stripAtomLead,
     writeBtnInline: writeBtnInline,   /* V2.77：見出し行の「自分の言葉で書く」 */
     hideSplash    : hideSplash,
     splashSay     : splashSay,
@@ -4287,6 +4369,8 @@
     prepareAtomExplanation: prepareAtomExplanation,
     MERMAID_SOURCES: MERMAID_SOURCES,
     renderAtomBody: renderAtomBody,
+    stripAtomEcho : stripAtomEcho,    /* V2.78：肢の繰り返しを落とす */
+    stripAtomLead : stripAtomLead,
     writeBtnInline: writeBtnInline,   /* V2.77：見出し行の「自分の言葉で書く」 */
     renderChoiceBlocks: renderChoiceBlocks,
     unionTags     : unionTags,
