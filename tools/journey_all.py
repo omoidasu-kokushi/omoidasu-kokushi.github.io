@@ -33,6 +33,26 @@
     2回目  python3 tools/journey_all.py --profile /tmp/jp --resume     （JALL_FROM=8 JALL_TO=8）
 
   --resume のときは取り込みも②も走らせない。プロファイルの中身をそのまま使う。
+
+【V1.02】①の取り込みが**毎回全滅していた**。原因は渡すファイルの取り違え。
+
+  ext_v4.json は**機械抽出の生データ**で、キーは
+    choices / correct / flags / kai / lead / multi / num / numeric_answer /
+    session / source / stem / type
+  の12個。**atoms が無い**（分類 unit/major/medium/target も無い）。
+  取り込み側は stem と atoms を要るので、1,200問すべてが
+  「stem または atoms がありません」で弾かれていた（実測：imported 0／skipped 1200／2ms）。
+
+  そのため、この通しは**同梱シード453問だけで回っていた**。
+  1,200問の規模で見ているつもりが、見ていなかった。
+
+  さらに、期待値に 1200 と 14 を直接書いていたのも誤り。
+  atoms 付きで1,200問のファイルは**存在しない**（仕上げが終わった分しか atoms は無い）。
+  実測：いちばん多いもので916問（20260908_配布_V1.00.json）。
+  数を埋め込まず、**入力そのものから期待値を作る**ように変えた。
+
+  渡すのは「仕上げが終わって取り込める形になったもの」。
+    分類_令和5年版/out/20260908_配布_V1.00.json   （916問・照合パッチ適用済み）
 """
 import argparse, json, os, sys, time
 
@@ -183,13 +203,30 @@ def main():
                        pool_main:r.pool_main||0, pool_mock:r.pool_mock||0 };
             }""", payload)
             say("  取り込み: " + json.dumps(imp, ensure_ascii=False))
-            # 抽出JSONの時点で flags が付いている14問（選択肢が画像だけ12・正答なし2）は
-            # 取り込めなくて正しい。**黙って入れないこと**を見る。
-            C("取り込めるものは全部入る（既知の欠損14問を除く）",
-              imp["imported"] == 1200 - 14, json.dumps(imp, ensure_ascii=False))
-            C("落とした問題を報告に出す（黙って捨てない）",
-              imp["skipped"] == 14 and imp["mismatch"] == 2,
-              "skipped=%s mismatch=%s" % (imp["skipped"], imp["mismatch"]))
+            # V1.02：数を埋め込まない。**入力そのものから期待値を作る**。
+            _src = json.loads(payload)
+            _qs = _src.get("questions") if isinstance(_src, dict) else _src
+            _n = len(_qs)
+            # 入力のうち、そもそも取り込めない形のもの（stem か atoms が無い）を数える。
+            # 生の抽出JSONを間違って渡したときに、それが一目で分かるようにする。
+            _broken = sum(1 for q in _qs
+                          if not (q.get("stem") and (q.get("atoms") or [])))
+            say("  入力 %d問（うち stem か atoms が無いもの %d問）" % (_n, _broken))
+            C("生の抽出JSONではなく、取り込める形のものを渡している",
+              _broken == 0,
+              "" if _broken == 0 else
+              "%d問に atoms が無い。ext_v4.json のような抽出直後のファイルは"
+              " atoms を持たないので、仕上げ後のファイルを渡すこと" % _broken)
+            C("入ったものと弾いたものの合計が、入力の数と合う",
+              imp["imported"] + imp["updated"] + imp["skipped"] == _n,
+              "入%d 更%d 弾%d ／ 入力%d"
+              % (imp["imported"], imp["updated"], imp["skipped"], _n))
+            C("黙って捨てていない（弾いたぶんは報告に出る）",
+              imp["skipped"] == 0 or imp["skipped"] == _broken,
+              "skipped=%s broken=%s" % (imp["skipped"], _broken))
+            C("取り込める形のものは全部入る",
+              imp["imported"] + imp["updated"] >= _n - _broken,
+              json.dumps(imp, ensure_ascii=False))
             C("出題基準に無い分類が0", imp.get("tax_bad", 0) == 0,
               json.dumps(imp.get("tax_examples"), ensure_ascii=False))
             C("全部が本体プールに入る（模試送りが0）", imp["pool_mock"] == 0, imp["pool_mock"])
@@ -225,11 +262,19 @@ def main():
         # 時計を進めないこの通しでは原理的に0のまま。実測：0/1816・0%。
         # 直すか（マスターの解禁条件を緩めるか）は利用者の裁定事項。
         # 警報として毎回赤く出ると、本物の退行が埋もれる。**保留として出す**。
-        say("  保留  全アトムがマスターになる（Level 5）   << %d/%d"
-            "   ※§23-⑥ 判断待ち。マスターは30日以上のステップ到達が要るので、"
-            "時計を進めないこの通しでは原理的に0" % (s["master"], s["atoms"]))
+        # V1.02：この文言は「原理的に0」と書いていたが、**0だったのは
+        # 取り込みが全滅していたからで、仕様のせいではなかった**。
+        # 916問を正しく入れた実測では 5,550/5,558（99%）まで届く。
+        # §23-⑥「Level 5 は実質到達不能か」は、この数字で見直す必要がある。
+        _mr = 100.0 * s["master"] / max(1, s["atoms"])
+        say("  保留  全アトムがマスターになる（Level 5）   << %d/%d（%.1f%%）"
+            "   ※§23-⑥ 判断待ち。残りは30日以上のステップに届いていない肢。"
+            "V1.01まで『原理的に0』と書いていたが、0だったのは取り込みの取り違えが原因"
+            % (s["master"], s["atoms"], _mr))
         C("Level 5 に到達する", s["level"] >= 5, "Lv%d" % s["level"])
-        say("  保留  表示100%%になる   << %s%%   ※同上（Level 5 の分母がマスター数）" % s["pct"])
+        say("  保留  表示100%%になる   << %s%%   ※同上。達成前に100%%と出さない"
+            "（V1.83：Math.round(99.6)=100 で『満タンなのに進まない』が起きたため99で止める）"
+            % s["pct"])
         C("ここまでJSエラーが出ない", not errs, json.dumps(errs[:3], ensure_ascii=False))
 
         json.dump({"snapshot": s}, open(os.path.join(APP, "tmp_allmaster.json"), "w"), ensure_ascii=False)
