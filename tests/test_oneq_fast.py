@@ -28,7 +28,7 @@
   ・解説フェーズへ飛ばさず、その場で答え合わせ＋大きい「次へ」
   ・解説は小さい導線から開ける
 
-ここで固定するのは19個。**【】に干渉しないこと**を特に強く見る。
+ここで固定するのは30個ほど。**【】に干渉しないこと**を特に強く見る。
 """
 import os, sys, io, json
 from playwright.sync_api import sync_playwright
@@ -43,8 +43,16 @@ cs = open(os.path.join(base, "styles.css"), encoding="utf-8").read()
 
 ok("【】は記号として置き、線は中の言葉だけに掛ける",
    "oq-word" in p1 and "括弧に線が乗ると" in p1)
-ok("正しい言葉は間違えた言葉の真上に浮かせる", "間違えた言葉の真上" in p1)
-ok("なぜ重ねるのかが書いてある", "目が「線が引かれた場所」と「正解が書かれた場所」を往復" in p1)
+ok("問題文は必ず出す（statement だけにしない）", "問題文は**必ず出す**" in p1)
+ok("なぜ statement だけにしないかが書いてある", "74%が肢の本文と同じ" in p1)
+ok("正解はポップアップと同じ形で下に出す", "ポップアップと同じ形" in p1)
+ok("降参がある", "oq-giveup" in p1 and "説明できない" in p1)
+ok("○で正解なら自動で次へ", "手を止めずに次へ" in p1)
+ok("×で正解なら裏回答を聞く", "showOneQGround" in p1)
+ok("裏回答は×が左・○が右", "oq-g-no" in p1 and "押す回数の多い側を" in p1)
+ok("解説は肢のぶんだけ", "この肢のぶんだけ" in p1)
+ok("元の問題を見る導線がある", "元の問題を見る" in p1)
+ok("display:flex を書いた（block では中央に寄らない）", "display:flex を書く" in cs)
 ok("○×は押した瞬間に採点する", "押した瞬間に採点する" in p1)
 ok("解説フェーズへ飛ばさない", "解説フェーズへ飛ばさない" in p1)
 ok("flex-direction を明示した（親が column なので）", "flex-direction を必ず書く" in cs)
@@ -87,7 +95,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(400)
 
         a = pg.evaluate("""() => {
-          const st = document.querySelector('#q-stem-text');
+          const st = document.querySelector('#choice-list .oq-word-row');
           const list = document.querySelector('#choice-list');
           const cs2 = [...document.querySelectorAll('#choice-list .choice-card')];
           const o = document.querySelector('.oq-o .ox-mark');
@@ -104,7 +112,11 @@ with sync_playwright() as p:
             o: o ? o.textContent.trim() : null,
             x: x ? x.textContent.trim() : null,
             confirmHidden: b ? b.hidden : null,
-            instruction: (document.querySelector('#q-instruction')||{}).textContent || ''
+            instruction: (document.querySelector('#q-instruction')||{}).textContent || '',
+            stem: (document.querySelector('#q-stem-text')||{}).textContent || '',
+            giveup: !!document.querySelector('#oq-giveup'),
+            oBg: getComputedStyle(document.querySelector('.oq-o')).backgroundColor,
+            xBg: getComputedStyle(document.querySelector('.oq-x')).backgroundColor
           };
         }""")
         ok("【】ごと出ている", a["key"] and a["key"].startswith("【") and a["key"].endswith("】"), a["key"])
@@ -114,6 +126,10 @@ with sync_playwright() as p:
         ok("押しやすい大きさ（70px以上）", a["h"] >= 70, a["h"])
         ok("確定ボタンを出さない", a["confirmHidden"] is True, a["confirmHidden"])
         ok("「この選択肢は正しいですか？」を出さない", a["instruction"].strip() == "", a["instruction"])
+        ok("問題文が消えていない", len(a["stem"].strip()) >= 8, a["stem"][:30])
+        ok("降参が出ている", a["giveup"], a["giveup"])
+        ok("○は淡い緑・×は淡い赤で塗る",
+           a["oBg"] != a["xBg"] and "rgba(0, 0, 0, 0)" not in a["oBg"], (a["oBg"], a["xBg"]))
 
         # わざと外す
         sel = pg.evaluate("() => window.Main.state.current.atoms[0].is_correct ? '.oq-x' : '.oq-o'")
@@ -132,7 +148,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(300)
 
         b = pg.evaluate("""() => {
-          const st = document.querySelector('#q-stem-text');
+          const st = document.querySelector('#choice-list .oq-word-row');
           const w = st.querySelector('.oq-word');
           const k = st.querySelector('.oq-key');
           const f = st.querySelector('.oq-fix');
@@ -144,9 +160,8 @@ with sync_playwright() as p:
             wordLine: cw.textDecorationLine, wordStyle: cw.textDecorationStyle,
             keyLine: ck.textDecorationLine,
             fix: f ? f.textContent : null,
-            above: !!(fr && fr.bottom <= wr.top + 2),
-            centered: !!(fr && Math.abs((fr.left+fr.right)/2 - (wr.left+wr.right)/2) < 8),
-            z: f ? getComputedStyle(f).zIndex : null,
+            below: !!(fr && fr.top >= wr.bottom - 2),
+            red: f ? getComputedStyle(f.querySelector('b')).color : null,
             next: btn && !btn.hidden ? btn.textContent.trim() : null,
             big: btn ? btn.classList.contains('is-oq-next') : false,
             nextH: btn ? Math.round(btn.getBoundingClientRect().height) : 0,
@@ -158,9 +173,8 @@ with sync_playwright() as p:
            (b["wordLine"], b["wordStyle"]))
         ok("**【】には線を掛けない**", b["keyLine"] == "none", b["keyLine"])
         ok("正しい言葉が出る", bool(b["fix"]), b["fix"])
-        ok("正しい言葉は間違えた言葉の真上", b["above"], b["above"])
-        ok("横の位置も重なっている（視線を動かさない）", b["centered"], b["centered"])
-        ok("いちばん手前に出る（問題文と重なってよい）", int(b["z"] or 0) >= 10, b["z"])
+        ok("正しい言葉は線を引いた行のすぐ下", b["below"], b["below"])
+        ok("答えの単語だけ赤で目立つ", (b["red"] or "").startswith("rgb(2"), b["red"])
         ok("解説フェーズへ飛ばない", b["phase"] == "answer", b["phase"])
         ok("大きい「次へ」が出る", b["big"] and b["nextH"] >= 56, (b["next"], b["nextH"]))
         ok("解説を読む導線は残す", b["more"], b["more"])
@@ -168,13 +182,9 @@ with sync_playwright() as p:
         pg.evaluate("() => { document.querySelector('#btn-confirm').click(); }")
         pg.wait_for_timeout(1400)
         nxt = pg.evaluate("""() => {
-          const st = document.querySelector('#q-stem-text');
-          return { moved: !st.classList.contains('is-wrong'),
-                   hasKey: !!st.querySelector('.oq-key'),
-                   noFix: !st.querySelector('.oq-fix') };
+          return { noFix: !document.querySelector('.oq-fix') };
         }""")
-        ok("次へで進む（前の答え合わせが残らない）",
-           nxt["moved"] and nxt["noFix"], nxt)
+        ok("次へで進む（前の答え合わせが残らない）", nxt["noFix"], nxt)
 
     ok("JSエラーが出ていない", not errs, errs[:2])
     br.close()

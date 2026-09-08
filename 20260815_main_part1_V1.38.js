@@ -1528,23 +1528,17 @@
     setText('#q-counter', (state.session.index + 1) + ' / ' + state.session.questions.length);
 
     /* --- 問題文 ＆ 問題★ --- */
-    /* V2.83：一問一答では、問題文カードに **statement をそのまま** 出す。
-       これまでは
-         問題文カード「胎児循環で胎児から胎盤に血液を送るのはどれか。」
-         その下       「胎児循環において、【総頸動脈】は…」
-       と、同じことを2回読ませていた。目が2か所を往復するぶんだけ遅くなる。
-       statement は単独で読める断定文（§6-3）なので、これ1つで足りる。
-       問題★・出典・テーマはカードに付いたまま残る。 */
-    /* 前の問題の答え合わせ（is-right / is-wrong）を必ず落とす。
-       中身は setHtml/setText で作り直されるが、**class は残る**（実測）。 */
+    /* V2.85：問題文は**必ず出す**。
+       V2.84 は statement だけを出したが、statement は品質がまちまちだった。
+       実測（同梱シード1,816本）：**74%が肢の本文と同じ**で、文になっていない。
+         例「炭酸・重炭酸緩衝系」「リン酸塩緩衝系」
+       これだけを出すと、画面から問題文が消えて何を問われているか分からない
+       （実機で確認）。過去問は文になっているが、判定して出し分けると
+       同じ画面が2通りの見え方をする。**常に「問題文 ＋ 【肢】」の2段**にする。
+       【肢】は choice-list の先頭に大きく置く（renderSingleChoice）。 */
     var stemEl = $('#q-stem-text');
     if (stemEl) { stemEl.classList.remove('is-right', 'is-wrong'); }
-    if (fmt.format === K.FORMAT.SINGLE && fmt.atom) {
-      var ob = bracketStatement(fmt.atom);
-      setHtml('#q-stem-text', ob.html);
-    } else {
-      setText('#q-stem-text', q.stem);
-    }
+    setText('#q-stem-text', q.stem);
     setStarButton('#q-star', S.starLevelOf(q));
     setStarButton('#rv-star', S.starLevelOf(q));
 
@@ -1691,7 +1685,15 @@
        記号の意味は説明しなくても分かる。 */
     var list = $('#choice-list');
     if (list) { list.classList.add('is-oq'); }
+    /* 肢は【 】で囲んで大きく1行。問題文はカード側にある。
+       ○・×・降参の3枚を下に並べる。
+
+       降参（V2.85・利用者裁定）：
+         押す＝説明できない＝「難しい」。当てずっぽうで○×を押させるより、
+         分からないと言えるほうが、記録としても学習としても正しい。 */
     setHtml('#choice-list',
+      '<li class="oq-word-row"><span class="oq-key">【<span class="oq-word">' +
+      escapeHtml(atom.text) + '</span>】</span></li>' +
       '<li class="choice-card is-ox oq-o" data-atom-id="' + escapeHtml(atom.atom_id) +
       '" data-num="' + atom.original_num + '">' +
       '<button type="button" class="choice-body" aria-label="正しい">' +
@@ -1699,7 +1701,9 @@
       '<li class="choice-card is-ox oq-x" data-atom-id="' + escapeHtml(atom.atom_id) +
       '" data-num="-1">' +
       '<button type="button" class="choice-body" aria-label="誤り">' +
-      '<span class="choice-text ox-mark">×</span></button></li>');
+      '<span class="choice-text ox-mark">×</span></button></li>' +
+      '<li class="oq-give"><button type="button" id="oq-giveup">' +
+      'わからない（降参）</button></li>');
   }
 
   /* いま出ているのが一問一答か。判定を1か所に置く。 */
@@ -1915,7 +1919,8 @@
       cur.numericInput = val;
     } else {
       picked = cur.selected.slice();
-      if (!picked.length) { toast('選択肢を選んでください'); return; }
+      /* V2.85：降参は「何も選ばなかった」形で通す（○×と同じ経路に乗せる）。 */
+      if (!picked.length && !cur.gaveUp) { toast('選択肢を選んでください'); return; }
       /* 一問一答の「× 誤り」は -1。ここで捨てて「選ばなかった」に揃える。 */
       picked = picked.filter(function (n) { return n > 0; });
     }
@@ -1966,7 +1971,7 @@
        評価は recommendEvaluations の推奨をそのまま使う（§4-3 の初期点灯）。
        ○×が合っていれば「普通」、外していれば「難しい」が既に入っている。
        解説を読みたいときは、答え合わせの下に出る小さい導線から開く。 */
-    if (isOneQ() && !isExamMode()) { showOneQNext(cur); return; }
+    if (isOneQ() && !isExamMode()) { afterOneQ(cur, picked); return; }
 
     renderReview();
   }
@@ -1981,7 +1986,7 @@
      同じ言葉を出すことになる。そのときは出さない（同じものを2度見せない）。
      状況設定など正解肢が複数あるときは、読点でつなぐ。 */
   function markOneQ(cur, picked) {
-    var el = $('#q-stem-text');
+    var el = $('#choice-list .oq-word-row');
     if (!el) { return; }
     var atom = (cur.atoms || [])[0];
     if (!atom) { return; }
@@ -1991,29 +1996,116 @@
     toggleClass(el, 'is-wrong', !right);
     if (right) { return; }
 
-    /* 外したときだけ、正しい言葉を出す。
+    /* V2.85：正しい言葉は**ポップアップと同じ形**で、線を引いた行の下に出す。
+       直上に浮かせる形（V2.84）は問題文に重なって読みづらかった（実機）。
 
-       置く場所は**間違えた言葉の真上**。固定の位置に出すと、
-       目が「線が引かれた場所」と「正解が書かれた場所」を往復する。
-       重ねてしまえば、視線を動かさずに差し替えが読める。
-       問題文と重なってよい（浮かせて、いちばん手前に出す）。 */
-    var key = el.querySelector('.oq-key');
-    if (!key) { return; }
+           残念！
+         正解は【 ○○○ 】
+
+       単語だけを赤の太字にして、そこだけを拾えるようにする。 */
     var all = (cur.question && cur.question.atoms) || [];
     var ans = all.filter(function (a) { return a.is_correct; })
                  .map(function (a) { return String(a.text || '').trim(); })
                  .filter(function (t) { return t && t !== String(atom.text || '').trim(); });
     if (!ans.length) { return; }
-    var add = doc.createElement('span');
+    var add = doc.createElement('div');
     add.className = 'oq-fix';
-    add.textContent = ans.join('、');
-    key.appendChild(add);
+    add.innerHTML = '正解は【<b>' + escapeHtml(ans.join('、')) + '</b>】';
+    el.appendChild(add);
   }
 
   /* 一問一答の「次へ」（V2.83）。
      出題フェーズに置いてある確定ボタンを、そのまま大きい「次へ」に変える。
      新しい要素を足さないのは、サムゾーンの位置（§4-1）を動かさないため。
      指はさっき○×を押した場所の、すぐ下にある。 */
+  /* --- 一問一答のあとの分かれ道（V2.85・利用者裁定） -----------------
+   *
+   *   ○を押して正解      … そのまま次へ。**確認しない**
+   *   ×を押して正解      … 「裏回答」を聞く。合っていたか自己申告してもらう
+   *   ○×どちらでも不正解  … 「難しい」。次へ
+   *   降参               … 「難しい」。正解を見せて次へ
+   *
+   * なぜ○の正解だけ聞かないか：
+   *   ○が正解＝「これは正しい」と分かった、で完結する。
+   *   ×が正解＝「これは誤り」と分かっただけで、**なぜ誤りかは別**。
+   *   そこを言えたかどうかが §4-③ の評価軸なので、そこだけ聞く。
+   *
+   * 裏回答のボタンは【×が左・○が右】。
+   *   合っていることのほうが多いので、押す回数の多い側を
+   *   右手の親指が届きやすい右に置く（利用者の指定）。
+   * ------------------------------------------------------------------ */
+  function afterOneQ(cur, picked) {
+    /* 採点したら降参は消す。押せないボタンを置いたままにしない。 */
+    var gv = $('.oq-give');
+    if (gv && gv.parentNode) { gv.parentNode.removeChild(gv); }
+    var atom = (cur.atoms || [])[0] || {};
+    var saidYes = picked.indexOf(atom.original_num) >= 0;
+    var right = (saidYes === !!atom.is_correct);
+
+    if (cur.gaveUp) {
+      /* 降参。説明できないので「難しい」。正解を見せてから次へ。 */
+      setOneQEval(cur, 'hard');
+      showOneQNext(cur);
+      return;
+    }
+    if (right && saidYes) {
+      /* ○で正解。手を止めずに次へ。 */
+      cur.oneqAuto = true;
+      global.setTimeout(function () {
+        if (state.current === cur) { nextQuestion(); }
+      }, 620);
+      return;
+    }
+    if (right && !saidYes) {
+      /* ×で正解。裏回答を聞く。 */
+      showOneQGround(cur);
+      return;
+    }
+    /* 外した。評価は「難しい」に落として、次へだけ出す。 */
+    setOneQEval(cur, 'hard');
+    showOneQNext(cur);
+  }
+
+  /* 一問一答の評価を上書きする。推奨（初期点灯）を人の申告で置き換える。 */
+  function setOneQEval(cur, ev) {
+    var atom = (cur.atoms || [])[0];
+    if (!atom) { return; }
+    cur.evals[atom.atom_id] = ev;
+    cur.touched[atom.atom_id] = true;
+  }
+
+  /* 「裏回答は言えたか」を2枚のボタンで聞く（×が左・○が右）。 */
+  function showOneQGround(cur) {
+    var list = $('#choice-list');
+    if (!list || $('#oq-ground')) { return; }
+    var li = doc.createElement('li');
+    li.className = 'oq-ground';
+    li.id = 'oq-ground';
+    li.innerHTML =
+      '<p class="oq-ground-q">なぜ誤りか、言えましたか？</p>' +
+      '<div class="oq-ground-btns">' +
+      '<button type="button" class="oq-g-no" data-ground="0">' +
+      '<b>×</b>言えなかった</button>' +
+      '<button type="button" class="oq-g-yes" data-ground="1">' +
+      '<b>○</b>言えた</button>' +
+      '</div>';
+    list.appendChild(li);
+  }
+
+  /* 降参（V2.85）。○×を押さずに「分からない」と言う道。
+     採点の経路は○×と同じにする（別経路を作らない）。
+     わざと外れる側を選んだうえで、評価を「難しい」に上書きする。 */
+  function giveUpOneQ() {
+    var cur = state.current;
+    if (!cur || cur.graded) { return; }
+    var atom = (cur.atoms || [])[0];
+    if (!atom) { return; }
+    cur.gaveUp = true;
+    /* 正解肢なら「×」を、誤り肢なら「○」を選んだことにする＝必ず外れる。 */
+    cur.selected = atom.is_correct ? [] : [atom.original_num];
+    confirmAnswer();
+  }
+
   function showOneQNext(cur) {
     var btn = $('#btn-confirm');
     if (btn) {
@@ -2023,12 +2115,21 @@
       btn.classList.add('is-oq-next');
       try { btn.focus({ preventScroll: true }); } catch (e) {}
     }
-    /* 解説を読みたい人のための小さい導線。押すと従来の解説フェーズへ。 */
+    /* V2.85：解説は**この肢のぶんだけ**をその場に出す。
+       全体解説は4肢ぜんぶを説明していて、一問一答で読むには長すぎる
+       （実機：画面の8割が他の肢の話だった）。
+       4択の全体像を見たいときのために「元の問題を見る」を別に置く。 */
     var list = $('#choice-list');
-    if (list && !$('#oq-open-review')) {
+    if (list && !$('#oq-atom-exp')) {
+      var atom = (cur.atoms || [])[0] || {};
+      var raw = atom.explanation && String(atom.explanation).trim();
       var li = doc.createElement('li');
       li.className = 'oq-more';
-      li.innerHTML = '<button type="button" id="oq-open-review">▸ 解説を読む</button>';
+      li.id = 'oq-atom-exp';
+      li.innerHTML =
+        (raw ? '<div class="oq-exp">' +
+               prepareAtomExplanation(atom.explanation, atom) + '</div>' : '') +
+        '<button type="button" id="oq-open-review">▸ 元の問題を見る（4択・全体解説）</button>';
       list.appendChild(li);
     }
   }
@@ -4008,13 +4109,33 @@
       if (b && b.classList.contains('is-oq-next')) { nextQuestion(); return; }
       confirmAnswer();
     });
-    /* V2.83：一問一答から解説を開く */
+    /* V2.83：一問一答から解説を開く／V2.85：降参と裏回答 */
     on($('#choice-list'), 'click', function (ev) {
-      if (!ev.target.closest('#oq-open-review')) { return; }
-      ev.stopPropagation();
-      var b = $('#btn-confirm');
-      if (b) { b.hidden = true; b.classList.remove('is-oq-next'); }
-      renderReview();
+      if (ev.target.closest('#oq-open-review')) {
+        ev.stopPropagation();
+        var b = $('#btn-confirm');
+        if (b) { b.hidden = true; b.classList.remove('is-oq-next'); }
+        renderReview();
+        return;
+      }
+      /* 降参。説明できないということなので「難しい」で記録して、
+         正解を見せてから次へ。当てずっぽうの○×より正しい記録になる。 */
+      if (ev.target.closest('#oq-giveup')) {
+        ev.stopPropagation();
+        giveUpOneQ();
+        return;
+      }
+      /* 裏回答の自己申告。言えなかったなら「難しい」。 */
+      var g = ev.target.closest('[data-ground]');
+      if (g) {
+        ev.stopPropagation();
+        var okg = g.getAttribute('data-ground') === '1';
+        setOneQEval(state.current, okg ? 'normal' : 'hard');
+        var box = $('#oq-ground');
+        if (box) { box.parentNode.removeChild(box); }
+        showOneQNext(state.current);
+        return;
+      }
     });
     on($('#q-star'), 'click', function () { toggleCurrentQuestionStar(); });
 

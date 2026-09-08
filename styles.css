@@ -3285,51 +3285,38 @@ html[data-theme="dark"] .memo-body strong{
    statement は単独で読める断定文なので、1文だけ出せば足りる。
        胎児循環で胎児から胎盤に血液を送るのは【総頸動脈】である。
    【 】は肢そのものの位置。外したときに線を引く場所でもある。 */
-/* --- 一問一答（V2.83a） ---
-   文は問題文カード（#q-stem-text）に出す。同じ文を2か所に出すと
-   目が往復するぶんだけ遅くなる。
+/* --- 一問一答（V2.85） ---
+   問題文はカード（#q-stem-text）に出し、肢は【 】で囲んでここに大きく置く。
+   statement を1文で出す形（V2.84）はやめた。同梱シードの statement は
+   **74%が肢の本文と同じ**で文になっておらず、問題文が画面から消えた（実測）。
 
-   【 】は**記号そのもの**として置き、強調も取り消し線も
-   中の言葉（.oq-word）にだけ掛ける。括弧に線が乗ると
-   「【】ごと消された」ように見えて、どこが違ったのか読み取りにくい。 */
-.oq-key{
-  position:relative;               /* 正解の言葉をこの上に浮かせる */
-  font-weight:800; color:var(--text);
+   【 】は記号として置き、強調も取り消し線も中の言葉（.oq-word）にだけ掛ける。 */
+.oq-word-row{
+  list-style:none; flex:1 0 100%;
+  text-align:center; padding:6px 4px 12px;
 }
-.oq-word{
-  padding:1px 2px; border-radius:5px;
-  background:var(--accent-soft); color:var(--accent-on-soft, var(--accent));
-}
+.oq-key{ font-size:1.32rem; font-weight:800; line-height:1.5; color:var(--text); }
+.oq-word{ padding:0 2px; }
 
-/* 合っていたとき：中の言葉だけを塗る。 */
-#q-stem-text.is-right .oq-word{
-  background:var(--c-easy, #198661); color:#fff;
-}
-/* 外したとき：中の言葉にだけ二重線。括弧には掛けない。 */
-#q-stem-text.is-wrong .oq-word{
+/* 外したとき：中の言葉にだけ二重線。**黒で引く**（色を足すと、
+   下に出す赤い正解と competing して、どちらが答えか一瞬迷う）。 */
+.oq-word-row.is-wrong .oq-word{
   text-decoration:line-through double; text-decoration-thickness:2px;
-  text-decoration-color:var(--c-hard, #E32941);
-  background:transparent; color:var(--text-mute);
+  text-decoration-color:var(--text); color:var(--text-mute);
 }
+/* 合っていたとき：塗らずに色だけ。派手にすると次の問題への視線が遅れる。 */
+.oq-word-row.is-right .oq-word{ color:var(--c-easy, #198661); }
 
-/* 正しい言葉は、間違えた言葉の**真上**に浮かせる。
-   固定の位置に出すと、目が「線が引かれた場所」と「正解が書かれた場所」を
-   往復する。重ねてしまえば視線を動かさずに差し替えが読める。
-   問題文と重なってよい（z-index でいちばん手前に出す）。 */
+/* 正解は、線を引いた行の**すぐ下**に、ポップアップと同じ形で出す。
+       残念！
+     正解は【 ○○○ 】
+   単語だけを赤の太字にして、そこだけ拾えるようにする。 */
 .oq-fix{
-  position:absolute; left:50%; bottom:calc(100% + 2px);
-  transform:translateX(-50%);
-  z-index:30; white-space:nowrap;
-  padding:2px 9px; border-radius:var(--r-pill, 99px);
-  background:var(--c-easy, #198661); color:#fff;
-  font-size:.94em; font-weight:800; letter-spacing:.02em;
-  box-shadow:0 2px 8px rgba(0,0,0,.22);
+  margin-top:10px; font-size:1.06rem; font-weight:700; color:var(--text-sub);
   animation:oqFix .16s ease-out;
 }
-@keyframes oqFix{ from{ opacity:0; transform:translate(-50%, 4px); }
-                  to{ opacity:1; transform:translate(-50%, 0); } }
-/* 上が画面の外に出るときのために、下に置く逃げ道も用意する */
-.oq-fix.is-below{ bottom:auto; top:calc(100% + 2px); }
+.oq-fix > b{ color:var(--c-hard, #E32941); font-weight:800; font-size:1.1em; }
+@keyframes oqFix{ from{ opacity:0; transform:translateY(-3px); } to{ opacity:1; transform:none; } }
 
 .choice-card.is-ox .choice-text.ox-mark{
   font-size:1.02rem; font-weight:800; letter-spacing:.04em;
@@ -3347,15 +3334,60 @@ html[data-theme="dark"] .memo-body strong{
 }
 #choice-list.is-oq .choice-card{ flex:1 1 0; min-width:0; margin:0; }
 #choice-list.is-oq .choice-body{
-  min-height:88px; justify-content:center; padding:0;
+  /* **display:flex を書く。** .choice-body は block なので、
+     justify-content だけ書いても効かず、記号が左に寄る（実測：○が左端）。 */
+  display:flex; align-items:center; justify-content:center;
+  min-height:88px; padding:0;
 }
 #choice-list.is-oq .ox-mark{
   font-size:2.6rem; line-height:1; font-weight:400;
 }
+/* ○は淡い緑、×は淡い赤で塗る。記号だけより直感で分かる（利用者の指定）。 */
 #choice-list.is-oq .oq-o .ox-mark{ color:var(--c-easy, #198661); }
 #choice-list.is-oq .oq-x .ox-mark{ color:var(--c-hard, #E32941); }
-#choice-list.is-oq .oq-o{ border-color:var(--c-easy, #198661); }
-#choice-list.is-oq .oq-x{ border-color:var(--c-hard, #E32941); }
+#choice-list.is-oq .oq-o{
+  border-color:var(--c-easy, #198661);
+  background:color-mix(in srgb, var(--c-easy, #198661) 9%, var(--surface));
+}
+#choice-list.is-oq .oq-x{
+  border-color:var(--c-hard, #E32941);
+  background:color-mix(in srgb, var(--c-hard, #E32941) 9%, var(--surface));
+}
+/* 広い画面で間延びしないよう、○×の並びに上限をつける（実測：PC幅で
+   ボタンが横に伸びきり、押す場所が遠くなっていた）。 */
+#choice-list.is-oq{ max-width:520px; margin-left:auto; margin-right:auto; }
+
+/* 降参（V2.85）。○×より弱く、でも押せると分かる大きさ。 */
+.oq-give{ flex:1 0 100%; list-style:none; margin-top:10px; text-align:center; }
+.oq-give > button{
+  width:100%; min-height:46px; padding:0 12px;
+  border:1.5px dashed var(--border-2, var(--border));
+  border-radius:var(--r-md); background:transparent;
+  color:var(--text-mute); font-size:var(--fs-sm); font-weight:700;
+}
+.oq-give > button:active{ transform:translateY(1px); }
+
+/* 裏回答の自己申告（V2.85）。**×が左・○が右**。
+   合っていることのほうが多いので、押す回数の多い側を
+   右手の親指が届きやすい右に置く（利用者の指定）。 */
+.oq-ground{ flex:1 0 100%; list-style:none; margin-top:14px; }
+.oq-ground-q{
+  margin:0 0 8px; text-align:center;
+  font-size:var(--fs-sm); font-weight:700; color:var(--text-sub);
+}
+.oq-ground-btns{ display:flex; gap:12px; }
+.oq-ground-btns > button{
+  flex:1 1 0; min-width:0; min-height:60px;
+  border-radius:var(--r-md); border:2px solid var(--border);
+  background:var(--surface); font-size:var(--fs-sm); font-weight:800;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+}
+.oq-ground-btns > button > b{ font-size:1.5rem; line-height:1; font-weight:400; }
+.oq-g-no{ border-color:var(--c-hard, #E32941) !important; }
+.oq-g-no > b{ color:var(--c-hard, #E32941); }
+.oq-g-yes{ border-color:var(--c-easy, #198661) !important; }
+.oq-g-yes > b{ color:var(--c-easy, #198661); }
+.oq-ground-btns > button:active{ transform:translateY(1px); }
 #choice-list.is-oq .choice-card:active{ transform:translateY(1px); }
 @media (max-width:360px){
   #choice-list.is-oq .choice-body{ min-height:76px; }
@@ -3376,7 +3408,14 @@ html[data-theme="dark"] .memo-body strong{
 /* 解説を読みたい人だけの小さい導線。速さの邪魔をしない大きさに留める。 */
 /* 「解説を読む」は○×と同じ flex の中にいる。書かないと横に割り込んで
    ○×を細くする（実測）。行を分けて下へ落とす。 */
-.oq-more{ flex:1 0 100%; list-style:none; margin:2px 0 0; text-align:center; }
+/* 肢ぶんの解説と、4択へ戻る導線（V2.85）。 */
+.oq-more{ flex:1 0 100%; list-style:none; margin:12px 0 0; text-align:center; }
+.oq-exp{
+  text-align:left; font-size:var(--fs-sm); line-height:1.75;
+  color:var(--text-sub); background:var(--surface-2);
+  border:1px solid var(--border); border-radius:var(--r-md);
+  padding:11px 13px; margin-bottom:8px;
+}
 .oq-more > button{
   background:none; border:none; padding:8px 10px; min-height:36px;
   color:var(--text-mute); font-size:var(--fs-xs); font-weight:600;
