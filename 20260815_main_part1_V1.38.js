@@ -1539,6 +1539,20 @@
     var stemEl = $('#q-stem-text');
     if (stemEl) { stemEl.classList.remove('is-right', 'is-wrong'); }
     setText('#q-stem-text', q.stem);
+    /* V2.87：一問一答では、【肢】も**同じカードの中**に入れる。
+       V2.85 はカードの外に置いたので、問題文と肢が別々の箱に見えた
+       （利用者の指摘：「問題文の外に選択肢が飛び出てる」）。
+       1つの箱の中で「問い」と「その候補」が続けて読める形にする。 */
+    var oqRow = $('#oq-in-stem');
+    if (oqRow && oqRow.parentNode) { oqRow.parentNode.removeChild(oqRow); }
+    if (fmt.format === K.FORMAT.SINGLE && fmt.atom && stemEl && stemEl.parentNode) {
+      var row = doc.createElement('div');
+      row.className = 'oq-word-row';
+      row.id = 'oq-in-stem';
+      row.innerHTML = '<span class="oq-key">【<span class="oq-word">' +
+                      escapeHtml(fmt.atom.text || '') + '</span>】</span>';
+      stemEl.parentNode.insertBefore(row, stemEl.nextSibling);
+    }
     setStarButton('#q-star', S.starLevelOf(q));
     setStarButton('#rv-star', S.starLevelOf(q));
 
@@ -1691,9 +1705,8 @@
        降参（V2.85・利用者裁定）：
          押す＝説明できない＝「難しい」。当てずっぽうで○×を押させるより、
          分からないと言えるほうが、記録としても学習としても正しい。 */
+    /* 【肢】は問題文カードの中に置いた（renderQuestion）。ここには置かない。 */
     setHtml('#choice-list',
-      '<li class="oq-word-row"><span class="oq-key">【<span class="oq-word">' +
-      escapeHtml(atom.text) + '</span>】</span></li>' +
       '<li class="choice-card is-ox oq-o" data-atom-id="' + escapeHtml(atom.atom_id) +
       '" data-num="' + atom.original_num + '">' +
       '<button type="button" class="choice-body" aria-label="正しい">' +
@@ -1812,10 +1825,22 @@
      経過後に「スッ」と浮き上がってタップ可能になる（CSS側の .is-ready）。 */
   function armInterlock() {
     var list = $('#choice-list');
-    state.interlock.ready = false;
     global.clearTimeout(state.interlock.timer);
     if (!list) { return; }
 
+    /* V2.87：一問一答は待たせない（利用者の裁定）。
+       インターロックは「4つの肢を読み比べる前に押させない」ための仕掛け（§4-2）。
+       肢が1本・1行の一問一答では、待たせる理由がない。
+       見た目（半透明・pointer-events:none）も掛けない。 */
+    if (isOneQ()) {
+      state.interlock.ready = true;
+      list.classList.remove('is-interlocked');
+      list.classList.add('is-ready');
+      if (state.current) { state.current.readyAt = Date.now(); }
+      return;
+    }
+
+    state.interlock.ready = false;
     list.classList.remove('is-ready');
     list.classList.add('is-interlocked');
 
@@ -1830,7 +1855,12 @@
   }
 
   function onChoiceTap(card) {
-    if (!state.interlock.ready || state.current.graded) { return; }
+    /* V2.87：一問一答では0.5秒の思考インターロックを掛けない（利用者の裁定）。
+       インターロックは「4つの肢を読み比べる前に押させない」ための仕掛け（§4-2）。
+       一問一答は肢が1本で、読む量も1行。待たせる理由がない。
+       反応時間（think_ms）は readyAt が無いと null になるだけで、
+       推測で埋めることはない（§2-5の約束は守られる）。 */
+    if ((!state.interlock.ready && !isOneQ()) || state.current.graded) { return; }
     /* 最初の1回だけ。選び直しは「迷い」の一部なので起点を動かさない（V1.78） */
     if (!state.current.firstTapAt) { state.current.firstTapAt = Date.now(); }
     var q = state.current.question;
@@ -1985,19 +2015,26 @@
      いま出ている肢が正解だったのに×を押した場合は、その肢自身が答えなので
      同じ言葉を出すことになる。そのときは出さない（同じものを2度見せない）。
      状況設定など正解肢が複数あるときは、読点でつなぐ。 */
+  /* 答え合わせの見た目（V2.87で作り直し）。
+
+     【何を間違えていたか】V2.86 までは「合っていたか」で線を引いていた。
+     ×を押して外したとき、その肢は**正しい**のに取り消し線が引かれ、
+     「正しい選択肢なのに間違っているように見える」状態になっていた（利用者の指摘）。
+
+     線を引くかどうかは、**その肢が正しいか誤りか**で決める。合否とは別。
+       肢が誤り  … 【 】の中に取り消し線。正解を下に出す
+       肢が正しい … 【 】の中を赤の太字で強めるだけ。線は引かない
+     合っていたかどうかは、ポップアップと評価が受け持つ。 */
   function markOneQ(cur, picked) {
-    var el = $('#choice-list .oq-word-row');
+    var el = $('#oq-in-stem');
     if (!el) { return; }
     var atom = (cur.atoms || [])[0];
     if (!atom) { return; }
-    var saidYes = picked.indexOf(atom.original_num) >= 0;
-    var right = (saidYes === !!atom.is_correct);
-    toggleClass(el, 'is-right', right);
-    toggleClass(el, 'is-wrong', !right);
-    if (right) { return; }
+    toggleClass(el, 'is-true', !!atom.is_correct);      /* この肢は正しい */
+    toggleClass(el, 'is-false', !atom.is_correct);      /* この肢は誤り */
+    if (atom.is_correct) { return; }                    /* 正しい肢に正解は出さない */
 
-    /* V2.85：正しい言葉は**ポップアップと同じ形**で、線を引いた行の下に出す。
-       直上に浮かせる形（V2.84）は問題文に重なって読みづらかった（実機）。
+    /* 誤りの肢のときだけ、正しい言葉を下に出す。
 
            残念！
          正解は【 ○○○ 】
@@ -2061,7 +2098,10 @@
       return;
     }
     if (right && !saidYes) {
-      /* ×で正解。裏回答を聞く。 */
+      /* ×で正解。裏回答を聞く。
+         解説と「元の問題を見る」は、この時点で出しておく（V2.87）。
+         申告のあとに出すと、そこからさらに1タップ増える。 */
+      showOneQExtras(cur);
       showOneQGround(cur);
       return;
     }
@@ -2089,9 +2129,9 @@
       '<p class="oq-ground-q">なぜ誤りか、言えましたか？</p>' +
       '<div class="oq-ground-btns">' +
       '<button type="button" class="oq-g-no" data-ground="0">' +
-      '<b>×</b>言えなかった</button>' +
+      '言えなかった<span>次へ ▶</span></button>' +
       '<button type="button" class="oq-g-yes" data-ground="1">' +
-      '<b>○</b>言えた</button>' +
+      '言えた<span>次へ ▶</span></button>' +
       '</div>';
     list.appendChild(li);
   }
@@ -2154,10 +2194,13 @@
       btn.classList.add('is-oq-next');
       try { btn.focus({ preventScroll: true }); } catch (e) {}
     }
-    /* V2.85：解説は**この肢のぶんだけ**をその場に出す。
-       全体解説は4肢ぜんぶを説明していて、一問一答で読むには長すぎる
-       （実機：画面の8割が他の肢の話だった）。
-       4択の全体像を見たいときのために「元の問題を見る」を別に置く。 */
+    showOneQExtras(cur);
+  }
+
+  /* 解説（この肢のぶんだけ）と「元の問題を見る」を出す（V2.87で切り出し）。
+     全体解説は4肢ぜんぶを説明していて、一問一答で読むには長すぎる
+     （実機：画面の8割が他の肢の話だった）。 */
+  function showOneQExtras(cur) {
     var list = $('#choice-list');
     if (list && !$('#oq-atom-exp')) {
       var atom = (cur.atoms || [])[0] || {};
@@ -4167,11 +4210,11 @@
       var g = ev.target.closest('[data-ground]');
       if (g) {
         ev.stopPropagation();
-        var okg = g.getAttribute('data-ground') === '1';
-        setOneQEval(state.current, okg ? 'normal' : 'hard');
-        var box = $('#oq-ground');
-        if (box) { box.parentNode.removeChild(box); }
-        showOneQNext(state.current);
+        /* V2.87：申告したらそのまま次へ。これまでは申告のあとに
+           「元の問題を見る」と「次へ」がもう一段出て、2タップ増えていた。
+           元の問題は解答した時点で出してあるので、ここで出す必要がない。 */
+        setOneQEval(state.current, g.getAttribute('data-ground') === '1' ? 'normal' : 'hard');
+        nextQuestion();
         return;
       }
     });

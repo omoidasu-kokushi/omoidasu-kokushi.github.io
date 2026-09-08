@@ -44,8 +44,13 @@ cs = open(os.path.join(base, "styles.css"), encoding="utf-8").read()
 ok("【】は記号として置き、線は中の言葉だけに掛ける",
    "oq-word" in p1 and "括弧に線が乗ると" in p1)
 ok("問題文は必ず出す（statement だけにしない）", "問題文は**必ず出す**" in p1)
+ok("【肢】は問題文カードの中に入れる", "oq-in-stem" in p1 and "問題文の外に選択肢が飛び出てる" in p1)
+ok("線を引くのは合否ではなく肢の真偽で決める", "is-false" in p1 and "その肢が正しいか誤りか" in p1)
+ok("正しい肢には線を引かず赤太字で強める", ".oq-word-row.is-true .oq-word" in cs)
+ok("一問一答はインターロックを掛けない", "待たせる理由がない" in p1)
+ok("裏回答は押したらそのまま次へ", "申告したらそのまま次へ" in p1)
 ok("なぜ statement だけにしないかが書いてある", "74%が肢の本文と同じ" in p1)
-ok("正解はポップアップと同じ形で下に出す", "ポップアップと同じ形" in p1)
+ok("正解は誤りの肢のときだけ下に出す", "誤りの肢のときだけ、正しい言葉を下に出す" in p1)
 ok("降参がある", "oq-giveup" in p1 and "説明できない" in p1)
 ok("降参の文言は「分からない（解説できない）」", "分からない（解説できない）" in p1)
 ok("元の問題は4択そのものを出す（全体解説ではない）",
@@ -98,7 +103,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(400)
 
         a = pg.evaluate("""() => {
-          const st = document.querySelector('#choice-list .oq-word-row');
+          const st = document.querySelector('#oq-in-stem');
           const list = document.querySelector('#choice-list');
           const cs2 = [...document.querySelectorAll('#choice-list .choice-card')];
           const o = document.querySelector('.oq-o .ox-mark');
@@ -119,7 +124,11 @@ with sync_playwright() as p:
             stem: (document.querySelector('#q-stem-text')||{}).textContent || '',
             giveup: !!document.querySelector('#oq-giveup'),
             oBg: getComputedStyle(document.querySelector('.oq-o')).backgroundColor,
-            xBg: getComputedStyle(document.querySelector('.oq-x')).backgroundColor
+            xBg: getComputedStyle(document.querySelector('.oq-x')).backgroundColor,
+            inCard: !!document.querySelector('.q-stem #oq-in-stem, #q-stem-text ~ #oq-in-stem'),
+            stroke: getComputedStyle(document.querySelector('.oq-o .ox-mark')).webkitTextStrokeWidth,
+            interlocked: document.querySelector('#choice-list').classList.contains('is-interlocked'),
+            ready: !!(window.Main.state.interlock && window.Main.state.interlock.ready)
           };
         }""")
         ok("【】ごと出ている", a["key"] and a["key"].startswith("【") and a["key"].endswith("】"), a["key"])
@@ -133,6 +142,11 @@ with sync_playwright() as p:
         ok("降参が出ている", a["giveup"], a["giveup"])
         ok("○は淡い緑・×は淡い赤で塗る",
            a["oBg"] != a["xBg"] and "rgba(0, 0, 0, 0)" not in a["oBg"], (a["oBg"], a["xBg"]))
+        ok("【肢】が問題文カードの中にある", a["inCard"], a["inCard"])
+        ok("○×が太い（縁取りで太らせている）",
+           a["stroke"] not in ("", "0px", None), a["stroke"])
+        ok("インターロックで待たせない（すぐ押せる）",
+           (not a["interlocked"]) and a["ready"], (a["interlocked"], a["ready"]))
 
         # わざと外す
         sel = pg.evaluate("() => window.Main.state.current.atoms[0].is_correct ? '.oq-x' : '.oq-o'")
@@ -151,7 +165,7 @@ with sync_playwright() as p:
         pg.wait_for_timeout(300)
 
         b = pg.evaluate("""() => {
-          const st = document.querySelector('#choice-list .oq-word-row');
+          const st = document.querySelector('#oq-in-stem');
           const w = st.querySelector('.oq-word');
           const k = st.querySelector('.oq-key');
           const f = st.querySelector('.oq-fix');
@@ -159,7 +173,7 @@ with sync_playwright() as p:
           const wr = w.getBoundingClientRect(), fr = f ? f.getBoundingClientRect() : null;
           const btn = document.querySelector('#btn-confirm');
           return {
-            wrong: st.classList.contains('is-wrong'),
+            wrong: st.classList.contains('is-false'),
             wordLine: cw.textDecorationLine, wordStyle: cw.textDecorationStyle,
             keyLine: ck.textDecorationLine,
             fix: f ? f.textContent : null,

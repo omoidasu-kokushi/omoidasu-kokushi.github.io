@@ -3285,27 +3285,35 @@ html[data-theme="dark"] .memo-body strong{
    statement は単独で読める断定文なので、1文だけ出せば足りる。
        胎児循環で胎児から胎盤に血液を送るのは【総頸動脈】である。
    【 】は肢そのものの位置。外したときに線を引く場所でもある。 */
-/* --- 一問一答（V2.85） ---
+/* --- 一問一答（V2.87） ---
    問題文はカード（#q-stem-text）に出し、肢は【 】で囲んでここに大きく置く。
    statement を1文で出す形（V2.84）はやめた。同梱シードの statement は
    **74%が肢の本文と同じ**で文になっておらず、問題文が画面から消えた（実測）。
 
    【 】は記号として置き、強調も取り消し線も中の言葉（.oq-word）にだけ掛ける。 */
+/* 【肢】は問題文カードの中（#q-stem-text の直後）。
+   V2.85 はカードの外に置いたので、問題文と肢が別々の箱に見えた。 */
 .oq-word-row{
-  list-style:none; flex:1 0 100%;
-  text-align:center; padding:6px 4px 12px;
+  list-style:none; text-align:left;
+  margin-top:8px; padding-top:8px;
+  border-top:1px dashed var(--border-2, var(--border));
 }
 .oq-key{ font-size:1.32rem; font-weight:800; line-height:1.5; color:var(--text); }
 .oq-word{ padding:0 2px; }
 
-/* 外したとき：中の言葉にだけ二重線。**黒で引く**（色を足すと、
-   下に出す赤い正解と competing して、どちらが答えか一瞬迷う）。 */
-.oq-word-row.is-wrong .oq-word{
+/* 線を引くかどうかは**その肢が正しいか誤りか**で決める（V2.87）。
+   合否ではない。×を押して外したとき、その肢は正しいのに線が引かれていた。
+
+   誤りの肢 … 中の言葉にだけ二重線。**黒で引く**
+              （色を足すと、下に出す赤い正解と competing して一瞬迷う） */
+.oq-word-row.is-false .oq-word{
   text-decoration:line-through double; text-decoration-thickness:2px;
   text-decoration-color:var(--text); color:var(--text-mute);
 }
-/* 合っていたとき：塗らずに色だけ。派手にすると次の問題への視線が遅れる。 */
-.oq-word-row.is-right .oq-word{ color:var(--c-easy, #198661); }
+/* 正しい肢 … 線は引かず、赤の太字で一段強める（利用者の指定）。 */
+.oq-word-row.is-true .oq-word{
+  color:var(--c-hard, #E32941); font-weight:900;
+}
 
 /* 正解は、線を引いた行の**すぐ下**に、ポップアップと同じ形で出す。
        残念！
@@ -3340,7 +3348,10 @@ html[data-theme="dark"] .memo-body strong{
   min-height:88px; padding:0;
 }
 #choice-list.is-oq .ox-mark{
-  font-size:2.6rem; line-height:1; font-weight:400;
+  /* V2.87：もう一回り太く（利用者の指定）。記号は線が細いので、
+     font-weight だけでは太くならない。縁取りで太らせる。 */
+  font-size:2.6rem; line-height:1; font-weight:900;
+  -webkit-text-stroke:1.6px currentColor;
 }
 /* ○は淡い緑、×は淡い赤で塗る。記号だけより直感で分かる（利用者の指定）。 */
 #choice-list.is-oq .oq-o .ox-mark{ color:var(--c-easy, #198661); }
@@ -3376,9 +3387,11 @@ html[data-theme="dark"] .memo-body strong{
    合っていることのほうが多いので、押す回数の多い側を
    右手の親指が届きやすい右に置く（利用者の指定）。 */
 .oq-ground{ flex:1 0 100%; list-style:none; margin-top:14px; }
+/* V2.87：もう1周り大きい字に（利用者の指定）。ここを読み飛ばされると
+   評価が入らない。 */
 .oq-ground-q{
-  margin:0 0 8px; text-align:center;
-  font-size:var(--fs-sm); font-weight:700; color:var(--text-sub);
+  margin:0 0 10px; text-align:center;
+  font-size:var(--fs-md); font-weight:800; color:var(--text);
 }
 .oq-ground-btns{ display:flex; gap:12px; }
 .oq-ground-btns > button{
@@ -3387,7 +3400,10 @@ html[data-theme="dark"] .memo-body strong{
   background:var(--surface); font-size:var(--fs-sm); font-weight:800;
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
 }
-.oq-ground-btns > button > b{ font-size:1.5rem; line-height:1; font-weight:400; }
+/* 「言えなかった｜次へ」「言えた｜次へ」。押したらそのまま次の問題へ進む。 */
+.oq-ground-btns > button > span{
+  font-size:var(--fs-xs); font-weight:700; opacity:.72;
+}
 .oq-g-no{ border-color:var(--c-hard, #E32941) !important; }
 .oq-g-no > b{ color:var(--c-hard, #E32941); }
 .oq-g-yes{ border-color:var(--c-easy, #198661) !important; }
