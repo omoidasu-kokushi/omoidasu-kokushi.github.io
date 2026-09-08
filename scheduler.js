@@ -1807,7 +1807,83 @@
             var pool = g.list;
             var picked;
 
-            if (options.shuffle && options.mix) {
+            /* --- 単元の枠（V2.80） ---
+               模試を本番と同じ単元配分で組む。
+               実測（第111〜115回の1,200問）：本番240問の内訳は
+                 必修50／成人31.6／老年21.6／小児18.2／基礎17.6／母性17.6
+                 疾病16.6／精神16.6／在宅13.4／人体12.8／健康支援12.4／統合11.6
+               必修だけは5回とも**正確に50問**で、ここは動かない。
+
+               これまでは全体からランダムに選んでいたので、
+               60問の模試で成人が2問しか出ない、といったことが起きうる。
+
+               【なぜ「模試①②③」と問題を固定しないか】
+                 ・いじわる模試は弱点から組む。利用者ごとに中身が違うので、
+                   そもそも固定できない
+                 ・固定すると本番／直前モードの mix（未見30%）も
+                   ranks:['S','A'] も効かなくなる。「どちらで受けますか」が
+                   意味を失う
+                 ・フル模試8本ぶん（960問）は、いまの球では足りない
+                   （母性 要72/有70、疾病 要64/有56）
+               枠だけ決めれば、本番と同じ配分という狙いは満たせて、
+               受け方の選択も残る。成長は exam_history の単元別正答率で見る。
+
+               枠に足りない単元は、その枠を空けたまま先へ進み、
+               最後に全体から埋める。**問題数は絶対に減らさない**
+               （60問の模試が52問で始まるほうが、配分のずれより悪い）。 */
+            if (options.shuffle && options.unitQuota) {
+              var quota = options.unitQuota;
+              var byUnit = {};
+              pool.forEach(function (c) {
+                var u = c.unit || '';
+                if (!byUnit[u]) { byUnit[u] = []; }
+                byUnit[u].push(c);
+              });
+              var got = [], seen = {};
+              Object.keys(quota).forEach(function (u) {
+                var want = quota[u] | 0;
+                if (want <= 0) { return; }
+                var list = shuffle(byUnit[u] || [], options.seed);
+                /* 枠の中でも mix があれば「忘れかけ→既習→未見」の順に寄せる */
+                if (options.mix) {
+                  list.sort(function (a, b) {
+                    var rank = function (c) {
+                      return c.faded ? 0 : (c.fresh ? 1 : 2);
+                    };
+                    return rank(a) - rank(b);
+                  });
+                }
+                /* --- 連問は兄弟ごと、この枠の中で取る ---
+                   実測：枠どおりに60問選んでも、あとで fillCaseSiblings（V2.56）が
+                   連問の兄弟を引き入れ、そのぶん**別の単元の問題を押し出す**ので、
+                   必修14の枠が9問に、小児5の枠が8問になっていた。
+                   ここで兄弟ごと取っておけば、あとから引き入れる兄弟が無くなる。
+                   枠に入り切らない事例には手を出さない（半端に足すくらいなら足さない。
+                   fillCaseSiblings と同じ考え方）。 */
+                var taken = 0, k;
+                for (k = 0; k < list.length && taken < want; k++) {
+                  var c = list[k];
+                  if (seen[c.q_id]) { continue; }
+                  if (!c.case_key) {
+                    seen[c.q_id] = 1; got.push(c); taken++;
+                    continue;
+                  }
+                  var fam = (byUnit[u] || []).filter(function (x) {
+                    return x.case_key === c.case_key && !seen[x.q_id];
+                  });
+                  if (taken + fam.length > want) { continue; }   /* 入り切らない事例は飛ばす */
+                  fam.forEach(function (x) { seen[x.q_id] = 1; got.push(x); taken++; });
+                }
+              });
+              if (got.length < count) {
+                var restPool = shuffle(pool.filter(function (c) { return !seen[c.q_id]; }),
+                                       options.seed);
+                restPool.slice(0, count - got.length).forEach(function (c) {
+                  seen[c.q_id] = 1; got.push(c);
+                });
+              }
+              picked = shuffle(got, options.seed).slice(0, count);
+            } else if (options.shuffle && options.mix) {
               /* --- 3つに分けて混ぜる（V1.54） ---
                  足りない分は faded → fresh → unseen の順に埋める。
                  本番に近い側から埋め、問題数は絶対に減らさない
@@ -1879,6 +1955,45 @@
                 : sorted.slice(0, count);
             }
 
+            /* --- 弱点の「類似問題」に置き換える（V2.80） ---
+               いじわる模試は、これまで**弱点そのものを再出題**していた。
+               同じ問題をもう一度出すと、解けても
+                 ・本当に分かるようになったのか
+                 ・前に見た答えを覚えているだけなのか
+               が分からない。同じ中項目の**別の問題**を当てれば、そこが分かれる。
+
+               実測（配布1,099問）：
+                 同じ中項目に別の問題がある … 995問（91%）
+                 同じ小項目に別の問題がある … 634問（58%。小項目は66%が1問しかない）
+               なので**中項目**で探す。見つからなければ、元の問題をそのまま出す
+               （出せる球が無いのに枠を空けるほうが悪い）。
+
+               置き換えた問題は「弱点そのもの」ではないので、
+               何問を類似に替えたかを返して、画面で言えるようにする。 */
+            var swappedSimilar = 0;
+            if (options.similar && picked && picked.length) {
+              var inPick = {};
+              picked.forEach(function (c) { inPick[c.q_id] = 1; });
+              var byMedium = {};
+              pool.forEach(function (c) {
+                var k = [c.unit, c.major, c.medium].join('|');
+                if (!byMedium[k]) { byMedium[k] = []; }
+                byMedium[k].push(c);
+              });
+              picked = picked.map(function (c) {
+                /* 連問は兄弟ごとでないと成立しないので触らない */
+                if (c.case_key) { return c; }
+                var k = [c.unit, c.major, c.medium].join('|');
+                var alt = shuffle((byMedium[k] || []).filter(function (x) {
+                  return x.q_id !== c.q_id && !inPick[x.q_id] && !x.case_key;
+                }), options.seed);
+                if (!alt.length) { return c; }
+                inPick[alt[0].q_id] = 1;
+                swappedSimilar++;
+                return alt[0];
+              });
+            }
+
             /* --- 必修の枠（V1.89） ---
                新規・ランダムだけ。範囲を選んでいるとき（scope/tag/qIds）は入れない。
                本日の復習は mode 'review' でここへ来ないので、構造的に触れない。 */
@@ -1918,6 +2033,7 @@
                 mode: mode,
                 questions: questions,
                 case_filled: caseFilled,
+                swapped_similar: swappedSimilar,      /* V2.80：類似に替えた数 */
                 candidates: pool.length,
                 prefer_frequent: preferFrequent,
                 exam_phase: examPhase(meta, nowMs(), meta.day_boundary_hour),

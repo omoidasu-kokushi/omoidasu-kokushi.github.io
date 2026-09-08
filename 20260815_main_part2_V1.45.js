@@ -2412,16 +2412,67 @@ var QR_MATRIX = [
      ■ 直前モード（成功体験）
        fresh 55% ／ faded 45% ／ unseen 0%
        初見はぶつけない。ただし合格基準は本番と同じまま変えない。 */
+  /* V2.80：直前モードにも未見を1割入れる。
+     利用者の指摘：「全部見たことあるやつやんけ。こんなん解けて当然だろ」
+     という感覚になってほしくない。
+     初見が1問も無いと、点が取れても自分の実力なのか記憶なのか分からない。
+     そのぶん忘れかけを 45% → 35% に落とす（既習55%は動かさない。
+     直前モードの狙いは成功体験なので、そこを削ると別物になる）。 */
   var EXAM_MIX = {
     real : { fresh: 0.25, faded: 0.45, unseen: 0.30 },
-    final: { fresh: 0.55, faded: 0.45, unseen: 0.00 }
+    final: { fresh: 0.55, faded: 0.35, unseen: 0.10 }
   };
+
+  /* --- 本番の単元配分（V2.80） ---
+     第111〜115回の1,200問を機械集計した実測値。1回240問あたりの平均。
+       必修 50.0（5回とも**正確に50問**）／成人 31.6／老年 21.6／小児 18.2
+       基礎 17.6／母性 17.6／疾病 16.6／精神 16.6／在宅 13.4／人体 12.8
+       健康支援 12.4／統合 11.6
+     模試の問数に合わせて按分する。
+     これまでは全体からランダムに選んでいたので、60問の模試で
+     成人が2問しか出ない、といったことが起こりえた。 */
+  var EXAM_UNIT_SHARE = {
+    '必修': 50.0,
+    '成人看護学': 31.6,
+    '老年看護学': 21.6,
+    '小児看護学': 18.2,
+    '基礎看護学': 17.6,
+    '母性看護学': 17.6,
+    '疾病の成り立ちと回復の促進': 16.6,
+    '精神看護学': 16.6,
+    '在宅看護論／地域・在宅看護論': 13.4,
+    '人体の構造と機能': 12.8,
+    '健康支援と社会保障制度': 12.4,
+    '看護の統合と実践': 11.6
+  };
+
+  /* size 問ぶんの単元の枠を作る。丸めの誤差は、いちばん多い単元（必修）で吸う。
+     合計が size と一致しないと、余りが「全体から適当に埋める」に回って
+     配分がぶれるため。 */
+  function examUnitQuota(size) {
+    var keys = Object.keys(EXAM_UNIT_SHARE);
+    var q = {}, sum = 0;
+    keys.forEach(function (u) {
+      var n = Math.round(EXAM_UNIT_SHARE[u] * size / 240);
+      q[u] = n; sum += n;
+    });
+    var diff = size - sum;
+    if (diff !== 0) { q['必修'] = Math.max(0, q['必修'] + diff); }
+    return q;
+  }
 
   function examStyleOpts(style, examId) {
     if (examId === 'mock_weak') { return {}; }        /* いじわる模試は弱点順のまま */
     var mix = EXAM_MIX[style === 'final' ? 'final' : 'real'];
-    if (style !== 'final') { return { mix: mix }; }
-    return { ranks: ['S', 'A'], mix: mix };
+    /* V2.80：本番と同じ単元配分で組む。受け方の選択（本番／直前）は
+       そのまま残る。問題そのものを①②③と固定しないのは、
+         ・いじわる模試は弱点から組むので固定できない
+         ・固定すると mix も ranks も効かなくなり、受け方の選択が死ぬ
+         ・フル模試8本ぶん（960問）は、いまの球では足りない
+       という3つの理由から（詳しくは scheduler.js の unitQuota のところ）。 */
+    var quota = examUnitQuota(EXAM_SIZE[examId] || 30);
+    if (style !== 'final') { return { mix: mix, unitQuota: quota }; }
+    return { ranks: ['S', 'A'], mix: mix, unitQuota: quota };
   }
 
   function askExamStyle(examId) {
@@ -2462,8 +2513,13 @@ var QR_MATRIX = [
 
        いじわる模試（弱点120問）は【すでに解いた弱点を狙う】モードなので、
        初見の予想問題を混ぜる意味がない。ここだけ拾わない。 */
+    /* V2.80：いじわる模試は「弱点そのもの」ではなく**同じ中項目の別問題**を当てる。
+       同じ問題をもう一度出すと、解けても「分かった」のか「覚えていた」のかが
+       分からない。similar:true で置き換える（別問題が無ければ元のまま）。
+       実測：同じ中項目に別の問題がある問題は 995/1,099（91%）。 */
     var opts = (examId === 'mock_weak')
-      ? { mode: 'exam', count: size, applyGuard: false, preferFrequent: true }   /* 弱点順で抽出 */
+      ? { mode: 'exam', count: size, applyGuard: false, preferFrequent: true,
+          similar: true }                                                       /* 弱点順で抽出 */
       : { mode: 'exam', count: size, applyGuard: false, shuffle: true, includeMock: true };
     var extra = examStyleOpts(style, examId);
     Object.keys(extra).forEach(function (k) { opts[k] = extra[k]; });
@@ -2494,6 +2550,15 @@ var QR_MATRIX = [
         questions: q.questions, answers: [], index: 0,
         startedAt: Date.now(), size: q.questions.length
       };
+
+      /* V2.80：いじわる模試で類似問題に替えたときは、そう言う。
+         黙って別の問題を出すと「弱点が出るはずなのに違う問題だ」と思われる。
+         狙い（同じ論点の別の聞き方で、覚えているだけかどうかを分ける）を
+         先に伝えておけば、それは仕様として受け取れる。 */
+      if (examId === 'mock_weak' && q.swapped_similar > 0) {
+        toast('苦手な' + q.swapped_similar + '問は、同じ論点の別の問題に替えました。'
+              + '覚えているだけか、分かっているかを分けるためです', 5200);
+      }
 
       /* 模試は解説を挟まず全問回答 → 一括採点。前半のフックで割り込む。 */
       /* V2.17：解答は q_id で置き換え式（前後移動して解き直せる）。
@@ -6052,6 +6117,7 @@ var QR_MATRIX = [
 
   var impl = {
     openRandomSelect: openRandomSelect,  startRandom: startRandom,
+    examUnitQuota   : examUnitQuota,      /* V2.80：本番と同じ単元配分（テストから叩く） */
     startByScope: startByScope,
     refreshQtyMode: refreshQtyMode,   /* V2.69 */
     renderRandomPick: renderRandomPick,  pickNode: pickNode,  pickBadge: pickBadge,
