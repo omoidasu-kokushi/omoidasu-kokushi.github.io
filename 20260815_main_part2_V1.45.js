@@ -2725,15 +2725,39 @@ var QR_MATRIX = [
       var iPass = (iScore === null) || (iScore >= 180);
       var passed = hPass && iPass;
 
+      /* V2.79：単元ごとの正答率。
+         **プチ模試（30問）では出さない。** 30問を12単元に割ると1単元2〜3問で、
+         「1問外した＝正答率50%」のような数字になる。分析と呼べない。
+         ハーフ（60問）以上でだけ作る。 */
+      var byUnit = null;
+      if (answers.length >= 60) {
+        var bag = {};
+        answers.forEach(function (a) {
+          var u = a.unit || '（分類なし）';
+          if (!bag[u]) { bag[u] = { unit: u, total: 0, correct: 0 }; }
+          bag[u].total += 1;
+          if (a.answered_right) { bag[u].correct += 1; }
+        });
+        byUnit = Object.keys(bag).map(function (k) { return bag[k]; });
+        /* 正答率の低い順。同率なら問題数が多い順（そちらが重い） */
+        byUnit.sort(function (x, y) {
+          var px = x.correct / x.total, py = y.correct / y.total;
+          if (px !== py) { return px - py; }
+          return y.total - x.total;
+        });
+      }
+
       var result = {
         exam_id: st.exam.id,
         style: st.exam.style || 'real',
+        at: Date.now(),                       /* V2.79：受けた日時 */
         total: answers.length,
         correct: answers.filter(function (a) { return a.answered_right; }).length,
         hisshu: { total: hisshu.length, correct: hOk, pct: hPct, pass: hPass },
         ippan: { total: ippan.length, correct: iOk, score: iScore, pass: iPass },
         passed: passed,
         patterns: patterns,
+        by_unit: byUnit,                      /* V2.79：ハーフ以上だけ */
         elapsed_ms: Date.now() - st.exam.startedAt
       };
 
@@ -2741,7 +2765,15 @@ var QR_MATRIX = [
         ? S.recordFullMockResult(passed)
         : Promise.resolve(null);
 
-      return record.then(function () { return showExamResult(result); });
+      /* V2.79：結果を日付つきで残す。これまではモーダルを閉じたら消えていた。
+         保存に失敗しても採点結果は必ず見せる（見せないほうが害が大きい）。 */
+      return record
+        .then(function () { return S.saveExamResult(result); })
+        .catch(function (e) {
+          try { console.warn('模試の結果を残せませんでした', e); } catch (_) {}
+          return null;
+        })
+        .then(function () { return showExamResult(result); });
     });
   }
 
@@ -2767,7 +2799,30 @@ var QR_MATRIX = [
     st.exam.lastResult = r;
 
     setText('#exam-result-title', r.passed ? '合格ラインを超えました 🎉' : '採点結果');
-    setHtml('#exam-score', cells +
+
+    /* V2.79：単元ごとの正答率。ハーフ模試（60問）以上でだけ出す。
+       30問を12単元に割ると1単元2〜3問にしかならず、
+       「1問外した＝50%」のような数字を分析として見せることになる。
+       正答率の低い順に並べる（次にどこを埋めるかが、そのまま上から読める）。 */
+    var unitHtml = '';
+    if (r.by_unit && r.by_unit.length) {
+      unitHtml =
+        '<div class="score-cell exam-by-unit" style="grid-column:1/-1">' +
+        '<b>単元ごとの正答率</b>' +
+        '<ul class="exam-unit-list">' +
+        r.by_unit.map(function (u) {
+          var pct = Math.round((u.correct / u.total) * 100);
+          var tone = pct >= 80 ? 'ok' : (pct >= 60 ? 'mid' : 'low');
+          return '<li data-tone="' + tone + '">' +
+                 '<span class="eu-name">' + esc(u.unit) + '</span>' +
+                 '<span class="eu-bar"><i style="width:' + pct + '%"></i></span>' +
+                 '<span class="eu-num">' + u.correct + '/' + u.total +
+                 '<b>' + pct + '%</b></span></li>';
+        }).join('') +
+        '</ul></div>';
+    }
+
+    setHtml('#exam-score', cells + unitHtml +
       '<div class="score-cell" style="grid-column:1/-1">' +
       '<small>自動昇格：易 ' + (r.patterns.A || 0) + '肢 ／ マスター ' + (r.patterns.B || 0) + '肢' +
       '　安全降格：難 ' + (r.patterns.C || 0) + '肢</small></div>');

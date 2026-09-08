@@ -116,6 +116,14 @@
     level_current           : 1,
     scan_answered_qids      : [],            /* 分析スキャン精度の分子（ユニーク問題ID） */
 
+    /* --- 模試の結果（V2.79・新設） ---
+       これまで結果は st.exam.lastResult に一時的に置くだけで、
+       **モーダルを閉じたら消えていた**。「1回しか受けられない模試」を
+       作るなら、受けた結果が残らないのは体験として成立しない。
+       日付つきで残し、あとから見返せるようにする。
+       上限は EXAM_HISTORY_MAX 件（古いものから捨てる）。 */
+    exam_history            : [],
+
     /* --- 模試の解禁フラグ（一度trueにしたら永久に戻さない） --- */
     unlock_mock_30          : false,
     unlock_mock_60          : false,
@@ -3102,6 +3110,59 @@
   }
 
   /* フル模試の合否を記録する。2回連続合格でいじわる模試が解禁される。 */
+  /* V2.79：模試の結果を日付つきで残す。
+
+     【なぜ meta に置くか】
+       専用ストアにすると同期（drive.js）の設計を1つ増やすことになる。
+       模試は多くても年に数十回で、1件あたり1KB弱。上限50件で50KB程度。
+       meta の1キーとして持てば、いまのバックアップにも同期にもそのまま乗る。
+
+     【重複を作らない】
+       同じ模試を二重に記録しないよう、exam_id と at（受けた時刻）が
+       どちらも同じものは足さない。§20 の記録の重複判定（atom_id|answered_at）
+       と同じ考え方。 */
+  var EXAM_HISTORY_MAX = 50;
+
+  function saveExamResult(result) {
+    if (!result || !result.exam_id) { return Promise.resolve(null); }
+    return getMeta('exam_history', []).then(function (list) {
+      var hist = Array.isArray(list) ? list.slice() : [];
+      var rec = {
+        exam_id : result.exam_id,
+        style   : result.style || 'real',
+        at      : isNum(result.at) ? result.at : nowMs(),
+        total   : result.total || 0,
+        correct : result.correct || 0,
+        hisshu  : result.hisshu || null,
+        ippan   : result.ippan || null,
+        passed  : !!result.passed,
+        elapsed_ms: result.elapsed_ms || 0,
+        by_unit : result.by_unit || null      /* ハーフ以上だけ入る */
+      };
+      var dup = hist.some(function (x) {
+        return x && x.exam_id === rec.exam_id && x.at === rec.at;
+      });
+      if (dup) { return hist; }
+      hist.push(rec);
+      hist.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });   /* 新しい順 */
+      if (hist.length > EXAM_HISTORY_MAX) { hist = hist.slice(0, EXAM_HISTORY_MAX); }
+      return setMeta('exam_history', hist).then(function () { return hist; });
+    });
+  }
+
+  function getExamHistory(examId) {
+    return getMeta('exam_history', []).then(function (list) {
+      var hist = Array.isArray(list) ? list : [];
+      if (!examId) { return hist; }
+      return hist.filter(function (x) { return x && x.exam_id === examId; });
+    });
+  }
+
+  /* その模試を何回受けたか。無料版の回数制限で使う（V2.79）。 */
+  function countExamTaken(examId) {
+    return getExamHistory(examId).then(function (l) { return l.length; });
+  }
+
   function recordFullMockResult(passed) {
     return getMeta('full_mock_pass_streak', 0).then(function (streak) {
       var next = passed ? ((streak || 0) + 1) : 0;
@@ -3948,6 +4009,10 @@
     EXAM_EASE             : EXAM_EASE,
     getUnlockState        : getUnlockState,
     recordFullMockResult  : recordFullMockResult,
+    saveExamResult        : saveExamResult,      /* V2.79 */
+    getExamHistory        : getExamHistory,      /* V2.79 */
+    countExamTaken        : countExamTaken,      /* V2.79 */
+    EXAM_HISTORY_MAX      : EXAM_HISTORY_MAX,
     applyHighWaterPct     : applyHighWaterPct,
     recordScanProgress    : recordScanProgress,
     getScanProgress       : getScanProgress,
