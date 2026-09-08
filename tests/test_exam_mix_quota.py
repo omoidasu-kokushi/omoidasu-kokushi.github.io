@@ -27,11 +27,20 @@
   自分の実力なのか記憶なのかが分からない。
   未見 0% → 10%、そのぶん忘れかけ 45% → 35%（既習55%は動かさない）。
 
-【③ いじわる模試は「同じ中項目の別問題」を当てる】
+【③ いじわる模試は「同じ論点の別問題」を当てる】
   これまでは弱点そのものを再出題していた。同じ問題を出すと、解けても
   「分かった」のか「覚えていた」のかが分からない。
-  実測：同じ中項目に別の問題がある問題は 995/1,099（91%）。
-  小項目だと 634/1,099（58%）しかないので、中項目で探す。
+
+  探す順は **小項目 → 中項目 → 元のまま**（V2.80a）。
+  小項目のほうが論点が近い。「総人口」の弱点には「総人口」の別の問題を
+  当てたい。中項目まで広げると同じ中項目の別の小項目に飛ぶことがあり、
+  弱点そのものを突けない。ただし小項目だけでは半分しか当たらないので、
+  無ければ中項目へ落とす。
+
+  実測（配布1,099問）：
+    同じ小項目に別の問題がある … 634/1,099（58%。小項目は66%が1問しかない）
+    同じ中項目に別の問題がある … 995/1,099（91%）
+  実際に120問で試すと、74問を置き換えて**うち21問は小項目**で当たった。
 """
 import os, sys, io, json
 from playwright.sync_api import sync_playwright
@@ -54,6 +63,9 @@ ok("なぜ①②③に固定しないかが書いてある",
    "いじわる模試は弱点から組む" in sc and "いじわる模試は弱点から組むので固定できない" in p2)
 ok("連問を枠内で取る（あとで押し出されないように）", "連問は兄弟ごと、この枠の中で取る" in sc)
 ok("いじわる模試は類似問題に替える", "options.similar" in sc and "similar: true" in p2)
+ok("小項目を先に見て、無ければ中項目へ落とす",
+   "小項目 → 中項目 → 元のまま" in sc and "bySub" in sc)
+ok("なぜ小項目を先にするかが書いてある", "弱点そのものを突けない" in sc)
 ok("替えたことを画面で言う", "同じ論点の別の問題に替えました" in p2)
 
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -104,7 +116,8 @@ with sync_playwright() as p:
           const ids = new Set(base.questions.map(x => x.q_id));
           let sameQ = 0; sim.questions.forEach(x => { if (ids.has(x.q_id)) sameQ++; });
           return { n: b.questions.length, by: by, quota: q60,
-                   swapped: sim.swapped_similar, sameQ: sameQ,
+                   swapped: sim.swapped_similar, bySub: sim.swapped_by_sub,
+                   sameQ: sameQ,
                    medA: ma.size, medB: mb.size, sameMed: sameMed };
         }""")
         diff = {u: r["by"].get(u, 0) - r["quota"][u] for u in r["quota"]}
@@ -115,6 +128,10 @@ with sync_playwright() as p:
            r["sameMed"] == r["medB"], (r["sameMed"], r["medA"], r["medB"]))
         ok("替えたぶんは別の問題になっている",
            r["sameQ"] < 120, r["sameQ"])
+        ok("小項目で当てられたものがある（中項目に全部落ちていない）",
+           r["bySub"] > 0, r["bySub"])
+        ok("小項目で当てたぶんは、替えた数を超えない",
+           r["bySub"] <= r["swapped"], (r["bySub"], r["swapped"]))
     else:
         ok("（配布JSONが無いので実データの確認は省略）", True, DIST)
 

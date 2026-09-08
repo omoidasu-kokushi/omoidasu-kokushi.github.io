@@ -1960,36 +1960,57 @@
                同じ問題をもう一度出すと、解けても
                  ・本当に分かるようになったのか
                  ・前に見た答えを覚えているだけなのか
-               が分からない。同じ中項目の**別の問題**を当てれば、そこが分かれる。
+               が分からない。同じ論点の**別の問題**を当てれば、そこが分かれる。
+
+               【探す順（V2.80a）】小項目 → 中項目 → 元のまま
+                 小項目のほうが論点が近い。「総人口」の弱点には「総人口」の
+                 別の問題を当てたい。中項目まで広げると
+                 「人口静態・人口動態」の中の別の小項目に飛ぶことがあり、
+                 弱点そのものを突けない。
+                 ただし小項目だけでは半分しか当たらないので、
+                 無ければ中項目へ落とす。
 
                実測（配布1,099問）：
-                 同じ中項目に別の問題がある … 995問（91%）
                  同じ小項目に別の問題がある … 634問（58%。小項目は66%が1問しかない）
-               なので**中項目**で探す。見つからなければ、元の問題をそのまま出す
+                 同じ中項目に別の問題がある … 995問（91%）
+               どちらも無ければ、元の問題をそのまま出す
                （出せる球が無いのに枠を空けるほうが悪い）。
 
                置き換えた問題は「弱点そのもの」ではないので、
                何問を類似に替えたかを返して、画面で言えるようにする。 */
-            var swappedSimilar = 0;
+            var swappedSimilar = 0, swappedBySub = 0;
             if (options.similar && picked && picked.length) {
               var inPick = {};
               picked.forEach(function (c) { inPick[c.q_id] = 1; });
-              var byMedium = {};
+              var bySub = {}, byMedium = {};
               pool.forEach(function (c) {
-                var k = [c.unit, c.major, c.medium].join('|');
-                if (!byMedium[k]) { byMedium[k] = []; }
-                byMedium[k].push(c);
+                var ks = [c.unit, c.major, c.medium, c.sub_item].join('|');
+                var km = [c.unit, c.major, c.medium].join('|');
+                if (!bySub[ks]) { bySub[ks] = []; }
+                if (!byMedium[km]) { byMedium[km] = []; }
+                bySub[ks].push(c);
+                byMedium[km].push(c);
               });
               picked = picked.map(function (c) {
                 /* 連問は兄弟ごとでないと成立しないので触らない */
                 if (c.case_key) { return c; }
-                var k = [c.unit, c.major, c.medium].join('|');
-                var alt = shuffle((byMedium[k] || []).filter(function (x) {
-                  return x.q_id !== c.q_id && !inPick[x.q_id] && !x.case_key;
-                }), options.seed);
+                var free = function (list) {
+                  return shuffle((list || []).filter(function (x) {
+                    return x.q_id !== c.q_id && !inPick[x.q_id] && !x.case_key;
+                  }), options.seed);
+                };
+                /* 小項目を先に見る。無ければ中項目へ落とす。 */
+                var alt = c.sub_item
+                  ? free(bySub[[c.unit, c.major, c.medium, c.sub_item].join('|')])
+                  : [];
+                var fromSub = alt.length > 0;
+                if (!alt.length) {
+                  alt = free(byMedium[[c.unit, c.major, c.medium].join('|')]);
+                }
                 if (!alt.length) { return c; }
                 inPick[alt[0].q_id] = 1;
                 swappedSimilar++;
+                if (fromSub) { swappedBySub++; }
                 return alt[0];
               });
             }
@@ -2034,6 +2055,7 @@
                 questions: questions,
                 case_filled: caseFilled,
                 swapped_similar: swappedSimilar,      /* V2.80：類似に替えた数 */
+                swapped_by_sub : swappedBySub,        /* V2.80a：うち小項目で当てられた数 */
                 candidates: pool.length,
                 prefer_frequent: preferFrequent,
                 exam_phase: examPhase(meta, nowMs(), meta.day_boundary_hour),
