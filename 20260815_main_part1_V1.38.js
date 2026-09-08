@@ -1528,7 +1528,23 @@
     setText('#q-counter', (state.session.index + 1) + ' / ' + state.session.questions.length);
 
     /* --- 問題文 ＆ 問題★ --- */
-    setText('#q-stem-text', q.stem);
+    /* V2.83：一問一答では、問題文カードに **statement をそのまま** 出す。
+       これまでは
+         問題文カード「胎児循環で胎児から胎盤に血液を送るのはどれか。」
+         その下       「胎児循環において、【総頸動脈】は…」
+       と、同じことを2回読ませていた。目が2か所を往復するぶんだけ遅くなる。
+       statement は単独で読める断定文（§6-3）なので、これ1つで足りる。
+       問題★・出典・テーマはカードに付いたまま残る。 */
+    /* 前の問題の答え合わせ（is-right / is-wrong）を必ず落とす。
+       中身は setHtml/setText で作り直されるが、**class は残る**（実測）。 */
+    var stemEl = $('#q-stem-text');
+    if (stemEl) { stemEl.classList.remove('is-right', 'is-wrong'); }
+    if (fmt.format === K.FORMAT.SINGLE && fmt.atom) {
+      var ob = bracketStatement(fmt.atom);
+      setHtml('#q-stem-text', ob.html);
+    } else {
+      setText('#q-stem-text', q.stem);
+    }
     setStarButton('#q-star', S.starLevelOf(q));
     setStarButton('#rv-star', S.starLevelOf(q));
 
@@ -1548,7 +1564,14 @@
     renderInterruptBar();
 
     var btn = $('#btn-confirm');
-    if (btn) { btn.disabled = true; btn.textContent = '解答を確定する'; }
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '解答を確定する';
+      /* V2.83：一問一答は○×を押した瞬間に採点するので、確定は要らない。
+         採点のあと、この同じボタンが「次へ」に化ける（markOneQ の下）。 */
+      btn.hidden = (fmt.format === K.FORMAT.SINGLE);
+      btn.classList.remove('is-oq-next');
+    }
 
     /* --- V2.17：模試の前後移動と、保存済み解答の復元（設計メモ） --- */
     var nav = $('#exam-nav');
@@ -1619,22 +1642,70 @@
     return { format: K.FORMAT.SINGLE, reason: d.reason, atom: target };
   }
 
+  /* --- 一問一答の文（V2.83） ---
+     statement は「その肢を、単独で読める断定文に直したもの」（§6-3）。
+     一問一答ではこれを1文で出す。そのとき、**肢そのものにあたる部分**を
+     【 】で囲む。どこを問われているかが一目で分かり、
+     外したときに取り消し線を引く場所も決まる。
+
+     実測（配布1,099問・一問一答の肢977本）：
+       statement に肢の本文が丸ごと入っている … 810本（83%）
+     残り17%は言い換えられていて（「心拍数の増加」→「心拍数が増加すると」）、
+     囲む場所が決まらない。そのときは囲まずに文だけを出す。
+     **無理に囲んで違う場所に線を引くより、囲まないほうがよい。** */
+  function bracketStatement(atom) {
+    var st = String((atom && atom.statement) || '').trim();
+    var tx = String((atom && atom.text) || '').trim();
+    if (!st) { return { html: escapeHtml(tx), boxed: false }; }
+    if (!tx || st.indexOf(tx) < 0) { return { html: escapeHtml(st), boxed: false }; }
+    var i = st.indexOf(tx);
+    /* 【 】は**記号そのもの**として置く。強調も取り消し線も、
+       中の言葉（.oq-word）にだけ掛ける。
+       括弧に線が乗ると「【】ごと消された」ように見えて、
+       どこが違ったのかが読み取りにくくなる（利用者の指摘）。 */
+    return {
+      html: escapeHtml(st.slice(0, i)) +
+            '<span class="oq-key">【<span class="oq-word">' + escapeHtml(tx) +
+            '</span>】</span>' +
+            escapeHtml(st.slice(i + tx.length)),
+      boxed: true
+    };
+  }
+
   /* ○×の2枚だけを出す。○ には対象肢の番号、× には -1 を持たせ、
      確定時に -1 を捨てることで「選ばなかった」と同じ形にする。
-     こうすると採点・評価の経路を4択と共通にできる。 */
+     こうすると採点・評価の経路を4択と共通にできる。
+
+     V2.83：見出し（「この選択肢は正しいですか？」）と肢番号を消し、
+     statement の1文だけにした。○×を押した瞬間に採点する（下の onChoiceTap）ので、
+     確定ボタンも出さない。**とにかく速く回すための形**。 */
   function renderSingleChoice(atom, q) {
     hide('#numeric-wrap');
     show('#choice-list');
-    setText('#q-instruction', 'この選択肢は正しいですか？');
+    setText('#q-instruction', '');
+    var b = bracketStatement(atom);
+    /* 文は問題文カード側に出す（renderQuestion）。ここでは○×だけ。
+       同じ文を2か所に出さない。答え合わせの線もカード側に引く。 */
+    /* ○と×だけ。文字は付けない。横に2枚並べる。
+       「○ 正しい」「× 誤り」と書くと、読む語が増えるぶん1問あたりが遅くなる。
+       記号の意味は説明しなくても分かる。 */
+    var list = $('#choice-list');
+    if (list) { list.classList.add('is-oq'); }
     setHtml('#choice-list',
-      '<li class="single-stmt"><span class="single-num">' + circled(atom.original_num) + '</span>' +
-      '<span class="single-text">' + escapeHtml(atom.text) + '</span></li>' +
-      '<li class="choice-card is-ox" data-atom-id="' + escapeHtml(atom.atom_id) +
+      '<li class="choice-card is-ox oq-o" data-atom-id="' + escapeHtml(atom.atom_id) +
       '" data-num="' + atom.original_num + '">' +
-      '<button type="button" class="choice-body"><span class="choice-text ox-mark">○ 正しい</span></button></li>' +
-      '<li class="choice-card is-ox" data-atom-id="' + escapeHtml(atom.atom_id) +
+      '<button type="button" class="choice-body" aria-label="正しい">' +
+      '<span class="choice-text ox-mark">○</span></button></li>' +
+      '<li class="choice-card is-ox oq-x" data-atom-id="' + escapeHtml(atom.atom_id) +
       '" data-num="-1">' +
-      '<button type="button" class="choice-body"><span class="choice-text ox-mark">× 誤り</span></button></li>');
+      '<button type="button" class="choice-body" aria-label="誤り">' +
+      '<span class="choice-text ox-mark">×</span></button></li>');
+  }
+
+  /* いま出ているのが一問一答か。判定を1か所に置く。 */
+  function isOneQ() {
+    var c = state.current;
+    return !!(c && c.format === K.FORMAT.SINGLE);
   }
 
   /* --- 何個選ばせるかは、**正解の数**から決める（V2.03） -------------
@@ -1664,6 +1735,8 @@
   function isMultiPick(atoms) { return needCount(atoms) >= 2; }
 
   function renderChoices(atoms, q) {
+    var _cl = $('#choice-list');
+    if (_cl) { _cl.classList.remove('is-oq'); }   /* V2.83a：一問一答の並びを解く */
     hide('#numeric-wrap');
     show('#choice-list');
     /* V2.03：写し（select_count / question_type）ではなく、正解の数そのものを見る。 */
@@ -1774,6 +1847,14 @@
       toggleClass(c, 'is-selected', state.current.selected.indexOf(n) >= 0);
     });
 
+    /* V2.83：一問一答は押した瞬間に採点する。
+       ○か×のどちらかしかないので、確定を挟む意味がない。
+       挟むと1問あたり2タップになり、40問で80タップになる。 */
+    if (isOneQ() && state.current.selected.length) {
+      confirmAnswer();
+      return;
+    }
+
     var need = needCount(state.current.atoms);
     var btn = $('#btn-confirm');
     if (btn) {
@@ -1856,6 +1937,12 @@
 
     showVerdictPopup(cur);
 
+    /* --- 一問一答の答え合わせ（V2.83） ---
+       正解なら【】を強め、外したら【】に二重線を引いて、
+       **正しい言葉をすぐ下に**出す。
+       解説を開かなくても、その場で「何が正しかったか」が分かる形にする。 */
+    if (isOneQ() && !isExamMode()) { markOneQ(cur, picked); }
+
     /* --- 選択肢カードに正誤を反映（解答フェーズに一瞬残す）。
            V2.17：模試では出さない（提出まで正誤情報を一切見せない）。 --- */
     if (!isExamMode()) $$('#choice-list .choice-card').forEach(function (c) {
@@ -1870,7 +1957,80 @@
        ここで割り込んで描画を抑止する（false を返す） */
     if (typeof hooks.afterGrade === 'function' && hooks.afterGrade(cur) === false) { return; }
 
+    /* --- 一問一答は解説フェーズへ飛ばさない（V2.83） ---
+       ○×を押す → その場で答えが分かる → 大きい「次へ」を押す。
+       この3つだけで回るのが、一問一答の速さの正体。
+       解説フェーズへ飛ぶと、評価4つ・全体解説・図・タグが一度に出て、
+       1問あたりの手数と目の移動が跳ね上がる（実測：画面の8割が解説）。
+
+       評価は recommendEvaluations の推奨をそのまま使う（§4-3 の初期点灯）。
+       ○×が合っていれば「普通」、外していれば「難しい」が既に入っている。
+       解説を読みたいときは、答え合わせの下に出る小さい導線から開く。 */
+    if (isOneQ() && !isExamMode()) { showOneQNext(cur); return; }
+
     renderReview();
+  }
+
+  /* 一問一答の答え合わせ表示（V2.83）。
+
+     ・合っていた   … 【】を塗って強める
+     ・外した       … 【】に二重線。**正しい言葉をすぐ下に出す**
+
+     「正しい言葉」は、その問題の正解肢の本文。
+     いま出ている肢が正解だったのに×を押した場合は、その肢自身が答えなので
+     同じ言葉を出すことになる。そのときは出さない（同じものを2度見せない）。
+     状況設定など正解肢が複数あるときは、読点でつなぐ。 */
+  function markOneQ(cur, picked) {
+    var el = $('#q-stem-text');
+    if (!el) { return; }
+    var atom = (cur.atoms || [])[0];
+    if (!atom) { return; }
+    var saidYes = picked.indexOf(atom.original_num) >= 0;
+    var right = (saidYes === !!atom.is_correct);
+    toggleClass(el, 'is-right', right);
+    toggleClass(el, 'is-wrong', !right);
+    if (right) { return; }
+
+    /* 外したときだけ、正しい言葉を出す。
+
+       置く場所は**間違えた言葉の真上**。固定の位置に出すと、
+       目が「線が引かれた場所」と「正解が書かれた場所」を往復する。
+       重ねてしまえば、視線を動かさずに差し替えが読める。
+       問題文と重なってよい（浮かせて、いちばん手前に出す）。 */
+    var key = el.querySelector('.oq-key');
+    if (!key) { return; }
+    var all = (cur.question && cur.question.atoms) || [];
+    var ans = all.filter(function (a) { return a.is_correct; })
+                 .map(function (a) { return String(a.text || '').trim(); })
+                 .filter(function (t) { return t && t !== String(atom.text || '').trim(); });
+    if (!ans.length) { return; }
+    var add = doc.createElement('span');
+    add.className = 'oq-fix';
+    add.textContent = ans.join('、');
+    key.appendChild(add);
+  }
+
+  /* 一問一答の「次へ」（V2.83）。
+     出題フェーズに置いてある確定ボタンを、そのまま大きい「次へ」に変える。
+     新しい要素を足さないのは、サムゾーンの位置（§4-1）を動かさないため。
+     指はさっき○×を押した場所の、すぐ下にある。 */
+  function showOneQNext(cur) {
+    var btn = $('#btn-confirm');
+    if (btn) {
+      btn.hidden = false;
+      btn.disabled = false;
+      btn.textContent = '次へ ▶';
+      btn.classList.add('is-oq-next');
+      try { btn.focus({ preventScroll: true }); } catch (e) {}
+    }
+    /* 解説を読みたい人のための小さい導線。押すと従来の解説フェーズへ。 */
+    var list = $('#choice-list');
+    if (list && !$('#oq-open-review')) {
+      var li = doc.createElement('li');
+      li.className = 'oq-more';
+      li.innerHTML = '<button type="button" id="oq-open-review">▸ 解説を読む</button>';
+      list.appendChild(li);
+    }
   }
 
   /* ======================================================================
@@ -2622,9 +2782,17 @@
 
     setText('#vp-mark', right ? '○' : '×');
     setText('#vp-title', right ? '正解！' : '不正解');
-    setHtml('#vp-answer', '正解は ' + correctAtoms.map(function (a) {
-      return '<b>' + circled(a.original_num) + ' ' + escapeHtml(a.text) + '</b>';
-    }).join(' と '));
+    /* V2.83：一問一答では、正解は文のすぐ下（.oq-answer）に出している。
+       ポップアップでも同じことを言うと二重になるうえ、
+       いま出ている1肢が誤りだと correctAtoms が空になり、
+       「正解は」だけの尻切れになる（実測）。ここでは○×だけを出す。 */
+    if (isOneQ()) {
+      setHtml('#vp-answer', '');
+    } else {
+      setHtml('#vp-answer', '正解は ' + correctAtoms.map(function (a) {
+        return '<b>' + circled(a.original_num) + ' ' + escapeHtml(a.text) + '</b>';
+      }).join(' と '));
+    }
 
     /* --- 肢ごとの評価を促す一行（V2.59・利用者裁定） ---
        評価軸は「その選択肢の裏回答が言えたか」（§4-③）であって正誤ではない。
@@ -3834,7 +4002,20 @@
       var btn = $('#btn-confirm');
       if (btn) { btn.disabled = String(ev.target.value).trim() === ''; }
     });
-    on($('#btn-confirm'), 'click', function () { confirmAnswer(); });
+    on($('#btn-confirm'), 'click', function () {
+      /* V2.83：一問一答では、採点のあとこのボタンが「次へ」になる。 */
+      var b = $('#btn-confirm');
+      if (b && b.classList.contains('is-oq-next')) { nextQuestion(); return; }
+      confirmAnswer();
+    });
+    /* V2.83：一問一答から解説を開く */
+    on($('#choice-list'), 'click', function (ev) {
+      if (!ev.target.closest('#oq-open-review')) { return; }
+      ev.stopPropagation();
+      var b = $('#btn-confirm');
+      if (b) { b.hidden = true; b.classList.remove('is-oq-next'); }
+      renderReview();
+    });
     on($('#q-star'), 'click', function () { toggleCurrentQuestionStar(); });
 
     /* --- 画像アコーディオン --- */

@@ -3279,10 +3279,109 @@ html[data-theme="dark"] .memo-body strong{
 .single-num{ flex:0 0 auto; font-weight:800; color:var(--accent); }
 .single-text{ flex:1 1 auto; font-size:var(--fs-sm); line-height:1.7; }
 
+/* --- 一問一答の1文（V2.83） ---
+   これまでは「この選択肢は正しいですか？」の見出しと
+   「① 総頸動脈」の肢を、問題文とは別に出していた。3つを目で追うことになる。
+   statement は単独で読める断定文なので、1文だけ出せば足りる。
+       胎児循環で胎児から胎盤に血液を送るのは【総頸動脈】である。
+   【 】は肢そのものの位置。外したときに線を引く場所でもある。 */
+/* --- 一問一答（V2.83a） ---
+   文は問題文カード（#q-stem-text）に出す。同じ文を2か所に出すと
+   目が往復するぶんだけ遅くなる。
+
+   【 】は**記号そのもの**として置き、強調も取り消し線も
+   中の言葉（.oq-word）にだけ掛ける。括弧に線が乗ると
+   「【】ごと消された」ように見えて、どこが違ったのか読み取りにくい。 */
+.oq-key{
+  position:relative;               /* 正解の言葉をこの上に浮かせる */
+  font-weight:800; color:var(--text);
+}
+.oq-word{
+  padding:1px 2px; border-radius:5px;
+  background:var(--accent-soft); color:var(--accent-on-soft, var(--accent));
+}
+
+/* 合っていたとき：中の言葉だけを塗る。 */
+#q-stem-text.is-right .oq-word{
+  background:var(--c-easy, #198661); color:#fff;
+}
+/* 外したとき：中の言葉にだけ二重線。括弧には掛けない。 */
+#q-stem-text.is-wrong .oq-word{
+  text-decoration:line-through double; text-decoration-thickness:2px;
+  text-decoration-color:var(--c-hard, #E32941);
+  background:transparent; color:var(--text-mute);
+}
+
+/* 正しい言葉は、間違えた言葉の**真上**に浮かせる。
+   固定の位置に出すと、目が「線が引かれた場所」と「正解が書かれた場所」を
+   往復する。重ねてしまえば視線を動かさずに差し替えが読める。
+   問題文と重なってよい（z-index でいちばん手前に出す）。 */
+.oq-fix{
+  position:absolute; left:50%; bottom:calc(100% + 2px);
+  transform:translateX(-50%);
+  z-index:30; white-space:nowrap;
+  padding:2px 9px; border-radius:var(--r-pill, 99px);
+  background:var(--c-easy, #198661); color:#fff;
+  font-size:.94em; font-weight:800; letter-spacing:.02em;
+  box-shadow:0 2px 8px rgba(0,0,0,.22);
+  animation:oqFix .16s ease-out;
+}
+@keyframes oqFix{ from{ opacity:0; transform:translate(-50%, 4px); }
+                  to{ opacity:1; transform:translate(-50%, 0); } }
+/* 上が画面の外に出るときのために、下に置く逃げ道も用意する */
+.oq-fix.is-below{ bottom:auto; top:calc(100% + 2px); }
+
 .choice-card.is-ox .choice-text.ox-mark{
   font-size:1.02rem; font-weight:800; letter-spacing:.04em;
 }
 .choice-card.is-ox .choice-body{ justify-content:center; }
+
+/* ○と×だけを横に2枚。文字（「正しい」「誤り」）は付けない。
+   読む語が増えるぶん1問あたりが遅くなる。記号の意味は説明が要らない。
+   押した瞬間に採点するので、確定ボタンも出さない。 */
+#choice-list.is-oq{
+  /* **flex-direction を必ず書く。** 親の .choice-list が column なので、
+     書かないと縦積みのまま。しかも flex:1 1 0 が「高さ0」の意味になり、
+     カードが2pxに潰れる（実測）。 */
+  display:flex; flex-direction:row; flex-wrap:wrap; gap:12px; margin-top:6px;
+}
+#choice-list.is-oq .choice-card{ flex:1 1 0; min-width:0; margin:0; }
+#choice-list.is-oq .choice-body{
+  min-height:88px; justify-content:center; padding:0;
+}
+#choice-list.is-oq .ox-mark{
+  font-size:2.6rem; line-height:1; font-weight:400;
+}
+#choice-list.is-oq .oq-o .ox-mark{ color:var(--c-easy, #198661); }
+#choice-list.is-oq .oq-x .ox-mark{ color:var(--c-hard, #E32941); }
+#choice-list.is-oq .oq-o{ border-color:var(--c-easy, #198661); }
+#choice-list.is-oq .oq-x{ border-color:var(--c-hard, #E32941); }
+#choice-list.is-oq .choice-card:active{ transform:translateY(1px); }
+@media (max-width:360px){
+  #choice-list.is-oq .choice-body{ min-height:76px; }
+  #choice-list.is-oq .ox-mark{ font-size:2.2rem; }
+}
+
+/* --- 一問一答の「次へ」（V2.83） ---
+   確定ボタンをそのまま大きい「次へ」に変える。新しい要素を足さないのは
+   サムゾーンの位置（§4-1）を動かさないため。指はさっき○×を押した場所の
+   すぐ下にある。 */
+.btn-confirm.is-oq-next{
+  background:var(--accent); color:var(--accent-ink, #fff);
+  font-size:1.06rem; font-weight:800; letter-spacing:.04em;
+  min-height:60px; opacity:1;
+}
+.btn-confirm.is-oq-next:active{ transform:translateY(1px); }
+
+/* 解説を読みたい人だけの小さい導線。速さの邪魔をしない大きさに留める。 */
+/* 「解説を読む」は○×と同じ flex の中にいる。書かないと横に割り込んで
+   ○×を細くする（実測）。行を分けて下へ落とす。 */
+.oq-more{ flex:1 0 100%; list-style:none; margin:2px 0 0; text-align:center; }
+.oq-more > button{
+  background:none; border:none; padding:8px 10px; min-height:36px;
+  color:var(--text-mute); font-size:var(--fs-xs); font-weight:600;
+}
+.oq-more > button:hover{ color:var(--accent); text-decoration:underline; }
 
 .seg-group.seg-stack{ display:flex; flex-direction:column; align-items:stretch; width:100%; }
 .seg-group.seg-stack .seg-btn{ text-align:left; }
