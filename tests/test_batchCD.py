@@ -44,7 +44,7 @@ with sync_playwright() as pw:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    # 同梱シードの取り込み完了を待つ（453問になるまで）
+    # 同梱シードの取り込み完了を待つ（V2.89 で453問→必修249問）
     pg.wait_for_timeout(4500)
     r = pg.evaluate("""async () => {
       const S = window.Storage, K = window.Scheduler;
@@ -72,7 +72,10 @@ with sync_playwright() as pw:
       }
       return { total: qs.length, unAtoms: un, target: target.q_id, draws, hissu };
     }""")
-    ok("シード453問で検証している", r["total"] == 453, r["total"])
+    # V2.89（2026-09-09）：同梱シードを453問 → 必修249問へ入れ替えた（利用者裁定）。
+    # 見たいのは「未学習の必修が枠で切られないか」なので、問数そのものは
+    # 固定値ではなく「シードが入りきっているか」だけを見る。
+    ok("シードが入りきってから検証している", r["total"] == 249, str(r["total"]))
     ok("未学習が対象の肢だけ残っている", 0 < r["unAtoms"] <= 6, r["unAtoms"])
     ok("必修の枠は cap で働いている（前提の確認）",
        r["hissu"] and r["hissu"]["dir"] in ("cap", "floor"), r["hissu"])

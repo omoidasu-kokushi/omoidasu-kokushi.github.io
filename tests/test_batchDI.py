@@ -34,6 +34,19 @@ with sync_playwright() as p:
     pg.wait_for_timeout(400)
     r = pg.evaluate("""async () => {
       const S = window.Storage, H = window.Half2;
+      /* V2.89（2026-09-09）：同梱シードを必修249問へ入れ替えた（利用者裁定）ので、
+         起動しただけでは単元が1つしか無く「異なる単元の2問」を作れない。
+         必修以外を1問だけ足してから始める。中身は検査用のダミー。
+         分類は出題基準の実在キー（ランク表に無いもの）を借りる。 */
+      const T = String.fromCharCode(9), NL = String.fromCharCode(10);
+      const t = window.RANK_BY_MEDIUM || {}, tax = window.TAXONOMY_MASTER || [];
+      const f = tax.find(x => !t[x.slice(0, 3).join('|')] && x[0] !== '必修');
+      await S.importText([
+        f[0], '検査用', 'B', f[1], f[2], '', 'single',
+        '検査用ダミー。★の単元しぼりこみを見るために必修以外を1問だけ足す。',
+        JSON.stringify(['① ア', '② イ', '③ ウ', '④ エ']), JSON.stringify([0]),
+        '検査用ダミーの解説。', JSON.stringify([[], [], [], []]), ''
+      ].join(T));
       const qs = await S.getAllQuestions();
       /* 異なる単元の2問に★ */
       const q1 = qs[0];

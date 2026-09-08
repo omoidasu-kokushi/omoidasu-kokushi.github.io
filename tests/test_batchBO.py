@@ -130,6 +130,60 @@ with sync_playwright() as p:
     # 同梱453問は S121 / A225 / B103 / C4 で、**すでにS+Aが76%**を占める。
     # 押しのける相手（B）が少ないので、ここで見える差は小さい。
     # 過去問1,200問（S349 / A361 / B490＝Bが41%）を入れてから本領が出る。
+    #
+    # V2.89（2026-09-09）：同梱を必修249問（S107/A86/B56/C0）へ入れ替えた。
+    # C が0になり、押しのける相手が減って ON/OFF の差がノイズに埋もれた
+    # （実測 ON:S307 < OFF:S362 と逆転した）。
+    #
+    # 判定は緩めない。**上のコメントが言う pool を実際に作ってから測る。**
+    # 過去問1,200問（S320/A342/B504）で試すと ON:S349 / OFF:S293 と、
+    # 狙いどおり ON のほうがSを19%多く引いた。差が出ないのは pool のせいで、
+    # 仕組みのせいではないと確かめてある。
+    # ただし過去問の配布JSONはリポジトリの外にあるので、テストは
+    # **その場で作った B と C だけの束**を足して同じ状況を再現する。
+    # 中身は検査用のダミーで、出題基準の分類だけ本物に合わせてある。
+    # 【なぜここに pool を作るのか】V2.89（2026-09-09）
+    # ① ランクは3列目の値ではなく **中項目から表で当てる**（storage.js rankFor）。
+    #    表（RANK_BY_MEDIUM・218件）にある中項目は表が勝つ。表に無い中項目
+    #    （247件）だけデータの値が使われる。だからダミーはそちらを借りる。
+    # ② **必修はランクで重み付けしない**（scheduler.js rankShuffle の
+    #    `c.hissu ? 1.0 : rankWeight(c.rank)`）。「必修どうしはランクで偏らない」
+    #    という上の主張と同じ仕組み。
+    # つまり同梱を必修249問へ入れ替えた時点で、**必修だけの pool では
+    # 「トグルONでSが増える」は原理的に起きない**。上のコメントが言うとおり
+    # 過去問1,200問（S320/A342/B504・単元はばらばら）で試すと
+    # ON:S349 / OFF:S293 と狙いどおりだった。仕組みは正しく、痩せていたのは pool。
+    # 配布JSONはリポジトリの外なので、ここで同じ形の pool を作り直す。
+    mix = pg.evaluate("""async () => {
+        const TAB = String.fromCharCode(9), NL = String.fromCharCode(10);
+        const t = window.RANK_BY_MEDIUM || {}, tax = window.TAXONOMY_MASTER || [];
+        /* 表に無い＝データのランクが通る／必修以外＝ランク重みが効く */
+        const free = tax.filter(x => !t[x.slice(0, 3).join('|')] && x[0] !== '必修');
+        const rows = [];
+        const mk = (f, rank, i) => [
+            f[0], '検査用', rank, f[1], f[2], '',
+            'single', '検査用ダミー ' + rank + '-' + i + '。押しのける相手をつくる行。',
+            JSON.stringify(['① ア', '② イ', '③ ウ', '④ エ']),
+            JSON.stringify([i % 4]), '検査用ダミーの解説。',
+            JSON.stringify([[], [], [], []]), ''
+        ].join(TAB);
+        let i = 0;
+        const add = (rank, n) => { for (let k = 0; k < n; k++, i++) {
+            rows.push(mk(free[i % free.length], rank, i)); } };
+        add('S', 320); add('A', 340); add('B', 500); add('C', 60);
+        const r = await window.Storage.importText(rows.join(NL), {});
+        await window.Scheduler.refreshAll({ recomputeWeakness: true });
+        const qs = await window.Storage.getAllQuestions();
+        const d = { S: 0, A: 0, B: 0, C: 0 };
+        qs.forEach(x => { const k = String(x.rank || 'B').toUpperCase();
+                          if (d[k] !== undefined) { d[k]++; } });
+        return { imported: r.imported, skipped: r.skipped, ranks: d, free: free.length };
+    }""")
+    ok("過去問と同じ形の pool を作れた（B が4割前後・単元は必修以外）",
+       mix["ranks"]["B"] >= 500 and mix["ranks"]["S"] >= 400
+       and mix["ranks"]["C"] >= 60 and mix["skipped"] == 0,
+       json.dumps(mix, ensure_ascii=False))
+
     q = pg.evaluate("""async () => {
       const K = window.Scheduler;
       const cnt = qs => { const d = {S:0,A:0,B:0,C:0};

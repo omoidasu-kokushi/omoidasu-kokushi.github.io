@@ -104,18 +104,32 @@ ok("S31 / A71 / C116", c == {"S": 31, "A": 71, "C": 116}, json.dumps(c))
 ok("B は載せていない（既定なので）", '"B"' not in rb)
 
 # --- 同梱の見本問題（旧キーのままだと全部ツリーから外れる） ---
-sstart = qs.index("const SEED_QUESTIONS_TSV")
-sbody = qs[sstart:qs.index("if (typeof window", sstart)]
-rows = re.findall(r'^\s*"(.*)",?\s*$', sbody, re.M)
-seed_keys = []
-for r in rows:
-    c2 = r.split("\\t")
-    if len(c2) >= 5:
-        seed_keys.append("|".join([c2[0], c2[3], c2[4]]))
-ok("見本問題を読めた（453行）", len(seed_keys) == 453, str(len(seed_keys)))
+# V2.89（2026-09-09）：同梱シードを453問の13列TSV → 必修249問のJSONへ
+# 入れ替えた（利用者裁定）。取り出し方だけ直す。主張は消していない。
+import subprocess
+NODE = ("const fs=require('fs');global.window={};global.self=global;"
+        "eval(fs.readFileSync(process.argv[1],'utf8'));"
+        "process.stdout.write(global.window.SEED_QUESTIONS_TSV);")
+out = subprocess.run(["node", "-e", NODE, os.path.join(APP, "questions.js")],
+                     capture_output=True, text=True)
+seed_qs = json.loads(out.stdout)["questions"] if out.returncode == 0 else []
+seed_keys = ["|".join([q.get("unit") or "", q.get("major") or "", q.get("medium") or ""])
+             for q in seed_qs]
+ok("見本問題を読めた（249問）", len(seed_keys) == 249, str(len(seed_keys)))
 bad = sorted(set(k for k in seed_keys if k not in KEYS))
-ok("**見本問題の分類が全行マスタにある**", not bad,
+ok("**見本問題の分類が全問マスタにある**", not bad,
    json.dumps(bad[:5], ensure_ascii=False))
+
+# 旧シードでも同じことを見る（消していないので、そのまま検査を続ける）
+OLDP = os.path.join(APP, "sample", "20260909_旧同梱シード_自由作問453問_V1.00.txt")
+ok("旧シードを消さずに退避してある", os.path.exists(OLDP), OLDP)
+old_rows = [r.split("\t") for r in
+            io.open(OLDP, encoding="utf-8").read().split("\n") if r.strip()]
+ok("旧シードは453行のまま", len(old_rows) == 453, str(len(old_rows)))
+old_bad = sorted(set("|".join([c[0], c[3], c[4]]) for c in old_rows
+                     if len(c) >= 5 and "|".join([c[0], c[3], c[4]]) not in KEYS))
+ok("**旧シードの分類も全行マスタにある**", not old_bad,
+   json.dumps(old_bad[:5], ensure_ascii=False))
 
 # --- 何が起きていたかが残っていること ---
 me = io.open(os.path.abspath(__file__), encoding="utf-8").read()

@@ -89,6 +89,22 @@ with sync_playwright() as p:
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
     pg.wait_for_timeout(1400)
 
+    # V2.89（2026-09-09）：同梱シードを必修249問へ入れ替えたので、
+    # 起動しただけの pool は **100%が必修**になった。それでは
+    # 「必修の枠が効くか」を見られない（減らす先が無い）。
+    # 退避した旧シードの **必修以外だけ**を足して、混ざった pool を作る。
+    # 旧シードは消していないので、ここでそのまま使える。
+    OLD = os.path.join(APP, "sample", "20260909_旧同梱シード_自由作問453問_V1.00.txt")
+    old_rows = [r for r in io.open(OLD, encoding="utf-8").read().split("\n")
+                if r.strip() and r.split("\t")[0] != "必修"]
+    mix = pg.evaluate("""async (tsv) => {
+        const r = await window.Storage.importText(tsv, {});
+        await window.Scheduler.refreshAll({ recomputeWeakness: true });
+        return { imported: r.imported, skipped: r.skipped };
+    }""", "\n".join(old_rows))
+    ok("必修以外を足して混ざった pool を作れた", mix["imported"] >= 100,
+       json.dumps(mix, ensure_ascii=False) + " / rows=" + str(len(old_rows)))
+
     fill = pg.evaluate("async () => await window.Scheduler.getHissuFill()")
     ok("必修の肢を数えられる", fill["atoms"] > 0, json.dumps(fill, ensure_ascii=False))
 

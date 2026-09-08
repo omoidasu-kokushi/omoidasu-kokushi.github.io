@@ -194,8 +194,16 @@ with sync_playwright() as p:
     # ---------- ノックの時計：途中で抜けても止まる ----------
     r = pg.evaluate("""async () => {
       const H = window.Half2Impl, M = window.Main, S = window.Storage;
+      /* V2.89：同梱シードを必修249問へ入れ替えたら、getConceptStats の先頭が
+         「球が1つも無いタグ」になり、ノックが0問で始まらなくなった（実測）。
+         **実際に肢が付いているタグ**を選ぶ。§22-8 のとおり第1引数は #付きの tag。 */
       const cs = await S.getConceptStats();
-      const tag = (cs[0] && cs[0].tag) || (window.CONCEPT_TAGS_MASTER||[])[0];
+      const atoms = await S.getAllAtoms();
+      const have = new Set();
+      atoms.forEach(a => (a.tags || []).forEach(t => have.add(t)));
+      const tag = (cs.find(x => have.has(x.tag)) || {}).tag
+                || Array.from(have)[0]
+                || (window.CONCEPT_TAGS_MASTER || [])[0].tag;
       await H.startKnock(tag, 10);
       /* 固定の待ち時間にしない（V1.58）。混んでいるときだけ落ちるテストは、
          赤を無視する癖がつくので無いほうがまし。 */

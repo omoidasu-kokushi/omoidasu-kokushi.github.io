@@ -62,19 +62,25 @@ out = subprocess.run(["node", "-e", NODE_SNIPPET, os.path.join(APP, "questions.j
                      capture_output=True, text=True)
 ok("見本問題のTSVを取り出せる", out.returncode == 0 and len(out.stdout) > 1000,
    (out.stderr or "")[:200])
-rows = [r for r in out.stdout.split("\n") if r.strip()]
-ok("453行ある", len(rows) == 453, str(len(rows)))
-cols = set(len(r.split("\t")) for r in rows)
-ok("全行が13列", cols == {13}, str(sorted(cols)))
+# V2.89（2026-09-09）：同梱シードを自由作問453問の13列TSV →
+# 過去問の必修249問の **JSON** へ入れ替えた（利用者裁定）。
+# TSVは source を12列目に置いていたが storage.js は12列目を is_splittable、
+# 13列目を source として読む。1列ずれていたので、TSVのままだと249問すべてが
+# source=null（画面に「AI予想問題」と出る）になっていた。JSONなら列が無い。
+# 旧453問は消しておらず sample/20260909_旧同梱シード_自由作問453問_V1.00.txt に残る。
+data = json.loads(out.stdout)
+qrows = data["questions"]
+ok("249問ある（V2.89で必修249問へ入れ替え）", len(qrows) == 249, str(len(qrows)))
+ok("出典が249問すべてにある", all(q.get("source") for q in qrows),
+   sum(1 for q in qrows if not q.get("source")))
 
 # --- 分類が出題基準の中にあること ---
 bad_key = []
-for i, r in enumerate(rows):
-    c = r.split("\t")
-    k = "｜".join([c[0], c[3], c[4]])
+for i, q in enumerate(qrows):
+    k = "｜".join([q.get("unit") or "", q.get("major") or "", q.get("medium") or ""])
     if k not in KEYS:
         bad_key.append((i, k))
-ok("全行の分類が出題基準の465キーの中にある", not bad_key,
+ok("全問の分類が出題基準の465キーの中にある", not bad_key,
    json.dumps(bad_key[:5], ensure_ascii=False))
 
 # --- 機械翻訳の混入（の → of / the） ---
@@ -87,52 +93,60 @@ ok("英数字と日本語のあいだにも化けが無い",
    json.dumps(re.findall(r".{12}\s(?:of|the)\s.{12}", qs)[:4], ensure_ascii=False))
 
 # --- 本物の英語まで潰していないこと ---
+# V2.89：この主張は「化け直しの道具が本物の英語まで壊していないか」を見るもので、
+# 元データは旧シード。同梱を必修249問へ入れ替えたので questions.js には
+# もう出てこない。主張は消さず、**退避した旧シードに対して**そのまま続ける。
+OLD = os.path.join(APP, "sample", "20260909_旧同梱シード_自由作問453問_V1.00.txt")
+ok("旧シードを消さずに退避してある", os.path.exists(OLD), OLD)
+old_txt = io.open(OLD, encoding="utf-8").read() if os.path.exists(OLD) else ""
+ok("旧シードは453問のまま", len([r for r in old_txt.split("\n") if r.strip()]) == 453)
 for phrase in ("Quality of Life", "Sanctity of Life", "Insufficiency of Respiration"):
-    ok("本物の英語が残っている: " + phrase, phrase in qs)
+    ok("本物の英語が残っている（旧シード）: " + phrase, phrase in old_txt)
 
 # --- 全角・半角のゆれ ---
 ok("＜＞が半角に落ちていない", "恒常性<ホメオスタシス>" not in qs)
 ok("閉じ括弧が出題基準どおり", "特異的生体防御反応(免疫系)" not in qs)
 ok("生成器の後始末が残っていない", "STATE_COMPLETE" not in qs)
+# V2.89：旧シードでも同じ主張を続ける（元データはこちら）
+ok("＜＞が半角に落ちていない（旧シード）", "恒常性<ホメオスタシス>" not in old_txt)
+ok("閉じ括弧が出題基準どおり（旧シード）", "特異的生体防御反応(免疫系)" not in old_txt)
+ok("生成器の後始末が残っていない（旧シード）", "STATE_COMPLETE" not in old_txt)
 
-# --- タグのセルがJSONとして読めること ---
+# --- タグが読めること ---
 # 中身が74マスタに収まっているかは別問題。実測では 1,365個中 1,344個（98.5%）が
 # マスタ外の自由タグで、74テーマのうち球があるのは14テーマ・最大4肢しかない。
 # ここを直すのは同梱データの作り直しなので、判断待ち
 # （claude/20260826_同梱シードのタグが74マスタと合わない_判断待ち_V1.00.md）。
-# このテストでは「読めること」だけを固定し、
-# 取り込み時に気づけるかどうかは batchBM が見る。
+# V2.89：JSONになったので「読めるか」ではなく「配列か」を見る。
+# ついでに **マスタに収まっているか** も見る（過去問シードは収まっているはず）。
 bad_tag = []
-for i, r in enumerate(rows):
-    c = r.split("\t")
-    try:
-        groups = json.loads(c[11]) if c[11].strip() else []
-        if not isinstance(groups, list):
+master = set(re.findall(r'tag:\s*"([^"]+)"', qs))
+out_of_master = set()
+for i, q in enumerate(qrows):
+    for a_ in (q.get("atoms") or []):
+        tg = a_.get("tags")
+        if tg is not None and not isinstance(tg, list):
             bad_tag.append((i, "配列ではない"))
-    except Exception:
-        bad_tag.append((i, "JSONとして読めない"))
-ok("タグのセルが全行JSONとして読める", not bad_tag,
-   json.dumps(bad_tag[:5], ensure_ascii=False))
+        for t in (tg or []):
+            if t not in master:
+                out_of_master.add(t)
+ok("タグが全問で配列になっている", not bad_tag, json.dumps(bad_tag[:5], ensure_ascii=False))
+ok("タグがすべて概念タグマスタにある（過去問シードでは収まる）",
+   not out_of_master, json.dumps(sorted(out_of_master)[:5], ensure_ascii=False))
 
-# --- 正解番号が選択肢の数を超えないこと ---
+# --- 正解と選択肢 ---
 bad_ans = []
-for i, r in enumerate(rows):
-    c = r.split("\t")
-    if c[6].strip().lower() == "numeric":
+for i, q in enumerate(qrows):
+    atoms = q.get("atoms") or []
+    if q.get("question_type") == "numeric":
         continue
-    try:
-        opts = json.loads(c[8])
-        ans = json.loads(c[9])
-    except Exception:
-        bad_ans.append((i, "JSONとして読めない"))
-        continue
-    if not ans or any((not isinstance(x, int)) or x < 0 or x >= len(opts) for x in ans):
-        bad_ans.append((i, {"opts": len(opts), "ans": ans}))
-ok("正解番号が選択肢の範囲に収まっている", not bad_ans,
-   json.dumps(bad_ans[:5], ensure_ascii=False))
+    cor = [a_ for a_ in atoms if a_.get("is_correct")]
+    if not atoms or not cor:
+        bad_ans.append((i, {"atoms": len(atoms), "correct": len(cor)}))
+ok("正解肢が全問にある", not bad_ans, json.dumps(bad_ans[:5], ensure_ascii=False))
 
 # --- ランクが S/A/B/C であること ---
-ranks = Counter(r.split("\t")[2] for r in rows)
+ranks = Counter(q.get("rank") for q in qrows)
 ok("ランクが S/A/B/C だけ", set(ranks) <= {"S", "A", "B", "C"},
    json.dumps(ranks, ensure_ascii=False))
 

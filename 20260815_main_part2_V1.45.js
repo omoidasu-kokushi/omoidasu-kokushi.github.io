@@ -3976,7 +3976,7 @@ var QR_MATRIX = [
     gear: '<span class="guide-chip" aria-hidden="true">⚙</span>（画面上部のヘッダー右）',
     back: '<span class="guide-chip" aria-hidden="true">◀</span>（画面上部のヘッダー左）',
     unit_hero: '<span class="unit-hero guide-unit-hero" tabindex="-1"><span class="unit-hero-dice">🎲</span>' +
-        '<span class="unit-hero-title">全単元ランダム</span><span class="unit-hero-sub">全 453 問から出題</span></span>',
+        '<span class="unit-hero-title">全単元ランダム</span><span class="unit-hero-sub">全 249 問から出題</span></span>',
     rank_weight: '<label class="switch-row" style="pointer-events:none"><input type="checkbox" checked tabindex="-1">' +
         '<span class="switch-track"><span class="switch-knob"></span></span>' +
         '<span class="switch-text">頻出問題を優先する</span></label>',

@@ -152,7 +152,26 @@ with sync_playwright() as p:
     }""")
     ok("表は今までどおり横スクロールで包まれる", tbl["tables"] == 0 or tbl["scroll"] == tbl["tables"],
        json.dumps(tbl))
-    ok("colspan/rowspan が残る", tbl["tables"] == 0 or tbl["colspan"] > 0, json.dumps(tbl))
+    # V2.89：同梱シードを必修249問へ入れ替えたら、比較表が0件から17件になった。
+    # ところが17件はどれも colspan/rowspan を使っていないので、
+    # 「同梱データにたまたま入っていたら見る」では検査にならない
+    # （0件のときは素通りしていた）。**自前の表で必ず見る**ように変えた。
+    sp = pg.evaluate("""() => {
+      const M = window.Main;
+      const src = '<table><tr><th colspan="2">まとめ</th></tr>'
+                + '<tr><td rowspan="2">左</td><td>右上</td></tr>'
+                + '<tr><td>右下</td></tr></table>';
+      const out = M.prepareExplanationHtml(src);
+      const c = (t, re) => (t.match(re) || []).length;
+      return { colspan: c(out, /colspan/g), rowspan: c(out, /rowspan/g),
+               td: c(out, /<td[ >]/g), th: c(out, /<th[ >]/g),
+               scroll: c(out, /tbl-scroll/g) };
+    }""")
+    ok("colspan/rowspan が残る",
+       sp["colspan"] == 1 and sp["rowspan"] == 1, json.dumps(sp))
+    ok("セルの数も減らない", sp["td"] == 3 and sp["th"] == 1, json.dumps(sp))
+    ok("同梱シードの比較表も横スクロールで包まれる",
+       tbl["tables"] == 17 and tbl["scroll"] == 17, json.dumps(tbl))
 
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))
     br.close()

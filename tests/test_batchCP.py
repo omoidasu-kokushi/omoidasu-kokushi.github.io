@@ -55,7 +55,12 @@ with sync_playwright() as p:
       for (const q of qs) { await S.toggleQuestionStar(q.q_id); }
       return { starred: qs.length };
     }""")
-    ok("シード全問に★が付いた（450問以上）", r1["starred"] >= 450, json.dumps(r1))
+    # V2.89：同梱シードを453問 → 必修249問へ入れ替えた（利用者裁定）。
+    # ここが見たいのは「シード全問に★を付けられるか」なので、
+    # 数を固定値ではなく **いま入っている問題数** と突き合わせる。
+    total = pg.evaluate("async () => (await window.Storage.getAllQuestions()).length")
+    ok("シード全問に★が付いた", r1["starred"] == total and total >= 200,
+       json.dumps({"starred": r1["starred"], "total": total}))
 
     # ★ノートを開く → 開き終わった直後にメインスレッドがすぐ空くこと
     r2 = pg.evaluate("""async () => {
