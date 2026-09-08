@@ -3471,6 +3471,24 @@ html[data-theme="dark"] .memo-body strong{
 }
 /* いま解いた肢には、左に印を付ける（どれを問われていたかを見失わない） */
 .oq-orig-list > li.is-shown{ box-shadow:inset 3px 0 0 var(--accent); }
+
+/* 全体解説も一緒に出す（V2.88）。ここは「速さの外側」なので、
+   開いた人には4択も解説も全部見せる。 */
+.oq-orig-exp{
+  margin-top:12px; padding-top:11px;
+  border-top:1px solid var(--border);
+  font-size:var(--fs-sm); line-height:1.8; color:var(--text-sub);
+}
+.oq-orig-exp > h4{
+  margin:0 0 7px; font-size:var(--fs-xs); font-weight:800;
+  color:var(--text-mute); letter-spacing:.04em;
+}
+.oq-orig-exp b, .oq-orig-exp strong{ color:var(--text); }
+.oq-orig-table{ margin-top:11px; overflow-x:auto; }
+.oq-orig-table table{ width:100%; border-collapse:collapse; font-size:var(--fs-xs); }
+.oq-orig-table th, .oq-orig-table td{
+  border:1px solid var(--border); padding:5px 7px; text-align:left;
+}
 .oq-exp{
   text-align:left; font-size:var(--fs-sm); line-height:1.75;
   color:var(--text-sub); background:var(--surface-2);

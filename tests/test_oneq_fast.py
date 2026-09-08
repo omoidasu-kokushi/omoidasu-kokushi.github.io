@@ -224,6 +224,18 @@ with sync_playwright() as p:
         ok("正解に印が付く", o["correct"] >= 1, o["correct"])
         ok("いま解いた肢にも印が付く", o["shownLi"] == 1, o["shownLi"])
         ok("もう一度押すと閉じられる", "閉じる" in o["btn"], o["btn"])
+        # V2.88：4択だけでなく全体解説も載せる
+        e = pg.evaluate("""() => {
+          const box = document.querySelector('#oq-orig');
+          const ex = box.querySelector('.oq-orig-exp');
+          const q = window.Main.state.current.question;
+          return { hasExp: !!ex,
+                   len: ex ? ex.textContent.trim().length : 0,
+                   srcLen: (q.overall_explanation || '').replace(/<[^>]*>/g, '').trim().length };
+        }""")
+        ok("全体解説も載る", (not e["srcLen"]) or e["hasExp"], e)
+        ok("全体解説の中身が入っている",
+           (not e["srcLen"]) or e["len"] >= 20, e)
 
         pg.evaluate("() => { document.querySelector('#btn-confirm').click(); }")
         pg.wait_for_timeout(1400)

@@ -2168,6 +2168,11 @@
     var q = (cur && cur.question) || {};
     var all = q.atoms || [];
     var shownId = ((cur.atoms || [])[0] || {}).atom_id;
+    /* V2.88：4択に加えて**全体解説も載せる**（利用者の指定）。
+       ここは「速さの外側」なので、開いた人には全部見せてよい。
+       比較表・図解も、あれば一緒に出す（解説フェーズと同じものが見られる）。 */
+    var ovr = q.overall_explanation && String(q.overall_explanation).trim();
+    var tbl = q.comparison_table && String(q.comparison_table).trim();
     box.innerHTML =
       '<p class="oq-orig-stem">' + escapeHtml(q.stem || '') + '</p>' +
       '<ol class="oq-orig-list">' +
@@ -2180,7 +2185,10 @@
                (a.is_correct ? '<span class="oo-mark">正解</span>' : '') +
                '</li>';
       }).join('') +
-      '</ol>';
+      '</ol>' +
+      (ovr ? '<div class="oq-orig-exp"><h4>全体解説</h4>' +
+             prepareExplanationHtml(q.overall_explanation) + '</div>' : '') +
+      (tbl ? '<div class="oq-orig-table">' + sanitizeExplanationHtml(tbl) + '</div>' : '');
     box.hidden = false;
     if (btn) { btn.textContent = '元の問題を閉じる'; }
   }
