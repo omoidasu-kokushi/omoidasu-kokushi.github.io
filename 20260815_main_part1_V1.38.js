@@ -1703,7 +1703,7 @@
       '<button type="button" class="choice-body" aria-label="誤り">' +
       '<span class="choice-text ox-mark">×</span></button></li>' +
       '<li class="oq-give"><button type="button" id="oq-giveup">' +
-      'わからない（降参）</button></li>');
+      '分からない（解説できない）</button></li>');
   }
 
   /* いま出ているのが一問一答か。判定を1か所に置く。 */
@@ -2035,9 +2035,13 @@
    *   右手の親指が届きやすい右に置く（利用者の指定）。
    * ------------------------------------------------------------------ */
   function afterOneQ(cur, picked) {
-    /* 採点したら降参は消す。押せないボタンを置いたままにしない。 */
-    var gv = $('.oq-give');
-    if (gv && gv.parentNode) { gv.parentNode.removeChild(gv); }
+    /* 採点したら、押す用のボタンは全部消す（V2.86・利用者の指摘）。
+       ○×が残っていると、次に押すのが「裏回答」なのか「○×の押し直し」なのか
+       分からない。押せないものを置いたままにしない。 */
+    ['.oq-give', '.oq-o', '.oq-x'].forEach(function (sel) {
+      var el = $(sel);
+      if (el && el.parentNode) { el.parentNode.removeChild(el); }
+    });
     var atom = (cur.atoms || [])[0] || {};
     var saidYes = picked.indexOf(atom.original_num) >= 0;
     var right = (saidYes === !!atom.is_correct);
@@ -2106,6 +2110,41 @@
     confirmAnswer();
   }
 
+  /* --- 元の問題をそのまま出す（V2.86） ---
+     利用者の指摘：これまでは全体解説を出していただけで、
+     「全ての選択肢がパッと分かる」形になっていなかった。
+     ここでは**4択そのもの**を、正解に印を付けて並べる。
+     解説フェーズへは飛ばさない（飛ぶと一問一答の速さが途切れる）。 */
+  function toggleOrigQuestion() {
+    var box = $('#oq-orig');
+    var btn = $('#oq-open-review');
+    if (!box) { return; }
+    if (!box.hidden) {
+      box.hidden = true;
+      if (btn) { btn.textContent = '元の問題を見る'; }
+      return;
+    }
+    var cur = state.current;
+    var q = (cur && cur.question) || {};
+    var all = q.atoms || [];
+    var shownId = ((cur.atoms || [])[0] || {}).atom_id;
+    box.innerHTML =
+      '<p class="oq-orig-stem">' + escapeHtml(q.stem || '') + '</p>' +
+      '<ol class="oq-orig-list">' +
+      all.map(function (a) {
+        var cls = (a.is_correct ? ' is-correct' : '') +
+                  (a.atom_id === shownId ? ' is-shown' : '');
+        return '<li class="' + cls.replace(/^ /, '') + '">' +
+               '<span class="oo-num">' + circled(a.original_num) + '</span>' +
+               '<span class="oo-text">' + escapeHtml(a.text || '') + '</span>' +
+               (a.is_correct ? '<span class="oo-mark">正解</span>' : '') +
+               '</li>';
+      }).join('') +
+      '</ol>';
+    box.hidden = false;
+    if (btn) { btn.textContent = '元の問題を閉じる'; }
+  }
+
   function showOneQNext(cur) {
     var btn = $('#btn-confirm');
     if (btn) {
@@ -2129,7 +2168,8 @@
       li.innerHTML =
         (raw ? '<div class="oq-exp">' +
                prepareAtomExplanation(atom.explanation, atom) + '</div>' : '') +
-        '<button type="button" id="oq-open-review">▸ 元の問題を見る（4択・全体解説）</button>';
+        '<button type="button" id="oq-open-review">元の問題を見る</button>' +
+        '<div class="oq-orig" id="oq-orig" hidden></div>';
       list.appendChild(li);
     }
   }
@@ -4113,9 +4153,7 @@
     on($('#choice-list'), 'click', function (ev) {
       if (ev.target.closest('#oq-open-review')) {
         ev.stopPropagation();
-        var b = $('#btn-confirm');
-        if (b) { b.hidden = true; b.classList.remove('is-oq-next'); }
-        renderReview();
+        toggleOrigQuestion();
         return;
       }
       /* 降参。説明できないということなので「難しい」で記録して、

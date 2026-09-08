@@ -3357,13 +3357,18 @@ html[data-theme="dark"] .memo-body strong{
    ボタンが横に伸びきり、押す場所が遠くなっていた）。 */
 #choice-list.is-oq{ max-width:520px; margin-left:auto; margin-right:auto; }
 
-/* 降参（V2.85）。○×より弱く、でも押せると分かる大きさ。 */
-.oq-give{ flex:1 0 100%; list-style:none; margin-top:10px; text-align:center; }
+/* 「分からない（解説できない）」（V2.86）。
+   ○×より**1周りだけ**弱く。V2.85 は点線＋透明で、○×と比べて弱すぎた
+   （利用者の指摘）。薄い黄色で塗り、実線の枠にする。
+   黄色にしたのは、緑（○）とも赤（×）とも競合せず、
+   「保留」の色として素直に読めるため。 */
+.oq-give{ flex:1 0 100%; list-style:none; margin-top:12px; text-align:center; }
 .oq-give > button{
-  width:100%; min-height:46px; padding:0 12px;
-  border:1.5px dashed var(--border-2, var(--border));
-  border-radius:var(--r-md); background:transparent;
-  color:var(--text-mute); font-size:var(--fs-sm); font-weight:700;
+  width:100%; min-height:56px; padding:0 12px;
+  border:2px solid var(--c-normal, #E39A16);
+  border-radius:var(--r-md);
+  background:color-mix(in srgb, var(--c-normal, #E39A16) 12%, var(--surface));
+  color:var(--text); font-size:var(--fs-md); font-weight:800;
 }
 .oq-give > button:active{ transform:translateY(1px); }
 
@@ -3408,8 +3413,48 @@ html[data-theme="dark"] .memo-body strong{
 /* 解説を読みたい人だけの小さい導線。速さの邪魔をしない大きさに留める。 */
 /* 「解説を読む」は○×と同じ flex の中にいる。書かないと横に割り込んで
    ○×を細くする（実測）。行を分けて下へ落とす。 */
-/* 肢ぶんの解説と、4択へ戻る導線（V2.85）。 */
+/* 肢ぶんの解説と、元の問題を開く導線（V2.86）。 */
 .oq-more{ flex:1 0 100%; list-style:none; margin:12px 0 0; text-align:center; }
+/* 導線は1周り大きく（V2.86・利用者の指摘）。小さすぎて気づけなかった。 */
+#oq-open-review{
+  width:100%; min-height:50px; padding:0 12px;
+  border:1.5px solid var(--border); border-radius:var(--r-md);
+  background:var(--surface); color:var(--text-sub);
+  font-size:var(--fs-sm); font-weight:700;
+}
+#oq-open-review:active{ transform:translateY(1px); }
+
+/* 元の問題（4択そのまま）。全体解説ではなく**問題そのもの**を出す。
+   どの肢が正解だったか、いま解いた肢がどれだったかが一目で分かる形にする。 */
+.oq-orig{
+  margin-top:10px; text-align:left;
+  border:1px solid var(--border); border-radius:var(--r-md);
+  background:var(--surface-2); padding:12px 13px;
+}
+.oq-orig-stem{
+  margin:0 0 10px; font-size:var(--fs-sm); font-weight:700;
+  line-height:1.7; color:var(--text);
+}
+.oq-orig-list{ list-style:none; margin:0; padding:0; display:grid; gap:7px; }
+.oq-orig-list > li{
+  display:flex; align-items:flex-start; gap:7px;
+  font-size:var(--fs-sm); line-height:1.6; color:var(--text-sub);
+  padding:6px 8px; border-radius:8px; border:1px solid transparent;
+}
+.oo-num{ flex:0 0 auto; font-weight:800; color:var(--text-mute); }
+.oo-text{ flex:1 1 auto; min-width:0; }
+.oo-mark{
+  flex:0 0 auto; align-self:center;
+  font-size:var(--fs-xs); font-weight:800; color:#fff;
+  background:var(--c-easy, #198661); border-radius:99px; padding:1px 8px;
+}
+.oq-orig-list > li.is-correct{
+  color:var(--text);
+  background:color-mix(in srgb, var(--c-easy, #198661) 8%, transparent);
+  border-color:color-mix(in srgb, var(--c-easy, #198661) 35%, transparent);
+}
+/* いま解いた肢には、左に印を付ける（どれを問われていたかを見失わない） */
+.oq-orig-list > li.is-shown{ box-shadow:inset 3px 0 0 var(--accent); }
 .oq-exp{
   text-align:left; font-size:var(--fs-sm); line-height:1.75;
   color:var(--text-sub); background:var(--surface-2);

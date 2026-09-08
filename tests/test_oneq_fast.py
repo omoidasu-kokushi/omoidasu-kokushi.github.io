@@ -47,6 +47,9 @@ ok("問題文は必ず出す（statement だけにしない）", "問題文は**
 ok("なぜ statement だけにしないかが書いてある", "74%が肢の本文と同じ" in p1)
 ok("正解はポップアップと同じ形で下に出す", "ポップアップと同じ形" in p1)
 ok("降参がある", "oq-giveup" in p1 and "説明できない" in p1)
+ok("降参の文言は「分からない（解説できない）」", "分からない（解説できない）" in p1)
+ok("元の問題は4択そのものを出す（全体解説ではない）",
+   "toggleOrigQuestion" in p1 and "4択そのもの" in p1)
 ok("○で正解なら自動で次へ", "手を止めずに次へ" in p1)
 ok("×で正解なら裏回答を聞く", "showOneQGround" in p1)
 ok("裏回答は×が左・○が右", "oq-g-no" in p1 and "押す回数の多い側を" in p1)
@@ -178,6 +181,35 @@ with sync_playwright() as p:
         ok("解説フェーズへ飛ばない", b["phase"] == "answer", b["phase"])
         ok("大きい「次へ」が出る", b["big"] and b["nextH"] >= 56, (b["next"], b["nextH"]))
         ok("解説を読む導線は残す", b["more"], b["more"])
+
+        # V2.86：採点したら○×と降参は消す。元の問題は4択そのものを出す。
+        c = pg.evaluate("""() => {
+          const btn = document.querySelector('#oq-open-review');
+          return { ox: document.querySelectorAll('.oq-o, .oq-x').length,
+                   give: !!document.querySelector('#oq-giveup'),
+                   openH: btn ? Math.round(btn.getBoundingClientRect().height) : 0 };
+        }""")
+        ok("採点したら○×を消す（次に押すものを迷わせない）", c["ox"] == 0, c["ox"])
+        ok("採点したら降参も消す", not c["give"], c["give"])
+        ok("元の問題を開く導線は押しやすい大きさ", c["openH"] >= 44, c["openH"])
+
+        pg.evaluate("() => { document.querySelector('#oq-open-review').click(); }")
+        pg.wait_for_timeout(400)
+        o = pg.evaluate("""() => {
+          const box = document.querySelector('#oq-orig');
+          return { shown: !box.hidden,
+                   stem: (box.querySelector('.oq-orig-stem')||{}).textContent || '',
+                   n: box.querySelectorAll('.oq-orig-list > li').length,
+                   correct: box.querySelectorAll('li.is-correct').length,
+                   shownLi: box.querySelectorAll('li.is-shown').length,
+                   btn: document.querySelector('#oq-open-review').textContent };
+        }""")
+        ok("元の問題が開く", o["shown"], o["shown"])
+        ok("問題文がそのまま出る", len(o["stem"]) >= 8, o["stem"][:30])
+        ok("**全ての選択肢**が出る", o["n"] >= 4, o["n"])
+        ok("正解に印が付く", o["correct"] >= 1, o["correct"])
+        ok("いま解いた肢にも印が付く", o["shownLi"] == 1, o["shownLi"])
+        ok("もう一度押すと閉じられる", "閉じる" in o["btn"], o["btn"])
 
         pg.evaluate("() => { document.querySelector('#btn-confirm').click(); }")
         pg.wait_for_timeout(1400)
