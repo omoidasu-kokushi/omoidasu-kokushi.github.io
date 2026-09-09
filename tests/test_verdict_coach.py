@@ -1,5 +1,22 @@
 # -*- coding: utf-8 -*-
-"""test_verdict_coach.py — V2.59 正誤ポップアップで肢ごとの評価を促す
+"""test_verdict_coach.py — 正誤ポップアップの中身（V2.59 → V2.94 で裁定が変わった）
+
+【V2.94（2026-09-10・利用者裁定）で方針が変わりました】
+  利用者の言葉：「不正解！なんたらかんたら、って解説が出てくるけどこれはやめて。
+  一問一答でもその仕様はいらない」「正解！ 残念…は残す」
+
+  ポップアップに出すのは **見出しだけ**（○「正解！」／×「残念…」）。
+  下の2行——「正解は ④ ○○」と、V2.59 で足した肢ごとの評価の案内——は出さない。
+
+  **V2.59 の要望を消したのではなく、上書きの裁定が出た**ということ。
+  V2.59 が解こうとした「肢ごとの評価を忘れる」は、初期点灯（推奨評価を
+  全肢に点けておく）で空欄にはならないので、文言で補うより
+  画面を覆わないほうを採った、という判断です。
+  以下の検査は「もう出さないこと」を固定する形に書き換えてあります。
+  何を決めたかの記録として、V2.59 の説明もそのまま残します。
+
+--- 以下 V2.59 のときの説明（記録） ---
+V2.59 正誤ポップアップで肢ごとの評価を促す
 
 利用者の指摘：「選択肢ごとに評価するのを忘れがち」。
 次へを塞ぐ案（未確認があるうちは進めない／全肢押すまで進めない）は
@@ -65,39 +82,66 @@ with sync_playwright() as p:
                    title: (document.getElementById('vp-title').textContent || '') };
         }""", [right, natoms])
 
-    a = shot(True, 4)
-    ok("正解でも案内が出る", a["hidden"] is False, json.dumps(a, ensure_ascii=False))
-    ok("正解の案内は［難しい］を押させる方向",
-       "説明できなかった" in a["text"] and "難しい" in a["text"], a["text"])
-    ok("正解の案内で［普通］［易しい］を勧めない",
-       "易しい" not in a["text"], a["text"])
+    def shot2(right, natoms):
+        """見出し・正解文・案内の3つを見る（V2.94）。"""
+        return pg.evaluate("""([right, n]) => {
+          const M = window.Main;
+          const atoms = [];
+          for (let i = 1; i <= n; i++) {
+            atoms.push({ atom_id: 'a' + i, original_num: i, text: '選択肢' + i,
+                         is_correct: i === 1 });
+          }
+          M.showVerdictPopup({ atoms: atoms, answeredRight: right });
+          const c = document.getElementById('vp-coach');
+          const ans = document.getElementById('vp-answer');
+          const pop = document.getElementById('verdict-pop');
+          return { coachHidden: !!c.hidden,
+                   coachText: (c.textContent || '').trim(),
+                   ansHidden: !!ans.hidden,
+                   ansText: (ans.textContent || '').trim(),
+                   popShown: !pop.hidden,
+                   mark: (document.getElementById('vp-mark').textContent || '').trim(),
+                   title: (document.getElementById('vp-title').textContent || '').trim() };
+        }""", [right, natoms])
 
-    b = shot(False, 4)
-    ok("不正解でも案内が出る", b["hidden"] is False, json.dumps(b, ensure_ascii=False))
-    ok("不正解の案内は［普通］か［易しい］を押させる方向",
-       "説明できた" in b["text"] and "普通" in b["text"] and "易しい" in b["text"], b["text"])
-    ok("不正解の案内で［難しい］を勧めない", "難しい" not in b["text"], b["text"])
+    a = shot2(True, 4)
+    ok("正解の見出しは「正解！」", a["title"] == "正解！" and a["mark"] == "○",
+       json.dumps(a, ensure_ascii=False))
+    ok("正解でもポップアップは出る", a["popShown"], json.dumps(a, ensure_ascii=False))
+    ok("正解のときに案内を出さない（V2.94）", a["coachHidden"] and not a["coachText"],
+       json.dumps(a, ensure_ascii=False))
+    ok("正解のときに正解文を出さない（V2.94）", a["ansHidden"] and not a["ansText"],
+       json.dumps(a, ensure_ascii=False))
 
-    c = shot(True, 1)
-    ok("一問一答（肢が1本）では案内を出さない", c["hidden"] is True,
+    b = shot2(False, 4)
+    ok("不正解の見出しは「残念…」", b["title"] == "残念…" and b["mark"] == "×",
+       json.dumps(b, ensure_ascii=False))
+    ok("不正解でも「正解は ○○」を出さない（V2.94の主眼）",
+       b["ansHidden"] and not b["ansText"], json.dumps(b, ensure_ascii=False))
+    ok("不正解でも案内を出さない（V2.94）", b["coachHidden"] and not b["coachText"],
+       json.dumps(b, ensure_ascii=False))
+    ok("肢の本文がポップアップに漏れていない",
+       "選択肢" not in (b["ansText"] + b["coachText"]), json.dumps(b, ensure_ascii=False))
+
+    c = shot2(True, 1)
+    ok("一問一答でも見出しだけ", c["popShown"] and c["coachHidden"] and c["ansHidden"],
        json.dumps(c, ensure_ascii=False))
-    ok("そのときもポップアップ自体は出る", c["popShown"], json.dumps(c, ensure_ascii=False))
 
     # 4択→一問一答→4択と続けても、前の文面が残らない
-    shot(False, 4); c2 = shot(True, 1); d = shot(True, 4)
-    ok("一問一答をはさんでも案内が残らない", c2["hidden"] is True, json.dumps(c2, ensure_ascii=False))
-    ok("戻れば正解の案内が出る",
-       d["hidden"] is False and "説明できなかった" in d["text"], json.dumps(d, ensure_ascii=False))
+    shot2(False, 4); c2 = shot2(True, 1); d = shot2(True, 4)
+    ok("一問一答をはさんでも文面が残らない",
+       c2["coachHidden"] and c2["ansHidden"], json.dumps(c2, ensure_ascii=False))
+    ok("戻っても文面は出ない", d["coachHidden"] and d["ansHidden"],
+       json.dumps(d, ensure_ascii=False))
 
-    # 案内を出したときの正解は1.8秒。0.6秒のままだと30字は読めない。
-    # 中間（1.2秒）でまだ出ていて、時間が過ぎれば消えることを実測する。
-    shot(True, 4)
-    pg.wait_for_timeout(1200)
+    # V2.94：読ませる文が無くなったので短くした。正解0.6秒／不正解0.9秒。
+    shot2(False, 4)
+    pg.wait_for_timeout(400)
     still = pg.evaluate("() => !document.getElementById('verdict-pop').hidden")
-    ok("正解でも1.2秒後にはまだ出ている（0.6秒で消えていない）", still, str(still))
-    pg.wait_for_timeout(1400)
+    ok("不正解は0.4秒ではまだ出ている", still, str(still))
+    pg.wait_for_timeout(900)
     gone = pg.evaluate("() => document.getElementById('verdict-pop').hidden")
-    ok("時間が過ぎれば消える（出しっぱなしにしない）", gone, str(gone))
+    ok("1.3秒あれば消えている（出しっぱなしにしない）", gone, str(gone))
 
     ok("設定でポップアップを切っている人には出さない",
        pg.evaluate("""async () => {
@@ -113,8 +157,12 @@ with sync_playwright() as p:
     br.close()
 
 # 表示時間はコードで固定する（実測待ちにすると赤くなったり緑になったりする）
-ok("案内を出すときの正解の表示時間を延ばしてある（0.6秒では読めない）",
-   "right ? (multi ? 1800 : 600)" in p1)
+# V2.59 は「案内を読む時間」として正解1.8秒・不正解1.6〜2.4秒を取っていた。
+# V2.94 で読ませる文が無くなったので、正解0.6秒／不正解0.9秒に戻した。
+ok("読ませる文が無いぶん、出している時間を短くしてある（V2.94）",
+   "var ms = right ? 600 : 900;" in p1)
+ok("なぜ短くしたかが書いてある",
+   "2文字を読むのにその長さは要らない" in p1)
 
 def _vers(txt, pat):
     return sorted(set(re.findall(pat, txt)))

@@ -3145,6 +3145,7 @@ var QR_MATRIX = [
     return S.loadMeta().then(function (meta) {
       M.state.meta = meta;
       fillDaylineOptions(meta.day_boundary_hour);
+      fillHardMinOptions(meta.hard_interval_min);
       var p = $('#set-pomodoro');      if (p) { p.checked = meta.pomodoro_enabled !== false; }
       var a = $('#set-alarm');         if (a) { a.value = meta.pomodoro_alarm || 'chime'; }
       refreshAlarmFileNote().catch(noop);
@@ -3704,6 +3705,40 @@ var QR_MATRIX = [
               (h < 10 ? '0' : '') + h + ':00' + note + '</option>';
     }
     sel.innerHTML = html;
+  }
+
+  /* 「難しい」の再出題までの時間（V2.94・利用者の要望）。
+
+     【なぜ選べるようにしたか】
+     「その日のうちに、その回の勉強でもう一度やりたい」人がいる。
+     20分だと1回の勉強が終わってしまい、集中が切れるという指摘。
+     逆に4択では「さっき見た答えの表面記憶」で正解してしまうので、
+     短すぎても効かない（V2.20 で 10分→20分にしたのはそのため）。
+     どちらが正しいかは人によるので、選べるようにする。
+
+     変わるのは**梯子のいちばん下の長さだけ**。段の数もコード（'20m'）も
+     緊急度の並びも割り込みの判定も動かさない（保存済みのデータを触らないため）。
+     すでに期日が入っている肢は書き換えない。**次に解いた肢から順に**変わる。 */
+  function setHardMin(min) {
+    var n = parseInt(min, 10);
+    if ([3, 5, 10, 20, 30].indexOf(n) < 0) { n = 20; }
+    return S.setMeta('hard_interval_min', n).then(function () {
+      return S.loadMeta();
+    }).then(function (meta) {
+      M.state.meta = meta;
+      toast('「難しい」の再出題を ' + n + '分後にしました（次に解いた肢から）', 3600);
+    });
+  }
+
+  function fillHardMinOptions(current) {
+    var sel = $('#set-hard-min');
+    if (!sel) { return; }
+    var cur = parseInt(current, 10);
+    if ([3, 5, 10, 20, 30].indexOf(cur) < 0) { cur = 20; }
+    var opts = sel.options, i;
+    for (i = 0; i < opts.length; i++) {
+      opts[i].selected = (parseInt(opts[i].value, 10) === cur);
+    }
   }
 
   function setDayBoundary(hour) {
@@ -6614,6 +6649,7 @@ var QR_MATRIX = [
       }, 700);
     });
     on($('#set-dayline'), 'change', function (ev) { setDayBoundary(ev.target.value); });
+    on($('#set-hard-min'), 'change', function (ev) { setHardMin(ev.target.value); });
     on($('#set-pomodoro'), 'change', function (ev) {
       var v = ev.target.checked;
       /* ヘッダーの ⏸ / ▶ と同じ経路へ通す。入口が3つあっても結果は1つ。 */

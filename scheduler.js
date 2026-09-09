@@ -72,6 +72,37 @@
     { code: '180d', ms: 180 * DAY, label: '180日後'  }
   ];
 
+  /* --- 最短段（「難しい」）の長さは人によって変える（V2.94・利用者の要望） ---
+   *
+   * 「その日のうちに、その回の勉強で もう一度やりたい」人がいる。
+   * 20分だと1回の勉強が終わってしまい、集中が切れる、という指摘。
+   * 逆に4択では「さっき見た答えの表面記憶」で正解してしまうので、
+   * 短すぎるのも効かない（V2.20 で 10分→20分にした理由）。
+   * **どちらが正しいかは人による**ので、選べるようにする。
+   *
+   * 変えるのは**梯子のいちばん下の長さだけ**。段の数も、コード（'20m'）も、
+   * 緊急度の並びも、割り込みの判定も動かさない。保存済みのデータに
+   * 手を入れないための決まりごと（V2.20 と同じ考え方）。
+   */
+  var HARD_MIN_CHOICES = [3, 5, 10, 20, 30];
+  var HARD_MIN_DEFAULT = 20;
+
+  function hardMin(meta) {
+    var v = meta && meta.hard_interval_min;
+    return (HARD_MIN_CHOICES.indexOf(v) >= 0) ? v : HARD_MIN_DEFAULT;
+  }
+
+  /* 段の長さ。いちばん下だけ設定で変わる。 */
+  function stepMsAt(idx, meta) {
+    if (idx === 0) { return hardMin(meta) * MIN; }
+    return STEPS[clamp(idx, 0, STEPS.length - 1)].ms;
+  }
+
+  function stepLabelAt(idx, meta) {
+    if (idx === 0) { return hardMin(meta) + '分後'; }
+    return STEPS[clamp(idx, 0, STEPS.length - 1)].label;
+  }
+
   var STEP_INDEX = {};
   STEPS.forEach(function (s, i) { STEP_INDEX[s.code] = i; });
   STEP_INDEX['10m'] = STEP_INDEX['20m'];   /* V2.20：旧データ互換（同じ段として読む） */
@@ -257,8 +288,8 @@
      これを超えたものは now を起点に引き直す。 */
   var MAX_HORIZON = 200 * 24 * 60 * 60 * 1000;
 
-  function computeDueDate(fromTs, stepIdx, boundaryHour, capMs) {
-    var step = STEPS[clamp(stepIdx, 0, STEPS.length - 1)];
+  function computeDueDate(fromTs, stepIdx, boundaryHour, capMs, meta) {
+    var stepMs = stepMsAt(clamp(stepIdx, 0, STEPS.length - 1), meta);
     /* 起点そのものが未来なら、いまに引き戻してから積む。
        未来の解答時刻は存在しえない（V1.61）。 */
     var base = isNum(fromTs) ? fromTs : nowMs();
@@ -266,7 +297,7 @@
     if (base > t) { base = t; }
     /* 試験日の上限で頭を押さえる。梯子そのものは書き換えない
        （評価の意味と、次にどの段へ上がるかは今までどおり）。 */
-    var span = (isNum(capMs) && capMs > 0) ? Math.min(step.ms, capMs) : step.ms;
+    var span = (isNum(capMs) && capMs > 0) ? Math.min(stepMs, capMs) : stepMs;
     var target = base + span;
     /* 1日未満に潰れたときは日界へ寄せない。寄せると試験日を追い越す。 */
     if (span < DAY) { return capHorizon(target, t); }
@@ -347,12 +378,12 @@
       eval          : evalKey,
       srs_step      : nextIdx + 1,
       interval_code : code,
-      interval_ms   : STEPS[nextIdx].ms,
-      interval_label: STEPS[nextIdx].label,
-      due_date      : computeDueDate(now, nextIdx, boundary, capMs),
+      interval_ms   : stepMsAt(nextIdx, opts.meta),
+      interval_label: stepLabelAt(nextIdx, opts.meta),
+      due_date      : computeDueDate(now, nextIdx, boundary, capMs, opts.meta),
       /* 上限で押さえたときは、そのことを呼び出し側へ伝える（画面で「試験日まで」
          と出したり、テストで確かめたりするため）。 */
-      capped        : (isNum(capMs) && capMs > 0 && capMs < STEPS[nextIdx].ms),
+      capped        : (isNum(capMs) && capMs > 0 && capMs < stepMsAt(nextIdx, opts.meta)),
       cap_ms        : isNum(capMs) ? capMs : null,
       from_step     : curIdx,
       from_code     : curIdx >= 0 ? stepToCode(curIdx) : null,
@@ -454,7 +485,8 @@
       if (!isNum(idx)) { idx = Math.max(0, (lastSched.srs_step_after || 1) - 1); }
       patch.srs_step      = idx + 1;
       patch.interval_code = stepToCode(idx);
-      patch.due_date      = computeDueDate(lastSched.answered_at, idx, boundary, capMs);
+      patch.due_date      = computeDueDate(lastSched.answered_at, idx, boundary, capMs,
+                                           opts && opts.meta);
     }
 
     var w = computeWeaknessFromLogs(list, atom);
@@ -894,7 +926,7 @@
         srs_step         : forcedIdx + 1,
         interval_code    : stepToCode(forcedIdx),
         due_date         : computeDueDate(now, forcedIdx, boundary,
-                                          examCapMs(ctx.meta, now, boundary))
+                                          examCapMs(ctx.meta, now, boundary), ctx.meta)
       };
 
       var log = {

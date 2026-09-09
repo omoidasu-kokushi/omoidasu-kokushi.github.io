@@ -156,6 +156,9 @@
 
     /* --- 生活リズム・表示 --- */
     day_boundary_hour       : 4,             /* 日界＝午前4:00 */
+    /* V2.94：「難しい」の再出題までの分。3/5/10/20/30 から選ぶ。
+       既定は20（V2.20の裁定）。梯子のいちばん下の長さだけを変える。 */
+    hard_interval_min       : 20,
     theme                   : 'light',
     visual_theme            : 'challenge',
     prefer_frequent         : true,          /* 「頻出問題を優先する」トグル */

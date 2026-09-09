@@ -3001,48 +3001,45 @@
     if (!pop) { return; }
     if (state.meta && state.meta.verdict_popup_enabled === false) { return; }
 
-    var correctAtoms = cur.atoms.filter(function (a) { return a.is_correct; });
     var right = !!cur.answeredRight;
 
     setText('#vp-mark', right ? '○' : '×');
-    setText('#vp-title', right ? '正解！' : '不正解');
-    /* V2.83：一問一答では、正解は文のすぐ下（.oq-answer）に出している。
-       ポップアップでも同じことを言うと二重になるうえ、
-       いま出ている1肢が誤りだと correctAtoms が空になり、
-       「正解は」だけの尻切れになる（実測）。ここでは○×だけを出す。 */
-    if (isOneQ()) {
-      setHtml('#vp-answer', '');
-    } else {
-      setHtml('#vp-answer', '正解は ' + correctAtoms.map(function (a) {
-        return '<b>' + circled(a.original_num) + ' ' + escapeHtml(a.text) + '</b>';
-      }).join(' と '));
-    }
+    setText('#vp-title', right ? '正解！' : '残念…');
 
-    /* --- 肢ごとの評価を促す一行（V2.59・利用者裁定） ---
-       評価軸は「その選択肢の裏回答が言えたか」（§4-③）であって正誤ではない。
-       正解／不正解を見た直後が、いちばんその区別を取り違える瞬間なので、
-       ここで一度だけ言い直す。次へは塞がない（案B・Cは採らなかった）。
-
-       肢が1本の出題（一問一答）では出さない。
-       「選択肢ごと」という言い回しが、そもそも当てはまらないため。 */
+    /* --- V2.94（利用者裁定）：見出しの下は**何も出さない** ---
+     *
+     * 利用者の言葉：「不正解！なんたらかんたら、って解説が出てくるけどこれはやめて。
+     * 一問一答でもその仕様はいらない」。残すのは「正解！」「残念…」だけ。
+     *
+     * 【何を消したか】
+     *   ・「正解は ④ 動眼神経」（V1.xx から）
+     *   ・「説明できた選択肢は［普通］か［易しい］を押しておこう」（V2.59）
+     *
+     * 【なぜ消してよいか】
+     *   正解はこのあとの解説画面に、肢ごとの ⇒正解／⇒誤り として全部出る。
+     *   ポップアップで先に言うと、同じことを2回読ませたうえに
+     *   **採点直後の1〜2秒、画面の中央を覆う**。速く回したい人ほど邪魔になる。
+     *
+     * V2.59 の案内は「肢ごとの評価を忘れる」への対策だったが、
+     * 初期点灯（推奨評価を全肢に点けておく）があるので、押し忘れても
+     * 空欄にはならない。文言で補うより、覆わないほうを採る。
+     *
+     * 器（#vp-answer / #vp-coach）は残す。消すと、ここを見ている
+     * ほかの処理やテストが黙って壊れる。**空にして隠す**だけにする。 */
+    setHtml('#vp-answer', '');
+    var vpAnswer = $('#vp-answer');
+    if (vpAnswer) { vpAnswer.hidden = true; }
     var coach = $('#vp-coach');
-    var multi = cur.atoms && cur.atoms.length > 1;
-    if (coach) {
-      if (multi) {
-        coach.innerHTML = right
-          ? '説明できなかった選択肢は <b>［難しい］</b> を押して、もう一度'
-          : '説明できた選択肢は <b>［普通］</b> か <b>［易しい］</b> を押しておこう';
-      }
-      coach.hidden = !multi;
-    }
+    if (coach) { coach.innerHTML = ''; coach.hidden = true; }
 
     pop.className = 'verdict-pop ' + (right ? 'is-correct' : 'is-wrong');
     pop.hidden = false;
 
-    /* 正解0.6秒／不正解1.6秒／複数正解2.4秒。
-       V2.59：案内を足したぶん、正解は 0.6 秒では読めない（30字ある）。
-       案内を出すときだけ 1.8 秒にする。指は通るので待たせてはいない。 */
-    var ms = right ? (multi ? 1800 : 600) : (correctAtoms.length > 1 ? 2400 : 1600);
+    /* V2.94：読ませる文が無くなったので、出している時間も短くする。
+       正解0.6秒／不正解0.9秒。以前は正解文と案内を読む時間として
+       不正解に1.6〜2.4秒、案内つきの正解に1.8秒を取っていたが、
+       2文字を読むのにその長さは要らない。指はもともと通る。 */
+    var ms = right ? 600 : 900;
     global.clearTimeout(verdictTimer);
     verdictTimer = global.setTimeout(function () { hideVerdictPopup(); }, ms);
   }

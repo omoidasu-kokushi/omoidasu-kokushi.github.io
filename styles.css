@@ -3394,15 +3394,19 @@ html[data-theme="dark"] .memo-body strong{
   font-size:var(--fs-md); font-weight:800; color:var(--text);
 }
 .oq-ground-btns{ display:flex; gap:12px; }
+/* V2.94：文字が小さすぎた（利用者の指摘）。ボタンの面に対して2回り大きく。
+   ここは「言えたか」を自分で決める場所で、押す前に必ず読む1行なので、
+   面のわりに字が小さいと読み飛ばして反射で押してしまう。
+   高さも上げて、字を大きくしても窮屈にならないようにする。 */
 .oq-ground-btns > button{
-  flex:1 1 0; min-width:0; min-height:60px;
+  flex:1 1 0; min-width:0; min-height:74px;
   border-radius:var(--r-md); border:2px solid var(--border);
-  background:var(--surface); font-size:var(--fs-sm); font-weight:800;
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+  background:var(--surface); font-size:var(--fs-lg); font-weight:800;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px;
 }
 /* 「言えなかった｜次へ」「言えた｜次へ」。押したらそのまま次の問題へ進む。 */
 .oq-ground-btns > button > span{
-  font-size:var(--fs-xs); font-weight:700; opacity:.72;
+  font-size:var(--fs-sm); font-weight:700; opacity:.78;
 }
 /* V2.93（利用者の指定）：白の塗りつぶしをやめ、淡い赤／淡い緑で塗る。
    枠線だけだと2枚が同じ面に見え、どちらを押すか一瞬迷う。
