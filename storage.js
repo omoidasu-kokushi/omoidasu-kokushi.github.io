@@ -2160,6 +2160,30 @@
     '当てはまらない', 'あてはまらない', '除くのはどれ', '該当しないのは'
   ];
 
+  /* V2.92（2026-09-09・利用者裁定）：条件を絞った。
+     一問一答は【肢】を見て○×をタップするだけの**スピード勝負**のモード。
+     読解が要るもの・単独で正誤が決まらないものを入れると趣旨が壊れる。
+
+     実測（配布1,197問）
+       連問・相対判断・複数選択・組み合わせを除いた土台   746問
+         全肢12字以下  336問 ／ 全肢20字以下  527問 ／ 全肢24字以下  599問
+     12字で切ると「骨格筋が緊張する。」型の191問が落ちる。文だが2秒で読めて
+     ○×として良質。21字を超えると「児童相談所に通告することへの母親の同意を
+     得る。」のように読解が要り、文脈がないと正誤が決まらない。
+     **境目は「単語か文章か」ではなく「読む長さ」。20字が分かれ目。**
+
+     外す例外を2つ足した。
+       ・否定形の肢「開放損傷には適さない。」→ ○×が二重否定になる
+       ・かぎかっこの発話「｢耳たぶから検体を採取します｣」→ 文脈依存
+
+     **掃除（tools_出力の後始末 V1.09）と同じ規則。片方だけ直さないこと。**
+     実測：規則がずれていたとき、掃除が false にした21問をここが true に
+     戻していた（192問→213問）。§24「契約を二重に持たない」。 */
+  var SPLIT_COMBO_RE = /[\u2460-\u2473]|[a-e]，|[a-e]、/;
+  var SPLIT_NEG_RE   = /(ない。?$|なし$|禁忌|適さない|不要)/;
+  var SPLIT_SPEECH_RE = /^[「\uFF62]/;
+  var SPLIT_MAX_LEN = 20;
+
   function judgeSplittable(q) {
     if (!q || q.question_type !== 'single') { return false; }
     var stem = String(q.stem || '');
@@ -2167,16 +2191,35 @@
     for (i = 0; i < SPLIT_NG_WORDS.length; i++) {
       if (stem.indexOf(SPLIT_NG_WORDS[i]) >= 0) { return false; }
     }
-    return true;
+    if (q.case_key || stem.indexOf('次の文を読み') >= 0) { return false; }
+    if (q.image_url) { return false; }
+    var texts = (q._atom_texts || []);
+    if (!texts.length) { return false; }
+    var mx = 0;
+    for (i = 0; i < texts.length; i++) {
+      var t = String(texts[i] || '').trim();
+      if (SPLIT_COMBO_RE.test(t) || SPLIT_NEG_RE.test(t) || SPLIT_SPEECH_RE.test(t)) {
+        return false;
+      }
+      if (t.length > mx) { mx = t.length; }
+    }
+    return mx > 0 && mx <= SPLIT_MAX_LEN;
   }
 
   /* dryRun:true なら数えるだけで書き込まない（押す前に件数を見せるため） */
   function autoMarkSplittable(options) {
     options = options || {};
     var dry = !!options.dryRun;
-    return getAllQuestions().then(function (qs) {
+    return Promise.all([getAllQuestions(), getAllAtoms()]).then(function (r) {
+      var qs = r[0], atoms = r[1];
+      /* V2.92：肢の本文を見ないと決められないので、問題ごとに集めて渡す */
+      var byQ = {};
+      atoms.forEach(function (a) {
+        (byQ[a.q_id] = byQ[a.q_id] || []).push(String(a.text || ''));
+      });
       var hit = [], miss = 0;
       qs.forEach(function (q) {
+        q._atom_texts = byQ[q.q_id] || [];
         if (judgeSplittable(q)) { hit.push(q); } else { miss++; }
       });
       var result = { total: qs.length, marked: hit.length, skipped: miss, dry_run: dry };
@@ -2185,6 +2228,7 @@
         hit.forEach(function (q) {
           q.is_splittable = true;
           q._star = q.is_starred ? 1 : 0;
+          delete q._atom_texts;          /* V2.92：判定用の一時データは保存しない */
           s[STORE.QUESTIONS].put(q);
         });
       }).then(function () { return result; });

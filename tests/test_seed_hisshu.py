@@ -87,7 +87,9 @@ ok("図解が残っている", sum(1 for q in qs if q.get("mermaid_code")) == 2,
    sum(1 for q in qs if q.get("mermaid_code")))
 ok("別冊の画像が残っている", sum(1 for q in qs if q.get("image_url")) == 7,
    sum(1 for q in qs if q.get("image_url")))
-ok("分割可否が残っている", sum(1 for q in qs if q.get("is_splittable")) == 83,
+# V2.92：一問一答に出す条件を絞り直し、83問 → 192問 になった（利用者裁定）。
+# 全肢20字以下・連問や否定形は外す、という規則で掃除が決める。
+ok("一問一答に出す問題が192問", sum(1 for q in qs if q.get("is_splittable")) == 192,
    sum(1 for q in qs if q.get("is_splittable")))
 
 ok("全問が pool=main", {q.get("pool") for q in qs} == {"main"},
@@ -135,9 +137,9 @@ if os.path.exists(oldp):
 html = io.open(os.path.join(base, "index.html"), encoding="utf-8").read()
 sw = io.open(os.path.join(base, "sw.js"), encoding="utf-8").read()
 mv = re.search(r"const CACHE_NAME = 'v([\d.]+)'", sw)
-ok("CACHE_NAME を上げた", mv and mv.group(1) == "2.91.0", mv.group(1) if mv else None)
-ok("?v= を揃えた", "?v=2.91" in html and "?v=2.90" not in html)
-ok("build-stamp を上げた", "20260909_Omoidasu_V2.91" in html)
+ok("CACHE_NAME を上げた", mv and mv.group(1) == "2.92.0", mv.group(1) if mv else None)
+ok("?v= を揃えた", "?v=2.92" in html and "?v=2.91" not in html)
+ok("build-stamp を上げた", "20260909_Omoidasu_V2.92" in html)
 
 # --- 実際に取り込めるか ---
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -183,10 +185,9 @@ if sync_playwright:
         }""")
         ok("取り込んだあとも出典が全問に残っている（画面に「AI予想問題」と出ない）",
            dbsrc["withSrc"] == 249, json.dumps(dbsrc, ensure_ascii=False))
-        # 分割可否は取り込み側でも判定するので、シードの83問より増える（実測194）。
-        # 減っていないことだけを見る。
+        # V2.92：一問一答の可否は掃除が決めた値がそのまま入る（実測192）。
         ok("比較表・別冊画像・分割可否も残っている",
-           dbsrc["tbl"] == 17 and dbsrc["img"] == 7 and dbsrc["spl"] >= 83,
+           dbsrc["tbl"] == 17 and dbsrc["img"] == 7 and dbsrc["spl"] == 192,
            json.dumps(dbsrc, ensure_ascii=False))
         ok("捨てられた行が無い", rep.get("skipped") == 0 and rep.get("mismatch") == 0,
            json.dumps({k: rep.get(k) for k in ("skipped", "mismatch")}))
