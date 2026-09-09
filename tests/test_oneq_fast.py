@@ -43,8 +43,21 @@ cs = open(os.path.join(base, "styles.css"), encoding="utf-8").read()
 
 ok("【】は記号として置き、線は中の言葉だけに掛ける",
    "oq-word" in p1 and "括弧に線が乗ると" in p1)
-ok("問題文は必ず出す（statement だけにしない）", "問題文は**必ず出す**" in p1)
-ok("【肢】は問題文カードの中に入れる", "oq-in-stem" in p1 and "問題文の外に選択肢が飛び出てる" in p1)
+# V2.95（利用者の指摘）で方針が変わった。
+#   「問題文の末尾は『どれか。』だから不自然になる。
+#     問題文の中に対象の選択肢を自然に盛り込む形が要る」
+# その文（statement）は既にあり、配布1,197問の一問一答2,040肢のうち
+# 99%が「問題文に肢を織り込んだ1文」だった。使っていなかっただけ。
+# V2.84 で statement 単独にしたら壊れたのは、当時の同梱シード453問の
+# 74%が「肢の本文と同じ」だったから。同梱シードは過去問249問に入れ替わり、
+# 前提が変わった（V2.89）。
+# **使えるときだけ使い、使えないときは今までどおり2段に落ちる。**
+ok("statement が使えるならそれ1文にする（V2.95）",
+   "文として読めるので、問題文カードは**この1文だけ**にする" in p1)
+ok("使えないときは2段に落ちる（壊れない形）",
+   "どちらでも壊れない形" in p1)
+ok("なぜ以前は2段だったのかが残っている", "74%が「肢の本文と同じ」" in p1)
+ok("【肢】は問題文カードの中に入れる", "oq-in-stem" in p1 and "oq-word-row" in p1)
 ok("線を引くのは合否ではなく肢の真偽で決める", "is-false" in p1 and "その肢が正しいか誤りか" in p1)
 ok("正しい肢には線を引かず赤太字で強める", ".oq-word-row.is-true .oq-word" in cs)
 ok("一問一答はインターロックを掛けない", "待たせる理由がない" in p1)
@@ -138,7 +151,15 @@ with sync_playwright() as p:
         ok("押しやすい大きさ（70px以上）", a["h"] >= 70, a["h"])
         ok("確定ボタンを出さない", a["confirmHidden"] is True, a["confirmHidden"])
         ok("「この選択肢は正しいですか？」を出さない", a["instruction"].strip() == "", a["instruction"])
-        ok("問題文が消えていない", len(a["stem"].strip()) >= 8, a["stem"][:30])
+        # V2.95：statement が使えるときは問題文カードが1文になる（#q-stem-text は空）。
+        # どちらの形でも「読む文が画面にある」ことを見る。
+        oneline = pg.evaluate("""() => {
+          const r = document.querySelector('#oq-in-stem');
+          return r ? r.textContent.trim() : '';
+        }""")
+        ok("読む文が画面にある（2段でも1文でも）",
+           len(a["stem"].strip()) >= 8 or len(oneline) >= 8,
+           (a["stem"][:30] + " / " + oneline[:40]))
         ok("降参が出ている", a["giveup"], a["giveup"])
         ok("○は淡い緑・×は淡い赤で塗る",
            a["oBg"] != a["xBg"] and "rgba(0, 0, 0, 0)" not in a["oBg"], (a["oBg"], a["xBg"]))

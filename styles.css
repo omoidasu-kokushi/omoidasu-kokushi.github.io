@@ -2160,8 +2160,8 @@ body.is-knock #knock-hud{ z-index:58; }
 .cx-line{ flex-wrap:wrap; }
 .cx-line .cx-text{ flex:1 1 60%; }
 .cx-acts{
-  flex:0 0 auto; margin-left:auto;
-  display:inline-flex; align-items:center; gap:2px;
+  flex:0 1 auto; margin-left:auto; max-width:100%; min-width:0;
+  display:inline-flex; align-items:center; gap:6px;
 }
 
 /* .cx-write-inline の中身は、.cx-write の定義より後ろに置く必要がある。
@@ -2198,6 +2198,8 @@ body.is-knock #knock-hud{ z-index:58; }
 .cx-star:active{ transform:scale(1.16); }
 .cx-text{ flex:1 1 auto; min-width:0; font-size:var(--fs-md); font-weight:700; line-height:1.5; }
 .cx-exp{ font-size:var(--fs-md); color:var(--text-sub); padding-left:1.15em; text-indent:-1.15em; }
+/* V2.95：.cx-vwrap の中では字下げをしない（ぶら下げの起点が無くなるため） */
+.cx-vwrap > .cx-exp{ padding-left:0; text-indent:0; }
 .cx-exp > *{ text-indent:0; }
 .cx-arrow{
   display:inline-block; width:1.05em; margin-right:.1em;
@@ -3298,6 +3300,12 @@ html[data-theme="dark"] .memo-body strong{
   margin-top:8px; padding-top:8px;
   border-top:1px dashed var(--border-2, var(--border));
 }
+/* V2.95：statement を1文で出すときは、上の問題文が無いので仕切り線も要らない。
+   「どれか。」の問いと二重に読ませないための形なので、区切る相手がいない。 */
+.oq-word-row.is-statement{
+  margin-top:0; padding-top:0; border-top:0;
+  font-size:1.18rem; font-weight:700; line-height:1.6; color:var(--text);
+}
 .oq-key{ font-size:1.32rem; font-weight:800; line-height:1.5; color:var(--text); }
 .oq-word{ padding:0 2px; }
 
@@ -4353,7 +4361,14 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
    解説を開こうとして「難しい」を押してしまえる配置だった。
    評価は忘却スケジュールを直接動かすので、誤タップの代償が大きい。
    幅いっぱい・44px にして、評価ボタンとの間に12pxのすき間を置く。 */
-.cx .cx-exp{ margin:8px 0 12px; }   /* .cx .cx-exp{margin-top:1px}（高密度化・上）に
+.cx .cx-exp{ margin:8px 0 12px; }
+/* V2.95：正誤を外へ出したので、ボタンは幅いっぱいではなくなった（利用者の指定）。
+   V2.53 が幅いっぱいにしたのは**評価ボタンとの押し間違いを防ぐため**で、
+   幅は手段、目的は「間違って評価を動かさないこと」。
+   幅で稼げなくなったぶん、**縦の隙間を広げて**目的のほうを守る。
+   実測（V2.53 の直す前）：隙間4pxで「難しい」に当たっていた。 */
+.cx .cx-vwrap{ margin:8px 0 16px; }
+.cx .cx-vwrap > .cx-exp{ margin:0; }   /* .cx .cx-exp{margin-top:1px}（高密度化・上）に
                                        詳細度で勝つ必要がある。1pxだと上のボタンと
                                        くっついて、やはり押し間違える。 */
 /* V2.76：**押せると分からなかった。**
@@ -4383,9 +4398,34 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
    と2行を使っていた。正誤チップを summary に入れれば
        ⇒誤り [解説を見る]
    の1行で足りる。左に正誤、右に押す面。中央寄せから両端寄せへ変える。 */
+/* V2.95：正誤とボタンを分ける。左に正誤（面を持たない）、右に押す面。
+   グリッドにしておくと、開いた本文はボタンと同じ列の下へ流れるので、
+   1行のまま「正誤 ｜ ボタン」に見える。 */
+.cx-vwrap{
+  display:grid; grid-template-columns:auto minmax(0, 1fr);
+  align-items:start; gap:10px;
+}
+.cx-vwrap > .cx-verdict{
+  display:inline-flex; align-items:center; gap:4px;
+  min-height:44px;                 /* 右のボタンと高さの中心をそろえる */
+  font-size:var(--fs-md); font-weight:800;
+}
+/* 誤りの肢は、面ではなく**文字と枠**で赤くする。面を赤にすると
+   「押せるもの」に見えるので、色は文字側に持たせる。 */
+.cx-vwrap > .cx-verdict .vd-chip[data-verdict="wrong"]{
+  color:var(--c-hard-on-soft, var(--c-hard));
+  border:1.5px solid color-mix(in srgb, var(--c-hard) 55%, transparent);
+  background:color-mix(in srgb, var(--c-hard) 10%, var(--surface));
+}
+.cx-vwrap > .cx-verdict .vd-chip[data-verdict="correct"]{
+  color:var(--c-easy-on-soft, var(--c-easy));
+  border:1.5px solid color-mix(in srgb, var(--c-easy) 55%, transparent);
+  background:color-mix(in srgb, var(--c-easy) 10%, var(--surface));
+}
 .cx-exp > summary{
-  display:flex; align-items:center; justify-content:space-between; gap:8px;
-  width:100%; min-height:46px; padding:9px 12px;
+  display:inline-flex; align-items:center; justify-content:center; gap:6px;
+  /* 44px は指で押せる下限（test_explain_btn ⑤）。小さくしたが、ここは割らない。 */
+  width:auto; min-height:44px; padding:8px 14px;
   border-radius:var(--r-md, 10px);
   background:var(--accent-soft);
   border:2px solid var(--accent);
@@ -4403,11 +4443,9 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .cx-exp > summary:active{ transform:translateY(2px); box-shadow:0 0 0 var(--accent); }
 .cx-exp > summary::-webkit-details-marker{ display:none; }
 
-/* 正誤チップは summary の左端。押す面（CTA）は右端。 */
-.cx-exp > summary .cx-arrow,
-.cx-exp > summary .vd-chip{ flex:0 0 auto; }
+/* V2.95：正誤は summary の外（.cx-verdict）へ出した。ここは押す面だけ。 */
 .cx-exp > summary .cx-exp-cta{
-  flex:0 0 auto; margin-left:auto;
+  flex:0 0 auto;
   display:inline-flex; align-items:center; gap:5px;
 }
 /* ▸ は CTA の直前に置く（summary の先頭ではなく、押す面の中に） */
@@ -4473,7 +4511,15 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 }
 .cx-write-inline{
   align-self:flex-start; margin-left:auto; margin-right:2px;
-  max-width:48%;
+  /* V2.95：`max-width:48%` をやめた（利用者の指摘「☆と自分の言葉で書くがかぶってる」）。
+     ％の max-width は包含ブロック＝`.cx-acts` の幅を見るが、`.cx-acts` は
+     内容から幅が決まる（inline-flex）ので**循環する**。ブラウザは中間の幅で
+     箱を決め、そこから**文字だけがあふれて**☆の下に潜っていた。
+     実測（1122px幅）：箱どうしは4px離れているのに、文字は箱から35pxはみ出し、
+     ☆の文字と23px重なっていた。**箱だけ測っても見つからない種類の重なり。**
+     縮んでよいことにして、入り切らないときだけ末尾を省く。 */
+  min-width:0; max-width:none;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   /* 「文字だけにして」（利用者）。破線のピルは、選択肢の本文の隣に置くと
      本文と競う。枠と面を外して、押せる文字だけにする。
      押せることは ✎ と色で示す。 */

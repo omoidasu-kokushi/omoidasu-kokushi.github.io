@@ -49,8 +49,16 @@ ok("✏ だけのボタンをもう作らない",
    '">✏</button>' not in js, "✏ の直書きが残っている")
 ok("解説行から『自分の言葉で書く』を外した",
    "return verdictChipOnly(a) + writePrompt();" not in js)
-ok("summary の中に正誤チップを入れている",
-   "'<details class=\"cx-exp\"><summary>' +\n           verdictChipOnly(a) +" in js)
+# V2.95（利用者裁定）で方針が変わった。V2.77 は1行に収めるため正誤チップを
+# summary の中に入れたが、summary は accent（緑系）の面なので、
+# **赤の「誤り」も緑の面に乗って**、4肢を並べたときにどれが誤りか読めなくなった。
+# 正誤は肢の性質、ボタンは操作。別のものを1つの面に載せない。
+# V2.77 の「1行に収める」は .cx-vwrap のグリッドで保っている。
+ok("正誤チップを summary の外へ出した（V2.95）",
+   "'<div class=\"cx-vwrap\">' +" in js and
+   "'<span class=\"cx-verdict\">' + verdictChipOnly(a) +" in js)
+ok("なぜ外へ出したかが書いてある",
+   "別のものを1つの面に載せない" in js)
 ok("「書く」と★を1つの塊にした", "'<span class=\"cx-acts\">' +" in js)
 ok("なぜ塊にしたかが書いてある", "1行1〜2文字まで潰れていた" in js)
 ok("なぜ消し方を強めたかが書いてある", "開いたあとの消し方が足りなかった" in cs)

@@ -1539,19 +1539,52 @@
     var stemEl = $('#q-stem-text');
     if (stemEl) { stemEl.classList.remove('is-right', 'is-wrong'); }
     setText('#q-stem-text', q.stem);
-    /* V2.87：一問一答では、【肢】も**同じカードの中**に入れる。
-       V2.85 はカードの外に置いたので、問題文と肢が別々の箱に見えた
-       （利用者の指摘：「問題文の外に選択肢が飛び出てる」）。
-       1つの箱の中で「問い」と「その候補」が続けて読める形にする。 */
     var oqRow = $('#oq-in-stem');
     if (oqRow && oqRow.parentNode) { oqRow.parentNode.removeChild(oqRow); }
     if (fmt.format === K.FORMAT.SINGLE && fmt.atom && stemEl && stemEl.parentNode) {
+      /* --- V2.95（利用者の指摘）：statement があるならそれ1文にする ---
+       *
+       * 「問題文の末尾は『どれか。』と書いてあるから不自然になる。
+       *   問題文の中に対象の選択肢を自然に盛り込む形が要る」
+       *
+       *   いまの2段            → 有害物質を無毒化し排泄する臓器はどれか。
+       *                          【 肝臓 】
+       *   statement を使うと   → 【 肝臓 】は有害物質を無毒化し排泄する臓器である。
+       *
+       * **その文はもう作ってある。** 配布1,197問のうち一問一答に出る2,040肢を
+       * 数えたら、99%（2,024肢）が問題文に肢を織り込んだ1文になっていた
+       * （空0／肢の本文と同じ11肢）。使っていなかっただけ。
+       *
+       * 【なぜ使っていなかったか】
+       * V2.84 で statement 単独にしたら問題文が画面から消えた。当時の同梱シード
+       * 453問は **74%が「肢の本文と同じ」** で、文になっていなかったため。
+       * V2.85 で2段に戻したのはその対処。
+       * 同梱シードは過去問249問に入れ替わり（V2.89）、前提が変わった。
+       *
+       * 【それでも2段を残す】
+       * 文になっていない statement は今も1%ある。使えるときだけ使い、
+       * 使えないときは今までどおり2段に落ちる。**どちらでも壊れない形**にする。
+       * 判定は bracketStatement の boxed（肢の文字列が文の中に見つかったか）。
+       */
+      var bs = bracketStatement(fmt.atom);
       var row = doc.createElement('div');
       row.className = 'oq-word-row';
       row.id = 'oq-in-stem';
-      row.innerHTML = '<span class="oq-key">【<span class="oq-word">' +
-                      escapeHtml(fmt.atom.text || '') + '</span>】</span>';
+      if (bs.boxed) {
+        /* 文として読めるので、問題文カードは**この1文だけ**にする。
+           「どれか。」で終わる問いと二重に読ませない。情報量を減らす。 */
+        setText('#q-stem-text', '');
+        if (stemEl) { stemEl.hidden = true; }
+        row.classList.add('is-statement');
+        row.innerHTML = bs.html;
+      } else {
+        if (stemEl) { stemEl.hidden = false; }
+        row.innerHTML = '<span class="oq-key">【<span class="oq-word">' +
+                        escapeHtml(fmt.atom.text || '') + '</span>】</span>';
+      }
       stemEl.parentNode.insertBefore(row, stemEl.nextSibling);
+    } else if (stemEl) {
+      stemEl.hidden = false;      /* 4択に戻ったら問題文を出し直す */
     }
     setStarButton('#q-star', S.starLevelOf(q));
     setStarButton('#rv-star', S.starLevelOf(q));
@@ -2144,8 +2177,10 @@
     var li = doc.createElement('li');
     li.className = 'oq-verdict is-true';
     li.id = 'oq-verdict';
+    /* V2.95：文言を短くした（利用者の指定）。「いかに情報量を減らすかが重要」。
+       ○ と「正しい」だけで意味は通る。 */
     li.innerHTML = '<span class="oq-verdict-mark" aria-hidden="true">○</span>' +
-                   '<span class="oq-verdict-text">この選択肢は正しい</span>';
+                   '<span class="oq-verdict-text">正しい</span>';
     if (list.firstChild) { list.insertBefore(li, list.firstChild); }
     else { list.appendChild(li); }
   }
@@ -2522,13 +2557,27 @@
            ⇒誤り [解説を見る]
        の1行で足りる。開くと本文側が「⇒誤り：…」を出すので、
        開いたあとの summary は畳む手がかりだけでよい（CSSで小さく灰色にする）。 */
-    return '<details class="cx-exp"><summary>' +
-           verdictChipOnly(a) +
+    /* --- V2.95（利用者の指摘）：正誤をボタンの外へ出す ---
+     *
+     * 「解説を見るボタンの中に正解と誤りが内包されている。これだと色的に
+     *   全部が正解みたいな色合いになる（誤りの選択肢との差別化がしにくい）。
+     *   正解・誤りの文字の横に別ボタンとして配置して」
+     *
+     * V2.77 で1行に収めるために正誤チップを summary の中へ入れたが、
+     * summary は accent（緑系）の面なので、**中に入れた瞬間に赤の「誤り」も
+     * 緑の面に乗る**。4肢を並べると、どれが誤りか面の色では読めなくなる。
+     *
+     * 正誤は肢の性質、ボタンは操作。**別のものを1つの面に載せない。**
+     * 左に正誤（面なし・文字と色だけ）、右に押す面。1行のままにする。 */
+    return '<div class="cx-vwrap">' +
+           '<span class="cx-verdict">' + verdictChipOnly(a) + '</span>' +
+           '<details class="cx-exp"><summary>' +
            '<span class="cx-exp-cta">解説を見る</span>' +
            '</summary>' +
            '<div class="explanation-body">' +
            prepareAtomExplanation(a.explanation, a) +
-           '</div></details>';
+           '</div></details>' +
+           '</div>';
   }
 
   /* 4肢ぶんを縦に並べる。1肢＝「番号＋本文」「⇒ 解説」「評価」の3段。

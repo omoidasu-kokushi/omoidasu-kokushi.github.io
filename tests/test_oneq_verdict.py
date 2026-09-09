@@ -158,7 +158,8 @@ with sync_playwright() as p:
             };
         }""")
         ok("正しい肢のときに表示が出る", st["shown"], json.dumps(st, ensure_ascii=False))
-        ok("文言が「この選択肢は正しい」", "この選択肢は正しい" in st["text"], st["text"])
+        # V2.95：文言を「正しい」だけに短くした（利用者の指定「いかに情報量を減らすかが重要」）
+        ok("文言は「正しい」だけ", st["text"].replace("○", "") == "正しい", st["text"])
         ok("○の印が付いている", "○" in st["text"], st["text"])
         ok("選択肢のすぐ下（一覧の先頭）にある", st["first"], json.dumps(st))
         ok("「元の問題を見る」より前にある", st["beforeExtras"] or not st["shown"],
