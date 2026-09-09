@@ -135,9 +135,9 @@ if os.path.exists(oldp):
 html = io.open(os.path.join(base, "index.html"), encoding="utf-8").read()
 sw = io.open(os.path.join(base, "sw.js"), encoding="utf-8").read()
 mv = re.search(r"const CACHE_NAME = 'v([\d.]+)'", sw)
-ok("CACHE_NAME を上げた", mv and mv.group(1) == "2.90.0", mv.group(1) if mv else None)
-ok("?v= を揃えた", "?v=2.90" in html and "?v=2.89" not in html)
-ok("build-stamp を上げた", "20260909_Omoidasu_V2.90" in html)
+ok("CACHE_NAME を上げた", mv and mv.group(1) == "2.91.0", mv.group(1) if mv else None)
+ok("?v= を揃えた", "?v=2.91" in html and "?v=2.90" not in html)
+ok("build-stamp を上げた", "20260909_Omoidasu_V2.91" in html)
 
 # --- 実際に取り込めるか ---
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
