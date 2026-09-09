@@ -2083,6 +2083,13 @@
     var saidYes = picked.indexOf(atom.original_num) >= 0;
     var right = (saidYes === !!atom.is_correct);
 
+    /* V2.93（利用者の指定）：**この肢が正しいときは、そう書く。**
+       誤りの肢には取り消し線と「正解は【…】」が出るので一目で分かるが、
+       正しい肢は赤の太字になるだけで、**強調なのか誤りなのか判別しにくい**。
+       赤は誤りの色でもあるので、なおさら紛れる。
+       文字で「○ 正しい」と置き、選択肢と「元の問題を見る」の間に大きく出す。 */
+    showOneQVerdict(cur);
+
     if (cur.gaveUp) {
       /* 降参。説明できないので「難しい」。正解を見せてから次へ。 */
       setOneQEval(cur, 'hard');
@@ -2116,6 +2123,31 @@
     if (!atom) { return; }
     cur.evals[atom.atom_id] = ev;
     cur.touched[atom.atom_id] = true;
+  }
+
+  /* この肢が正しいことを、文字で大きく出す（V2.93・利用者の指定）。
+
+     【なぜ要るか】
+     誤りの肢は「取り消し線＋正解は【…】」で一目で分かる。
+     正しい肢は .oq-word-row.is-true が赤の太字にするだけで、
+     **強調なのか誤りなのかが判別しにくい**（赤は誤りの色でもある）。
+     色に意味を持たせず、文字で書く。
+
+     置き場所は【肢】と「元の問題を見る」の間（利用者の指定）。
+     採点後の #choice-list は空なので、先頭に差し込めばその位置になる。
+     誤りの肢には出さない（取り消し線と正解表示が既にあるため。
+     両方に出すと画面が言葉で埋まる）。 */
+  function showOneQVerdict(cur) {
+    var list = $('#choice-list');
+    var atom = (cur.atoms || [])[0];
+    if (!list || !atom || !atom.is_correct || $('#oq-verdict')) { return; }
+    var li = doc.createElement('li');
+    li.className = 'oq-verdict is-true';
+    li.id = 'oq-verdict';
+    li.innerHTML = '<span class="oq-verdict-mark" aria-hidden="true">○</span>' +
+                   '<span class="oq-verdict-text">この選択肢は正しい</span>';
+    if (list.firstChild) { list.insertBefore(li, list.firstChild); }
+    else { list.appendChild(li); }
   }
 
   /* 「裏回答は言えたか」を2枚のボタンで聞く（×が左・○が右）。 */
