@@ -30,6 +30,7 @@ PADの実行で、**1本目に前回の最後の回答が保存される**こと
 【使い方】
   python3 注文と違う出力を見つける_V1.00.py
   python3 注文と違う出力を見つける_V1.00.py --base <分類フォルダ>
+  python3 注文と違う出力を見つける_V1.00.py --lane free   # 体験用の模試だけ見る
   python3 注文と違う出力を見つける_V1.00.py --selftest
 """
 import glob
@@ -46,12 +47,27 @@ def nkey(s):
 
 
 def asked(path):
-    """バッチ1本が頼んでいる source を集める。"""
+    """バッチ1本が頼んでいるものを集める。
+
+    V1.01：レーンによって「頼んだもの」の呼び名が違う。
+      過去問の仕上げ … source（第111回 午前問8）で名指しする
+      体験用の作問   … まだ存在しない問題なので source が無い。
+                       単元｜大項目｜中項目 で名指しする
+    どちらでも突き合わせられるように、source が無ければ分類を鍵にする。
+    """
     try:
         t = io.open(path, encoding='utf-8-sig').read()
     except Exception:
         return set()
-    return {nkey(m) for m in re.findall(r'"source"\s*:\s*"([^"]+)"', t)}
+    src = {nkey(m) for m in re.findall(r'"source"\s*:\s*"([^"]+)"', t)}
+    if src:
+        return src
+    out = set()
+    for m in re.finditer(
+            r'"unit"\s*:\s*"([^"]+)"\s*,\s*"major"\s*:\s*"([^"]+)"\s*,'
+            r'\s*"medium"\s*:\s*"([^"]+)"', t):
+        out.add(nkey('|'.join(m.groups())))
+    return out
 
 
 def returned(path):
@@ -63,16 +79,22 @@ def returned(path):
     qs = d.get('questions') if isinstance(d, dict) else d
     out = set()
     for q in (qs or []):
-        if isinstance(q, dict) and q.get('source'):
+        if not isinstance(q, dict):
+            continue
+        if q.get('source'):
             out.add(nkey(q['source']))
+        # V1.01：source が無い（体験用の作問）ときは分類を鍵にする
+        if q.get('unit') and q.get('medium'):
+            out.add(nkey('|'.join([q.get('unit') or '', q.get('major') or '',
+                                   q.get('medium') or ''])))
     return out
 
 
-def check(base):
-    bdir = os.path.join(base, 'batches_finish_v7')
-    rdir = os.path.join(base, 'res_finish')
+def check(base, bdir='batches_finish_v7', rdir='res_finish', pat='I*.txt'):
+    bdir = os.path.join(base, bdir)
+    rdir = os.path.join(base, rdir)
     rows = []
-    for b in sorted(glob.glob(os.path.join(bdir, 'I*.txt'))):
+    for b in sorted(glob.glob(os.path.join(bdir, pat))):
         name = os.path.basename(b)[:-4]
         r = os.path.join(rdir, name + '.json')
         want = asked(b)
@@ -91,24 +113,48 @@ def check(base):
 
 def main():
     base = sys.argv[sys.argv.index('--base') + 1] if '--base' in sys.argv else '.'
-    rows = check(base)
-    if not rows:
-        print('batches_finish_v7 にバッチがありません')
-        return
-    bad = [r for r in rows if r[3] != 'OK']
-    for name, want, got, why in rows:
-        mark = 'ok ' if why == 'OK' else 'NG '
-        print('%s %-10s %-10s 頼んだ %s' % (mark, name, why, '／'.join(want) or '(なし)'))
-        if why == '頼んだ問題と違う':
-            print('%14s返ってきた %s' % ('', '／'.join(got) or '(なし)'))
+    # V1.01：レーンを選べるようにした。過去問の仕上げと体験用の模試で
+    # 入口・出口のフォルダが違う（PADの切替と同じ）。
+    lane = sys.argv[sys.argv.index('--lane') + 1] if '--lane' in sys.argv else 'auto'
+    LANES = {
+        'past': ('batches_finish_v7', 'res_finish', 'I*.txt'),
+        'free': ('batches_free',      'res_free',   'M*.txt'),
+    }
+    if lane == 'auto':
+        lanes = [k for k in ('past', 'free')
+                 if glob.glob(os.path.join(base, LANES[k][0], LANES[k][2]))]
+        if not lanes:
+            print('バッチが1本もありません（batches_finish_v7 / batches_free）')
+            return
+    else:
+        lanes = [lane]
+
+    total = bad_all = 0
+    shift = False
+    for k in lanes:
+        bdir, rdir, pat = LANES[k]
+        rows = check(base, bdir, rdir, pat)
+        if not rows:
+            continue
+        print('--- %s（%s → %s）' % (k, bdir, rdir))
+        bad = [r for r in rows if r[3] != 'OK']
+        for name, want, got, why in rows:
+            mark = 'ok ' if why == 'OK' else 'NG '
+            print('%s %-10s %-10s 頼んだ %s' % (mark, name, why, '／'.join(want) or '(なし)'))
+            if why == '頼んだ問題と違う':
+                print('%14s返ってきた %s' % ('', '／'.join(got) or '(なし)'))
+                shift = True
+        print('  %d本中 %d本が注文どおり、%d本が違う／未処理'
+              % (len(rows), len(rows) - len(bad), len(bad)))
+        total += len(rows)
+        bad_all += len(bad)
     print()
-    print('%d本中 %d本が注文どおり、%d本が違う／未処理' %
-          (len(rows), len(rows) - len(bad), len(bad)))
-    if any(r[3] == '頼んだ問題と違う' for r in rows):
+    print('合計 %d本中 %d本が違う／未処理' % (total, bad_all))
+    if shift:
         print()
         print('※ PADは各実行の1本目に、前回の最後の回答を保存します（実測）。')
         print('  1本だけのバッチは必ず失敗します。**捨て駒を1本目に置いてください。**')
-        print('  v7再生成 V1.06 以降は、同じ問題を2本並べて自動で捨て駒を作ります。')
+        print('  そのバッチだけ、もう一度流せば取り戻せます。')
 
 
 def selftest():
