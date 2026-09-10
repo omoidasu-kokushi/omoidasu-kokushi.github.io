@@ -1384,6 +1384,15 @@
          ここに落としておかないと、候補を畳んだ時点でプールが分からない。
          rank や medium と同じ理由の非正規化（§1-5）。 */
       pool           : q.pool || 'main',
+      /* 予想問題の印（V2.96）。"free_a" / "free_b" は無料版の模試の球。
+         pool と同じ理由の非正規化：出題側はアトムから候補を組むので、
+         ここに落とさないと buildQueue が印で絞れない。
+         問題レコード側の variant は JSON の値がそのまま入っている（qq は
+         全キーを写す）。ここは一問一答の可否（is_splittable）と同じく
+         データそのものなので、再取り込みで前の値を引き継がない。
+         印の無い問題は null（過去問・有料版の予想問題）。 */
+      variant        : (q.variant !== undefined && q.variant !== null && String(q.variant) !== '')
+                         ? String(q.variant) : null,
       /* 連問の識別子（V2.56）。pool と同じ理由の非正規化：
          出題側は問題ではなくアトムから候補を組むので、
          ここに落とさないと候補を畳んだ時点で連問だと分からない。 */
@@ -1925,6 +1934,14 @@
            出てきたとき＝手遅れになってから。 */
         if (qq.pool === 'mock') { report.pool_mock = (report.pool_mock || 0) + 1; }
         else { report.pool_main = (report.pool_main || 0) + 1; }
+        /* 印の内訳（V2.96）。無料版の模試は印（free_a／free_b）で球を選ぶので、
+           印の綴りが1字違うだけで「その模試は0問」になる。取り込んだ直後に
+           数えて見せる（プールの内訳と同じ理由：気づけるのは手遅れになってから）。 */
+        if (qq.variant !== undefined && qq.variant !== null && String(qq.variant) !== '') {
+          report.variants = report.variants || {};
+          var vk = String(qq.variant);
+          report.variants[vk] = (report.variants[vk] || 0) + 1;
+        }
         payload.push({ ok: true, question: qq, atoms: atoms, warnings: [] });
       });
 
@@ -2051,6 +2068,23 @@
   function getQuestion(qId) { return getOne(STORE.QUESTIONS, qId); }
   function getAllQuestions() { return getAll(STORE.QUESTIONS); }
   function countQuestions() { return countStore(STORE.QUESTIONS); }
+  /* 印（variant）つきの問題数（V2.96）。無料版の模試が「印の球が size ぶんあるか」を
+     buildQueue を走らせる前に見るために使う。buildQueue は全アトム＋台帳を読むので、
+     印で組めるか分からないまま2回走らせると §6-7「全アトムの読みは1回だけ」を破る。
+     questions ストアに pool／variant の索引は無い（足すと DB_VERSION を上げることになる）。
+     問題レコードの全読みで数える。模試の開始時にしか呼ばないので、ここは足りる。 */
+  function countQuestionsByVariant(variant) {
+    var v = (variant !== undefined && variant !== null && String(variant) !== '') ? String(variant) : null;
+    if (!v) { return Promise.resolve(0); }
+    return getAllQuestions().then(function (qs) {
+      var n = 0;
+      qs.forEach(function (q) {
+        if ((q.pool || 'main') === 'mock' && q.variant !== undefined && q.variant !== null &&
+            String(q.variant) === v) { n++; }
+      });
+      return n;
+    });
+  }
   function getAtom(atomId) { return getOne(STORE.ATOMS, atomId); }
   function getAllAtoms() { return getAll(STORE.ATOMS); }
   function countAtoms() { return countStore(STORE.ATOMS); }
@@ -3969,6 +4003,7 @@
     getQuestionsFull   : getQuestionsFull,
     getAllQuestions    : getAllQuestions,
     countQuestions     : countQuestions,
+    countQuestionsByVariant: countQuestionsByVariant,   /* V2.96 */
     countMemos         : countMemos,
     setMemo            : setMemo,
     getQuestionsByScope: getQuestionsByScope,

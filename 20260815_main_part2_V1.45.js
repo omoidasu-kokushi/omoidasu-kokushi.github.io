@@ -2496,6 +2496,35 @@ var QR_MATRIX = [
     return { ranks: ['S', 'A'], mix: mix, unitQuota: quota };
   }
 
+  /* --- 無料版の模試の印（V2.96） ---
+     プチ模試（mock_30）は free_a（30問）、ハーフ模試（mock_60）は free_b（60問）。
+     フル模試・いじわる模試は無料版に無い（無料版の設計 V1.00）。その制限は
+     license.js 側の仕事（未実装・§5-④）で、ここでは印を渡すだけ。 */
+  var FREE_EXAM_VARIANT = { mock_30: 'free_a', mock_60: 'free_b' };
+
+  /* この模試を印で組むなら印を、そうでなければ null を返す。
+     ライセンスが読めていない環境（license.js が欠けている等）は
+     part1 の licGate と同じく【購入済みと同じ扱い】＝印で絞らない。
+     売り物の都合で模試が組めなくなるのが、いちばんまずい壊れ方。 */
+  function freeExamVariant(examId) {
+    var L = global.NurseLicense;
+    if (!L || typeof L.isPaid !== 'function') { return null; }
+    if (L.isPaid()) { return null; }
+    return FREE_EXAM_VARIANT[examId] || null;
+  }
+
+  /* 印で組むときの options。ranks（直前モードの S/A 絞り）は外す。
+     体験用の球は30問／60問ちょうどなので、ランクで絞ると size に届かず、
+     通常の組み方へ落ちて印の外の問題が混ざる。単元の枠（unitQuota）と
+     mix は残す（球は枠どおりに作ってあるので、そのまま満たす）。 */
+  function withFreeVariant(opts, variant) {
+    var o = {};
+    Object.keys(opts).forEach(function (k) { if (k !== 'ranks') { o[k] = opts[k]; } });
+    o.includeMock = true;
+    o.variant = variant;
+    return o;
+  }
+
   function askExamStyle(examId) {
     st.exam.pendingStyleId = examId;
     openModal('#modal-exam-style');
@@ -2545,7 +2574,46 @@ var QR_MATRIX = [
     var extra = examStyleOpts(style, examId);
     Object.keys(extra).forEach(function (k) { opts[k] = extra[k]; });
 
-    return K.buildQueue(opts).then(function (q) {
+    /* --- 無料版の模試は印（variant）で球を固定する（V2.96） ---
+       無料版はプチ模試とハーフ模試を1回ずつ受けられ、中身は体験用の予想問題
+       （プチ用30問＝free_a／ハーフ用60問＝free_b・無料版の設計 V1.00 §1-2 案A）。
+       印を見ずに組むと、プチで出た問題がハーフにも出るうえ、
+       必修の過去問を模試が横から食う（実測：プチ30問の内訳 main 5／free_a 12／free_b 13）。
+
+       ライセンスを見るのはここ（main）。scheduler は options.variant を受け取るだけ
+       （§7-B：出題の理屈と売り方の理屈を混ぜない）。
+
+       印の球が size に足りないときは、これまでどおりの組み方に落ちる。
+       いまの公開版は印つきの問題を1問も持っていないので、ここで止めると
+       無料の利用者の模試が全部「出題できる問題がありません」になる。
+       球が一部だけあるとき（0 < n < size）はデータの事故なので、黙って落とさず言う。
+
+       印で組めるかは buildQueue を走らせる前に、問題レコードの数で見る
+       （countQuestionsByVariant）。buildQueue は全アトム＋台帳を読むので、
+       印で試してから通常で組み直すと §6-7「全アトムの読みは1回だけ」を破る。 */
+    var freeVariant = freeExamVariant(examId);
+    var build = freeVariant
+      ? S.countQuestionsByVariant(freeVariant).then(function (n) {
+          if (n >= size) { return K.buildQueue(withFreeVariant(opts, freeVariant)); }
+          if (n > 0) {
+            toast('体験用の予想問題（' + freeVariant + '）が ' + n +
+                  '問しか無いので、通常の出題で組みます', 4200);
+          }
+          return K.buildQueue(opts);
+        })
+      : K.buildQueue(opts);
+
+    return build.then(function (q) {
+      /* 印で固定できたときは、直前モードの再抽選（下）に回さない。
+         回すと includeMock だけの再抽選になり、印の外の問題が混ざる。
+         問題レコードは size ぶんあるのにアトムから組めなかった
+         （印がアトムに落ちていない古い取り込み等）ときだけ、断って通常へ落とす。 */
+      if (q.variant) {
+        if (q.questions.length >= size) { return finishLaunch(examId, q, style); }
+        toast('体験用の予想問題（' + q.variant + '）が ' + q.questions.length +
+              '問しか組めないので、通常の出題で組みます', 4200);
+        return K.buildQueue(opts).then(function (q2) { return finishLaunch(examId, q2, style); });
+      }
       /* 直前モードで候補が足りないことがある（S/Aだけでは数が揃わない）。
          そのときは黙って本番モードに落とさず、断わってから落とす。 */
       if (style === 'final' && q.questions.length < size) {
@@ -2569,7 +2637,8 @@ var QR_MATRIX = [
       st.exam = {
         id: examId, style: style || 'real',
         questions: q.questions, answers: [], index: 0,
-        startedAt: Date.now(), size: q.questions.length
+        startedAt: Date.now(), size: q.questions.length,
+        variant: q.variant || null          /* V2.96：印で固定した模試だけ非null */
       };
 
       /* V2.80：いじわる模試で類似問題に替えたときは、そう言う。
@@ -3253,6 +3322,14 @@ var QR_MATRIX = [
         lines.push('<b>本体 ' + (rep.pool_main || 0) + ' 問 ／ 模試用 ' + rep.pool_mock + ' 問</b>');
         lines.push('<small>模試用の問題は、ランダム・単元学習・復習には出ません。' +
                    '力試しモードで初めて出題され、そのあと復習に加わります。</small>');
+        /* 印の内訳（V2.96）。無料版の模試は印で球を選ぶ（free_a＝プチ／free_b＝ハーフ）。
+           綴りが1字違うと、その模試が「予想問題が入っていません」で始まらない。 */
+        var vks = Object.keys(rep.variants || {});
+        if (vks.length) {
+          lines.push('<small>うち印つき：' + vks.map(function (k) {
+            return esc(k) + ' ' + rep.variants[k] + ' 問';
+          }).join(' ／ ') + '</small>');
+        }
       }
       /* 分類ガード（V1.71）。中項目名が1字違うだけでツリーが分裂する。
          模試用と同じく「気づけるのは手遅れになってから」の類なので必ず出す。 */
@@ -6283,6 +6360,7 @@ var QR_MATRIX = [
     resetByMedium: resetByMedium,        endBreak: endBreak,
     hideCoachMark: hideCoachMark,        notify: notify,
     finishOnboarding: finishOnboarding,  launchExam: launchExam,
+    freeExamVariant: freeExamVariant,    FREE_EXAM_VARIANT: FREE_EXAM_VARIANT,   /* V2.96 */
     state: st
   };
 

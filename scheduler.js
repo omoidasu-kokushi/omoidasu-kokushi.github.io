@@ -1112,6 +1112,10 @@
           /* 出題プール（V1.56）。アトムに非正規化してある。
              古いレコードには無いので 'main' に倒す（黙って模試送りにしない）。 */
           pool: a.pool || 'main',
+          /* 予想問題の印（V2.96）。無料版の模試が "free_a" / "free_b" で
+             球を分けるのに使う。pool と同じ理由でアトムに非正規化してある。
+             印の無い問題（過去問・有料版の予想問題）は null。 */
+          variant: a.variant || null,
           /* 連問（V2.56）。アトムに非正規化してある。 */
           case_key: a.case_key || null
         };
@@ -1796,8 +1800,39 @@
              検索からの即時演習・弱点ノック・オンボーディングなど
              mode が exam でない経路が増えるたびに漏れるため。
              拾う側が明示する形にしておく。 */
+          /* --- 印で球を固定する（V2.96・無料版の模試） ---
+             options.variant があれば、【pool が mock で、印がそれと一致する問題】
+             だけにする。無料版のプチ模試は "free_a"（30問）、ハーフ模試は
+             "free_b"（60問）を渡す（無料版の設計 V1.00 §1-2 案A）。
+
+             実測（必修249問＋体験用90問・V2.95 の buildQueue）：
+               プチ30問  … main 5／free_a 12／free_b 13
+               ハーフ60問 … main 13／free_a 15／free_b 32
+             印を見ないと、プチで出た問題がハーフにも出るうえ、
+             本体プールの過去問（毎日の学習で消化するもの）を模試が横から食う。
+
+             ここは「無料版かどうか」を知らない。solvedOnly（V1.53）と同じで、
+             ライセンスを見て印を渡すかどうかは呼び出し側（main）が決める。
+             出題の理屈と売り方の理屈を混ぜない。
+
+             variant を渡したときは includeMock を立てていなくても模試待ちを
+             外さない。印で選ぶ以上、拾う意図は明らかで、ここで外すと
+             「印を渡したのに静かに0問」になる（getKnockQueue の tag/label と
+             同じ種類の落とし穴。§22）。 */
+          var wantVariant = (options.variant !== undefined && options.variant !== null &&
+                             String(options.variant) !== '')
+            ? String(options.variant) : null;
           if (!options.includeMock) {
-            cands = cands.filter(function (c) { return !c.mock_locked; });
+            /* 印で選ぶときだけは外さない（上の説明）。判定は options だけで、
+               mode（模試かどうか）は見ない。 */
+            if (!wantVariant) {
+              cands = cands.filter(function (c) { return !c.mock_locked; });
+            }
+          }
+          if (wantVariant) {
+            cands = cands.filter(function (c) {
+              return c.pool === 'mock' && c.variant === wantVariant;
+            });
           }
 
           /* --- 無料枠を使い切ったときの絞り込み（V1.53） ---
@@ -1823,8 +1858,11 @@
               mode: mode, questions: [],
               reason: options.solvedOnly
                 ? '無料でお試しいただける範囲を解き終えました'
-                : '条件に合う問題が残っていません',
+                : (wantVariant
+                    ? '印「' + wantVariant + '」の予想問題が入っていません'
+                    : '条件に合う問題が残っていません'),
               locked: !!options.solvedOnly,
+              variant: wantVariant,
               guard: null
             };
           }
@@ -2088,6 +2126,7 @@
                 case_filled: caseFilled,
                 swapped_similar: swappedSimilar,      /* V2.80：類似に替えた数 */
                 swapped_by_sub : swappedBySub,        /* V2.80a：うち小項目で当てられた数 */
+                variant: wantVariant,                 /* V2.96：印で固定したときだけ非null */
                 candidates: pool.length,
                 prefer_frequent: preferFrequent,
                 exam_phase: examPhase(meta, nowMs(), meta.day_boundary_hour),
