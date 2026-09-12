@@ -162,13 +162,18 @@ with sync_playwright() as p:
         pg.click("#btn-confirm")
 
     # --- 模試を始めて1問解き、［ホーム］で抜ける
+    #     V3.10：模試は問題用紙（#paper-list）。肢のタップ＝解答、☐＝印。ホームは「模試をやめますか」を通る
     pg.evaluate("() => window.Half2Impl.launchExam('mock_30', 30, 'real')")
-    pg.wait_for_selector("#choice-list .choice-card", timeout=40000)
+    pg.wait_for_selector("#paper-list .choice-card", timeout=40000)
     pg.wait_for_timeout(600)
-    answer_one(True, ground=True)
-    pg.wait_for_timeout(800)
+    clear_overlays()
+    pg.evaluate("""() => { const li = document.querySelector('#paper-list .pq[data-index="0"]');
+      li.querySelector('.choice-mark').click(); li.querySelector('.choice-body').click(); }""")
+    pg.wait_for_timeout(300)
     clear_overlays()
     pg.click("#btn-home")
+    pg.wait_for_timeout(400)
+    pg.click("#confirm-go")
     pg.wait_for_timeout(1500)
 
     hooks = pg.evaluate("""() => ({

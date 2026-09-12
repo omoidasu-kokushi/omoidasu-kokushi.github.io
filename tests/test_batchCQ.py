@@ -65,23 +65,25 @@ with sync_playwright() as p:
       K.shouldWarnBeforeExam = async () => ({ warn: false });
       await H.startExam('mock_30', 'real');
       S.getUnlockState = origU; K.shouldWarnBeforeExam = origW;
-      out.launched = await until(() => M.state.session && M.state.session.mode === 'exam' && M.state.current);
+      out.launched = await until(() => M.state.session && M.state.session.mode === 'exam'
+        && document.getElementById('screen-exam-paper').classList.contains('is-active'));
 
-      /* 1問解いて、⚙設定へ寄り道 → 🏠ホーム（実UIのクリック） */
-      const cur = M.state.current;
-      cur.selected = [cur.atoms[0].original_num];
-      M.confirmAnswer();
+      /* 1問解いて、⚙設定へ寄り道 → 🏠ホーム（実UIのクリック）。V3.10：模試は問題用紙。ホームは「模試をやめますか」を通る */
+      document.querySelector('#paper-list .pq[data-index="0"] .choice-body').click();
       await new Promise(r => setTimeout(r, 150));
       document.getElementById('btn-settings').click();
       await new Promise(r => setTimeout(r, 350));
       out.onSettings = M.state.screen === 'settings';
       document.getElementById('btn-home').click();
+      await new Promise(r => setTimeout(r, 250));
+      const cg = document.getElementById('confirm-go');
+      if (!document.getElementById('modal-confirm').hidden && cg) { cg.click(); }
       await new Promise(r => setTimeout(r, 350));
 
       /* 畳まれていること */
       out.sessionFolded = !M.state.session.mode;
-      out.hooksCleared = !M.hooks.afterGrade && !M.hooks.onFinish &&
-        !M.hooks.examSavedFor && !M.hooks.openExamConfirm;
+      out.hooksCleared = !M.hooks.afterGrade && !M.hooks.onFinish && !M.hooks.onAbort
+        && !window.Half2Impl.state.exam.timer && window.Half2Impl.state.exam.aborted === true;   /* V3.10：時計も止まる */
 
       /* その後のランダム学習が普通に記録されること */
       const beforeN = (await S.getAllLogs()).length;

@@ -2413,7 +2413,9 @@ body.is-knock #knock-hud{ z-index:58; }
 .choice-card.is-selected .choice-num{ background:var(--accent); color:var(--accent-ink); }
 
 /* 模試の初回だけ出す使い方ヒント（「言われるまで気づかない」を防ぐ）
-   V3.03（利用者裁定「こんなデカく出さないでいい」）：☐列の上に小さい［？］だけ。押すと説明が下に出る。 */
+   V3.03（利用者裁定「こんなデカく出さないでいい」）：☐列の上に小さい［？］だけ。押すと説明が下に出る。
+   V3.10：模試は問題用紙になり、説明は前書き（.paper-lead）へ移した。この規則は古い版の DOM が
+   残っている端末のためだけに置いてある（新しく描くことはない）。 */
 .ground-help{ display:flex; flex-wrap:wrap; justify-content:flex-end; margin:0 0 2px; }
 .ground-help-btn{
   width:22px; height:22px; margin-right:6px; padding:0; line-height:20px; text-align:center;
@@ -4899,50 +4901,106 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
    （一覧に解禁条件と進捗があるため、入口を閉じない）。 */
 .sub-card.is-locked { opacity: .5; filter: grayscale(.7); }
 
-/* V2.17：模試の前後移動ナビ（本番に即した行き来）。確定ボタンの下に常設
-   V3.03：3段。[前へ][次へ]／[解答一覧]／[提出する]。提出は全問解答まで非アクティブ */
-.exam-nav{ display:grid; grid-template-columns:1fr; gap:8px; margin-top:10px; }
-.exam-nav-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-.exam-nav-btn{
-  padding:11px 4px; border-radius:var(--r-md); text-align:center;   /* V3.08：1列になった［解答一覧］［提出する］の文字が左に寄っていた */
-  background:var(--surface); border:1.5px solid var(--border);
-  font-size:var(--fs-sm); font-weight:800; color:var(--text-sub);
-}
-.exam-nav-btn:disabled{ opacity:.4; }
-.exam-nav-btn.is-list{ color:var(--accent); border-color:var(--accent); }
-.exam-nav-btn.is-submit{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
-.exam-nav-btn.is-submit:disabled{ opacity:.45; }
+/* V2.17〜V3.09 の模試ナビ（.exam-nav）と解答一覧（.exam-confirm-list／.ec-*／.exam-sheet-actions）は
+   V3.10 で問題用紙（下）に置き換えて消した。 */
 
-/* V2.17：提出前の最終確認リスト
-   V3.04：全画面の「解答一覧」。問題文は解答画面（--fs-lg）よりひと回り小さい --fs-base で2行まで。
-   行はタップでその問題へ。未回答は赤。 */
-.exam-confirm-list{ margin:6px 0 0; padding:0; list-style:none; }
-.ec-row{
-  display:flex; align-items:flex-start; gap:10px;
-  padding:10px 6px; border-bottom:1px solid var(--border);
+/* --- V3.10：模試＝1枚の問題用紙（利用者裁定「模試自体全てスクロール」） ---
+   全問が上から並ぶ。肢のカードは通常の .choice-card をそのまま使う（.choice-list.is-exam で☑を欄外へ）。
+   上部の帯（模試名・残り時間）は固定ヘッダーの下に貼り付く（教室の時計に相当）。
+   ［提出する］は最下部だけ。0.5秒の思考インターロックは掛けない（本番に無い） */
+.paper-bar{
+  position:sticky; top:calc(var(--hdr-h) + var(--safe-t)); z-index:5;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin:-14px -16px 10px; padding:8px 16px;
+  background:var(--bg); border-bottom:1px solid var(--border);
 }
-.ec-no{ flex:0 0 30px; padding-top:2px; font-family:var(--font-num); font-weight:800; color:var(--text-sub); }
-.ec-main{ flex:1 1 auto; min-width:0; }
-.ec-stem{
-  margin:0 0 3px; font-size:var(--fs-base); line-height:1.5; font-weight:600;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+.paper-name{ flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:var(--fs-sm); font-weight:800; color:var(--text-sub); }
+.paper-timer{ font-family:var(--font-num); font-size:var(--fs-md); font-weight:800; color:var(--text); font-variant-numeric:tabular-nums; }
+/* V3.12：印を付けた問の一覧を開く。帯の真ん中（名前と残り時間のあいだ） */
+.paper-marks{
+  flex:0 0 auto; padding:4px 10px; border-radius:999px;
+  border:1.5px solid var(--border); background:var(--surface); color:var(--text-sub);
+  font-size:var(--fs-xs); font-weight:800;
 }
-.ec-ans{ margin:0; font-size:var(--fs-sm); color:var(--text-sub); }
-.ec-ans b{ color:var(--accent); }
-.ec-go{ flex:0 0 auto; padding-top:2px; color:var(--text-mute); }
-.ec-row.is-un .ec-ans{ color:var(--c-hard); font-weight:800; }
-.exam-sheet-actions{
-  position:sticky; bottom:0; display:grid; gap:8px;
-  margin-top:12px; padding:10px 0 calc(8px + var(--safe-b));
-  background:var(--bg);
+.paper-marks.is-on{ border-color:var(--accent); color:var(--accent); }
+.paper-marks b{ font-family:var(--font-num); }
+.mark-list{ margin:6px 0 0; padding:0; list-style:none; max-height:50vh; overflow-y:auto; }
+.mk-row{
+  display:flex; align-items:center; gap:10px;
+  padding:11px 4px; border-bottom:1px solid var(--border); cursor:pointer;
 }
+.mk-no{ flex:0 0 auto; font-family:var(--font-num); font-weight:800; }
+.mk-nums{ flex:1 1 auto; min-width:0; color:var(--accent); font-weight:800; }
+.mk-go{ flex:0 0 auto; color:var(--text-mute); }
+.mark-empty{ margin:10px 0; color:var(--text-sub); font-size:var(--fs-sm); }
+.paper-timer.is-warn{ color:var(--c-hard); }
+.paper-list{ margin:0; padding:0; list-style:none; }
+.pq{ margin:0 0 22px; padding:0 0 18px; border-bottom:2px solid var(--border); }
+.pq-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
+.pq-no{ font-family:var(--font-num); font-size:var(--fs-lg); font-weight:800; }
+.pq-instr{ font-size:var(--fs-xs); font-weight:700; color:var(--text-sub); }
+.pq-stem{ margin:0 0 10px; font-size:var(--fs-lg); font-weight:600; line-height:1.6; white-space:pre-wrap; }
+.pq-img{ margin:0 0 10px; font-size:var(--fs-sm); }
+.pq-img summary{ cursor:pointer; font-weight:800; color:var(--accent); }
+.pq-img img{ display:block; max-width:100%; height:auto; margin-top:8px; border-radius:var(--r-sm); }
+/* 肢：通常のカードそのまま。☑は欄外（#choice-list.is-exam と同じ置き方） */
+.paper-list .choice-list.is-exam .choice-card{ position:relative; margin-right:46px; overflow:visible; }
+.paper-list .choice-list.is-exam .choice-num{ border-radius:calc(var(--r-md) - 1.5px) 0 0 calc(var(--r-md) - 1.5px); }
+.paper-list .choice-list.is-exam .choice-mark[data-kind="ground"]{ position:absolute; right:-46px; top:50%; transform:translateY(-50%); margin-right:0; }
+.paper-list .choice-list.is-exam .choice-mark[data-kind="ground"]:active{ transform:translateY(-50%) scale(1.16); }
+.paper-list .choice-card{ box-shadow:var(--shadow-1); }
+.pq-numeric{ display:flex; align-items:center; gap:8px; }
+.pq-num-input{
+  flex:1 1 auto; min-width:0; padding:10px 12px; border-radius:var(--r-md);
+  border:1.5px solid var(--border); background:var(--surface); color:var(--text);
+  font-family:var(--font-num); font-size:var(--fs-xl); font-weight:800; text-align:right;
+}
+/* V3.11：中断した模試の入口（力試しモードの上） */
+.exam-resume-bar{
+  display:block; width:100%; margin:0 0 14px; padding:12px 14px; text-align:left;
+  border-radius:var(--r-md); border:1.5px solid var(--accent); background:var(--accent-soft);
+  color:var(--accent-on-soft, var(--accent)); font-size:var(--fs-sm); font-weight:800; line-height:1.6;
+}
+.exam-resume-bar:active{ transform:scale(.99); }
+.paper-foot{ padding:8px 0 calc(16px + var(--safe-b)); }
+.paper-submit{ width:100%; padding:16px; font-size:var(--fs-lg); }
 
 /* V3.06：模試の復習（全画面のスクロール一覧）。ブロックの中身は通常の解説画面の .cx／.eval-group をそのまま使う */
 .exam-review-list{ margin:8px 0 0; padding:0; list-style:none; }
-.xr-q{ margin:0 0 18px; padding:0 0 14px; border-bottom:2px solid var(--border); }
-.xr-head{ display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; }
+.xr-q{ margin:0 0 10px; padding:0 0 10px; border-bottom:2px solid var(--border); scroll-margin-top:96px; }   /* V3.09：開いた問へ寄せるとき固定ヘッダーの下に潜らない */
+/* V3.09：見出しはボタン。畳んでいるときは問題文2行。開くのは1問だけ（問2を開くと問1が閉じる） */
+.xr-head{
+  display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; width:100%;
+  padding:6px 0; background:none; border:0; text-align:left; color:var(--text); cursor:pointer;
+}
 .xr-no{ flex:0 0 auto; font-family:var(--font-num); font-weight:800; color:var(--text-sub); padding-top:3px; }
-.xr-stem{ flex:1 1 auto; min-width:0; font-size:var(--fs-lg); font-weight:600; line-height:1.6; }
+.xr-stem{
+  flex:1 1 auto; min-width:0; margin:0; font-size:var(--fs-lg); font-weight:600; line-height:1.6;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.xr-q.is-open .xr-stem{ display:block; -webkit-line-clamp:unset; overflow:visible; }
+.xr-chev{ flex:0 0 auto; color:var(--text-mute); padding-top:4px; transition:transform var(--dur-fast) var(--ease); }
+.xr-q.is-open .xr-chev{ transform:rotate(180deg); }
+.xr-body[hidden]{ display:none; }
+/* --- V3.13（利用者の指摘「全体解説のボタンがひっそりしすぎている」）：2段階に分ける ---
+   1段目（いちばん出す）＝全体解説。肢の［解説を見る］と同じ押せる面（.cx-exp > summary と同じ作り）
+   2段目＝比較表・図解。枠線だけの面（押せることは分かるが、全体解説より一段下）
+   どちらも文字だけの行はやめた。44px は指で押せる下限（test_explain_btn ⑤）で、ここは割らない。 */
+.xr-fig, .xr-table{ margin:8px 0 0; font-size:var(--fs-md); }
+.xr-fig > summary, .xr-table > summary{
+  display:inline-flex; align-items:center; gap:6px;
+  min-height:40px; padding:6px 14px; border-radius:var(--r-md, 10px);
+  background:var(--surface); border:1.5px solid var(--accent);
+  color:var(--accent-on-soft, var(--accent)); font-size:var(--fs-sm); font-weight:800;
+  cursor:pointer; list-style:none;
+}
+.xr-fig > summary::-webkit-details-marker, .xr-table > summary::-webkit-details-marker{ display:none; }
+.xr-fig > summary::before, .xr-table > summary::before{ content:"\25B8"; font-size:1.1em; line-height:1; }
+.xr-fig[open] > summary::before, .xr-table[open] > summary::before{ content:"\25BE"; }
+.xr-mmd{ margin-top:8px; overflow-x:auto; }
+.xr-mmd svg{ max-width:100%; height:auto; }
+.xr-table .explanation-body{ overflow-x:auto; }
 .xr-mark{
   flex:0 0 auto; width:30px; height:30px; border-radius:50%; display:grid; place-items:center;
   font-size:1.2em; font-weight:900;
@@ -4952,15 +5010,24 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .xr-sum{ margin:0 0 8px; font-size:var(--fs-sm); color:var(--text-sub); }
 .xr-sum b{ color:var(--text); }
 .xr-q .cx-mark{ font-size:var(--fs-xs); font-weight:800; color:var(--accent); margin-left:4px; }
-.xr-overall{ margin:8px 0 0; font-size:var(--fs-md); }
-.xr-overall summary{ cursor:pointer; font-weight:800; color:var(--accent); }
-.exam-review-pager{ display:flex; flex-wrap:wrap; gap:6px; margin:4px 0 10px; }
-.exam-review-pager.is-bottom{ margin:6px 0 4px; }
-.exam-review-pager button{
-  padding:7px 12px; border-radius:999px; border:1.5px solid var(--border); background:var(--surface);
-  font-size:var(--fs-sm); font-weight:800; color:var(--text-sub);
+.xr-overall{ margin:12px 0 0; font-size:var(--fs-md); }
+.xr-overall > summary{
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  width:100%; min-height:44px; padding:10px 14px; border-radius:var(--r-md, 10px);
+  background:var(--accent-soft); border:2px solid var(--accent);
+  box-shadow:0 2px 0 var(--accent);
+  color:var(--accent-on-soft, var(--accent)); font-size:var(--fs-md); font-weight:800; letter-spacing:.02em;
+  cursor:pointer; list-style:none;
+  transition:transform .08s ease, box-shadow .08s ease;
 }
-.exam-review-pager button.is-active{ background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.xr-overall > summary::-webkit-details-marker{ display:none; }
+.xr-overall > summary::before{ content:"\25B8"; font-size:1.15em; line-height:1; }
+.xr-overall > summary:active{ transform:translateY(2px); box-shadow:0 0 0 var(--accent); }
+.xr-overall[open] > summary{ margin-bottom:8px; }
+.xr-overall[open] > summary::before{ content:"\25BE"; }
+/* V3.13：正解した問の見出しは「正解 ③ 本文」だけ（自分の答えは正解と同じなので出さない） */
+.xr-sum.is-right .xr-ans{ color:var(--text); font-weight:700; }
+/* V3.06 のページの帯（.exam-review-pager）は V3.09 で撤去した */
 
 /* V2.18：模試後の復習（旧・折りたたみ一覧の残り）。V3.06 で画面へ置き換えた。.erg-*／.er-* は使っていない */
 .exam-review-graph{ margin:6px 0 12px; }

@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""バッチCM：模試の前後移動・解答の置き換え・提出前最終確認（V2.17）
+"""バッチCM：模試の解答と提出、そのあとの復習（V2.17 → V3.10/V3.13 で作り直し）
 
-利用者要望（2026-09-05裁定）：
-・本番に即して前後の問題へ行き来できる
-・提出前に全問一覧で最終確認（未回答の可視化・行タップで戻る）
+【もともと何を見ていたか（V2.17・2026-09-05裁定）】
+・本番に即して前後の問題へ行き来できる／提出前に全問一覧で最終確認（未回答の可視化・行タップで戻る）
 ・「全解答を提出する」まで採点も正誤表示も一切しない
+  設計：answers は q_id の置き換え式。think_ms は初回のみ。末尾でも自動採点せず必ず最終確認へ。
 
-設計（claude/20260905_模試V2.16設計）：
-answers は q_id の置き換え式。think_ms は初回のみ。末尾でも自動採点せず必ず最終確認へ。
+【なぜ書き換えたか（V3.10・2026-09-12・利用者裁定）】
+・利用者「模試自体全てスクロールではダメなの？そうすれば次へ前へボタンが不要になる」
+  「一覧表示的な機能も無くす。チェックを入れた問題も自分で確認することでより本番度が増す」
+  → 前後移動・解答一覧・置き換え式の解答そのものが無くなった。**観点は同数のまま、問題用紙の言葉へ置き換えた**。
+    残した芯は変わらない：**提出まで採点も正誤表示も一切しない**。
+
+このバッチが見るもの（問題用紙版）：
+  塗る／塗り直す／別の問へ行っても残る・提出まで正誤を出さない・未回答でも提出できる・
+  採点後にフックが外れる・そのあとの復習（V3.06〜V3.13）
 """
 import io, json, os, sys
 
@@ -29,13 +36,18 @@ import glob as _g
 p1 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part1_V*.js")))[-1])
 p2 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part2_V*.js")))[-1])
 js1, js2, html = read(p1), read(p2), read("index.html")
-ok("模試ナビのDOMがある", 'id="exam-nav"' in html and 'id="btn-exam-prev"' in html)
-ok("解答一覧の画面がある（V3.04：モーダルから画面へ）", 'id="screen-exam-sheet"' in html and 'id="exam-confirm-submit"' in html)
-ok("確定時のカード正誤色は模試では出さない", "if (!isExamMode()) $$('#choice-list .choice-card')" in js1)
-ok("解答はq_idの置き換え式", "st.exam.answers[at] = entry" in js2)
-ok("think_msは初回のみ", "entry.think_ms = st.exam.answers[at].think_ms" in js2)
-ok("末尾でも自動採点せず最終確認へ", "必ず最終確認を通す" in js2)
-ok("採点後は新フックも外す", js2.count("M.hooks.examSavedFor = null") >= 2)
+ok("問題用紙のDOMがある（ナビは無い）", 'id="screen-exam-paper"' in html and 'id="paper-list"' in html
+   and 'id="exam-nav"' not in html and 'id="btn-exam-prev"' not in html)
+ok("印だけの一覧がある（解答一覧の画面は無い）", 'id="modal-exam-marks"' in html and 'id="screen-exam-sheet"' not in html)
+ok("問題用紙は正誤を出さない（採点まで）", "is-correct" not in js2.split("function renderExamPaper")[1][:2500]
+   and "if (!isExamMode()) $$('#choice-list .choice-card')" in js1)
+ok("解答は問題用紙の状態そのもの（q_idの置き換え式はやめた）", "ex.picks[q.q_id]" in js2
+   and "st.exam.answers[at] = entry" not in js2)
+ok("反応時間は模試では取らない（V3.10・利用者裁定）", "think_ms: null," in js2
+   and "think_ms: (typeof M.thinkMsForCurrent === 'function')" not in js2)
+ok("提出は最下部だけ・確認は文言だけ", "function openExamSubmit" in js2
+   and "'試験終了まで残り' + Math.ceil(left / 60000) + '分です。'" in js2)
+ok("採点後・畳んだあとにフックを外す", js2.count("M.hooks.onAbort = null") >= 2)
 
 from playwright.sync_api import sync_playwright
 
@@ -51,126 +63,110 @@ with sync_playwright() as p:
     pg.wait_for_timeout(1200)
 
     r = pg.evaluate("""async () => {
-      const M = window.Main, S = window.Storage, K = window.Scheduler;
+      const M = window.Main, S = window.Storage, K = window.Scheduler, HI = window.Half2Impl;
       const out = {};
+      const wait = (ms) => new Promise(r2 => setTimeout(r2, ms));
+      const q = (id) => document.getElementById(id);
       /* 初回ウェルカムを閉じる（残っていると画面遷移が始まらない） */
-      const ws = document.getElementById('welcome-start');
-      if (ws) { ws.click(); await new Promise(r2 => setTimeout(r2, 500)); }
+      const ws = q('welcome-start');
+      if (ws) { ws.click(); await wait(500); }
       document.querySelectorAll('.modal-card:not([hidden])').forEach(m => { m.hidden = true; });
-      const back = document.getElementById('modal-backdrop');
+      const back = q('modal-backdrop');
       if (back) { back.hidden = true; }
       /* 解禁と警告を飛ばしてミニ模試を直接起動する */
       S.getUnlockState = () => Promise.resolve([
         { id: 'mock_30', unlocked: true }, { id: 'mock_60', unlocked: false },
         { id: 'mock_120', unlocked: false }, { id: 'mock_weak', unlocked: false }]);
       K.shouldWarnBeforeExam = () => Promise.resolve({ warn: false });
+      S.getExamHistory = () => Promise.resolve([]);
       await window.Half2.startExam('mock_30', 'real');
       const until = async (f, ms) => { const t0 = Date.now();
         while (Date.now() - t0 < (ms || 8000)) { if (f()) { return true; }
-          await new Promise(r2 => setTimeout(r2, 150)); } return false; };
-      out.launched = await until(() => M.state.session.mode === 'exam' && M.state.current);
-      const len = M.state.session.questions.length;
-      out.mode = M.state.session.mode;
-      out.navVisible = !document.getElementById('exam-nav').hidden;
-      out.prevDisabledAtStart = document.getElementById('btn-exam-prev').disabled;
+          await wait(150); } return false; };
+      out.launched = await until(() => M.state.session.mode === 'exam'
+        && q('screen-exam-paper').classList.contains('is-active'));
+      const ex = HI.state.exam;
+      const len = ex.questions.length;
+      const li = (i) => document.querySelector('#paper-list .pq[data-index="' + i + '"]');
+      const card = (i, k) => li(i).querySelectorAll('.choice-card')[k];
+      out.paperShown = document.querySelectorAll('#paper-list .pq').length === len
+        && !q('screen-quiz').classList.contains('is-active');
+      out.noNav = !q('exam-nav') && !q('btn-exam-prev') && !q('btn-exam-next') && !q('btn-exam-list');
 
-      const answer = (nums) => {
-        const cur = M.state.current;
-        cur.selected = nums !== undefined ? nums
-          : [cur.atoms[0].original_num];
-        M.confirmAnswer();
-      };
-      /* Q1を1番で確定 → 自動前進 */
-      const q1id = M.state.current.question.q_id;
-      answer();
-      await new Promise(r2 => setTimeout(r2, 300));
-      out.movedTo2 = M.state.session.index === 1;
-      out.noVerdictOnCards = !document.querySelector('#choice-list .choice-card.is-correct');
-      out.popupHidden = document.getElementById('verdict-pop').hidden;
+      /* 問1を塗る → 画面は動かない（1枚のまま）・正誤も出ない */
+      const q1id = ex.questions[0].q_id;
+      card(0, 0).querySelector('.choice-body').click();
+      await wait(150);
+      out.paintKeeps = q('screen-exam-paper').classList.contains('is-active')
+        && document.querySelectorAll('#paper-list .pq').length === len;
+      out.domSelected = card(0, 0).classList.contains('is-selected');
+      out.noVerdictOnCards = !document.querySelector('#paper-list .choice-card.is-correct')
+        && !document.querySelector('#paper-list .choice-card.is-wrong');
+      out.popupHidden = q('verdict-pop').hidden;
 
-      /* 前へ戻ると保存が復元される */
-      M.examJump(0);
-      await new Promise(r2 => setTimeout(r2, 200));
-      out.restored = M.state.current.selected.length === 1;
-      out.domSelected = !!document.querySelector('#choice-list .choice-card.is-selected');
+      /* 別の問を塗っても、問1の塗りは残る */
+      card(4, 0).querySelector('.choice-body').click();
+      await wait(120);
+      out.staysPainted = card(0, 0).classList.contains('is-selected') && (ex.picks[q1id] || []).length === 1;
 
-      /* 解き直し：別の肢に置き換え（answeredCountは増えない） */
-      const before = M.state.session.answeredCount;
-      const alt = M.state.current.atoms[1] ? [M.state.current.atoms[1].original_num]
-                                            : [M.state.current.atoms[0].original_num];
-      answer(alt);
-      await new Promise(r2 => setTimeout(r2, 200));
-      const sv = M.hooks.examSavedFor ? M.hooks.examSavedFor(q1id) : null;
-      out.replaced = !!sv && sv.atoms.filter(x => x.picked)[0].original_num === alt[0];
-      out.countStable = M.state.session.answeredCount === before;
+      /* 塗り直し：別の肢を足して、元の肢を外す（数は自由・V3.10） */
+      const before = Object.keys(ex.picks).length;
+      card(0, 1).querySelector('.choice-body').click();
+      card(0, 0).querySelector('.choice-body').click();
+      await wait(120);
+      out.replaced = !card(0, 0).classList.contains('is-selected') && card(0, 1).classList.contains('is-selected')
+        && (ex.picks[q1id] || []).length === 1;
+      out.picksStable = Object.keys(ex.picks).length === before;
 
-      /* 一覧を開く → 未回答が出ている → 行タップで移動 */
-      M.hooks.openExamConfirm();
-      await new Promise(r2 => setTimeout(r2, 300));
-      const sheet = document.getElementById('screen-exam-sheet');
-      out.confirmOpen = sheet.classList.contains('is-active');
-      out.rows = document.querySelectorAll('#exam-confirm-list .ec-row').length === len;
-      out.hasUnanswered = document.querySelectorAll('#exam-confirm-list .ec-row.is-un').length === len - 1;
-      document.querySelectorAll('#exam-confirm-list .ec-row')[4].click();
-      await new Promise(r2 => setTimeout(r2, 400));
-      out.jumpedTo5 = M.state.session.index === 4 && !sheet.classList.contains('is-active')
-        && document.getElementById('screen-quiz').classList.contains('is-active');
+      /* 未回答だらけでも提出できる（確認は文言だけ） */
+      q('paper-submit').click(); await wait(250);
+      out.submitAsk = !q('modal-exam-submit').hidden && /残り\\d+分です/.test(q('exam-submit-body').textContent);
+      out.submitEnabledAlways = !q('paper-submit').disabled;
+      document.querySelector('#modal-exam-submit [data-close]').click(); await wait(200);
+      out.unansweredOk = !ex.submitted && q('screen-exam-paper').classList.contains('is-active');
 
-      /* V2.18：未回答がある間は提出ボタンが無効（空欄提出をさせない） */
-      M.hooks.openExamConfirm();
-      await new Promise(r2 => setTimeout(r2, 200));
-      const sub = document.getElementById('exam-confirm-submit');
-      out.submitDisabledWhenUnanswered = sub.disabled === true && /未回答/.test(sub.textContent);
-      document.getElementById('exam-confirm-close').click();
-      await new Promise(r2 => setTimeout(r2, 300));
-
-      /* 全問を埋める */
-      for (let i = 0; i < len; i++) {
-        M.examJump(i);
-        await new Promise(r2 => setTimeout(r2, 60));
-        const qid = M.state.current.question.q_id;
-        if (!M.hooks.examSavedFor(qid)) {
-          answer();
-          await new Promise(r2 => setTimeout(r2, 60));
-          if (sheet.classList.contains('is-active')) { document.getElementById('exam-confirm-close').click();
-            await new Promise(r2 => setTimeout(r2, 160)); }
-        }
-      }
-      M.hooks.openExamConfirm();
-      await new Promise(r2 => setTimeout(r2, 250));
-      out.submitEnabledWhenFull = sub.disabled === false;
-      sub.click();
-      await new Promise(r2 => setTimeout(r2, 3000));
-      out.resultOpen = !document.getElementById('modal-exam-result').hidden;
-      out.hooksCleared = !M.hooks.afterGrade && !M.hooks.examSavedFor;
+      /* 残りを埋めて（最後の1問だけ未回答のまま）提出 */
+      ex.questions.forEach((qq, i) => {
+        if (i === len - 1 || (ex.picks[qq.q_id] || []).length) { return; }
+        const c = li(i).querySelectorAll('.choice-card')[0];
+        if (c) { c.querySelector('.choice-body').click(); }
+        else { const inp = li(i).querySelector('.pq-num-input'); if (inp) { inp.value = '1'; } }
+      });
+      await wait(200);
+      q('paper-submit').click(); await wait(200);
+      q('exam-submit-go').click();
+      await until(() => !q('modal-exam-result').hidden, 20000);
+      out.resultOpen = !q('modal-exam-result').hidden;
+      out.gradedWithUnanswered = ex.answers.length === len
+        && ex.answers[len - 1].unanswered === true && ex.answers[len - 1].answered_right === false;
+      out.paperRows = len === 30;
+      out.hooksCleared = !M.hooks.afterGrade && !M.hooks.onAbort && !M.hooks.onFinish;
 
       /* V2.18：復習（誤答は展開・正答は畳む）＋単元グラフ
-         → V3.06：入口の2択 → 全画面のスクロール一覧（問ごとに○×・肢のブロック・評価ボタン）。観点は同数で置き換え */
-      document.getElementById('btn-exam-review').click();
-      await new Promise(r2 => setTimeout(r2, 400));
-      out.reviewOpen = !document.getElementById('modal-exam-review-style').hidden;
-      document.getElementById('exam-review-style-button').click();
-      await new Promise(r2 => setTimeout(r2, 600));
-      out.reviewRows = document.getElementById('screen-exam-review').classList.contains('is-active')
+         → V3.06：入口の2択 → 全画面のスクロール一覧（問ごとに○×・肢のブロック・評価ボタン）
+         → V3.13：最初に開くのは最初に間違えた問。正解した問は畳んだまま（見出しに正解肢の本文） */
+      q('btn-exam-review').click(); await wait(400);
+      out.reviewOpen = !q('modal-exam-review-style').hidden;
+      q('exam-review-style-button').click(); await wait(600);
+      out.reviewRows = q('screen-exam-review').classList.contains('is-active')
         && document.querySelectorAll('#exam-review-list .xr-q').length === len;
-      const rightN = window.Half2.st.exam.answers.filter(a => a.answered_right).length;
+      const rightN = ex.answers.filter(a => a.answered_right).length;
       out.closedMatchesRight = document.querySelectorAll('#exam-review-list .xr-mark.is-correct').length === rightN;
       out.wrongExpanded = document.querySelectorAll('#exam-review-list .xr-mark.is-wrong').length === len - rightN;
-      out.graphRows = document.querySelectorAll('#exam-review-list .xr-q .eval-group').length >= len;   /* 問ごとに評価が押せる */
+      out.graphRows = document.querySelectorAll('#exam-review-list .xr-q.is-open .eval-group').length >= 1;   /* 開いた問で評価が押せる（V3.09：開くのは1問） */
       /* 解説の開閉（1肢ずつ） */
       const firstExp = document.querySelector('#exam-review-list details.cx-exp');
       const wasOpen = firstExp.open;
       firstExp.querySelector('summary').click();
       out.toggleWorks = firstExp.open !== wasOpen;
-      document.getElementById('exam-review-done').click();
-      await new Promise(r2 => setTimeout(r2, 1500));
+      q('exam-review-done').click();
+      await wait(1500);
       return out;
     }""")
-    for k in ["launched", "navVisible", "prevDisabledAtStart", "movedTo2", "noVerdictOnCards", "popupHidden",
-              "restored", "domSelected", "replaced", "countStable", "confirmOpen", "rows",
-              "hasUnanswered", "jumpedTo5", "submitDisabledWhenUnanswered", "submitEnabledWhenFull", "resultOpen",
-              "hooksCleared", "reviewOpen", "reviewRows", "closedMatchesRight", "wrongExpanded",
-              "graphRows", "toggleWorks"]:
+    for k in ["launched", "paperShown", "noNav", "paintKeeps", "domSelected", "noVerdictOnCards", "popupHidden",
+              "staysPainted", "replaced", "picksStable", "submitAsk", "submitEnabledAlways", "unansweredOk",
+              "resultOpen", "gradedWithUnanswered", "paperRows", "hooksCleared", "reviewOpen", "reviewRows",
+              "closedMatchesRight", "wrongExpanded", "graphRows", "toggleWorks"]:
         ok(k, r.get(k) is True, json.dumps({k: r.get(k)}, ensure_ascii=False))
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))
     br.close()

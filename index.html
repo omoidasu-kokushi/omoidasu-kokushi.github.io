@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=3.08">
+<link rel="stylesheet" href="./styles.css?v=3.13">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=3.08",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=3.13",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=3.08",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=3.13",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=3.08",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=3.13",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=3.08",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
+    { file: "./drive.js?v=3.13",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=3.08",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=3.13",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -467,7 +467,7 @@
           ・<a href="./terms.html" target="_blank" rel="noopener">利用規約</a>
           ・<a href="./about.html" target="_blank" rel="noopener">このアプリについて</a>
         </p>
-        <p class="build-stamp">20260911_Omoidasu_V3.08</p>
+        <p class="build-stamp">20260911_Omoidasu_V3.13</p>
       </div>
     </section>
 
@@ -532,17 +532,8 @@
 
           <div class="answer-actions">
             <button type="button" class="btn-confirm" id="btn-confirm" disabled>解答を確定する</button>
-            <!-- V2.17：模試だけの前後移動（本番に即した行き来）。提出まで採点しない
-                 V3.03（利用者裁定）：3段にする。[前へ][次へ]／[解答一覧]／[提出する]。
-                 一覧と提出は別のボタン。提出は全問解答し終わるまで非アクティブ（part1 refreshExamNav）。 -->
-            <div class="exam-nav" id="exam-nav" hidden>
-              <div class="exam-nav-row">
-                <button type="button" class="exam-nav-btn" id="btn-exam-prev">◀ 前へ</button>
-                <button type="button" class="exam-nav-btn" id="btn-exam-next">次へ ▶</button>
-              </div>
-              <button type="button" class="exam-nav-btn is-list" id="btn-exam-list">解答一覧</button>
-              <button type="button" class="exam-nav-btn is-submit" id="btn-exam-submit" disabled>提出する</button>
-            </div>
+            <!-- V2.17〜V3.09 はここに模試のナビ（#exam-nav：前へ／次へ／解答一覧／提出する）があった。
+                 V3.10：模試は1枚の問題用紙（#screen-exam-paper）になり、この画面を使わない。ナビは消した。 -->
           </div>
         </div>
       </div>
@@ -889,17 +880,24 @@
     </section>
 
     <!-- ======================= EXAM (力試し) ======================= -->
-    <!-- V3.04：模試の解答一覧（全画面）。V2.17〜V3.03 はモーダル（#modal-exam-confirm）だった。
-         行＝番号・問題文（ひと回り小さく2行まで）・自分の答え・☑を付けた肢。行タップでその問題へ。
-         id は V2.17 のものを引き継ぐ（exam-confirm-list／-note／-close／-submit）。中身の描画は part2 openExamConfirm。 -->
-    <section id="screen-exam-sheet" class="screen" data-screen="exam_sheet">
+    <!-- V3.10：模試は1枚の問題用紙（利用者裁定 2026-09-12「模試自体全てスクロールでは駄目なの？」）。
+         全問が上から並ぶ。前へ／次へ／解答一覧は無い。［提出する］は最下部だけ（最後の問の下）。
+         未回答があっても提出できる（自己責任。本番のマークシートと同じで、空欄は自分で見直す）。
+         V3.03 のナビ（#exam-nav）と V3.04〜V3.09 の解答一覧の画面（#screen-exam-sheet）はこれに置き換えて消した。
+         中身の描画は part2 renderExamPaper。制限時間は本番の配分 80秒/問（part2 EXAM_LIMIT_MS）。 -->
+    <section id="screen-exam-paper" class="screen" data-screen="exam_paper">
       <div class="screen-scroll">
-        <h2 class="sc-title">解答一覧</h2>
-        <p class="sc-lead" id="exam-confirm-note">行をタップするとその問題に戻れます。提出するまで採点されません。</p>
-        <ol class="exam-confirm-list" id="exam-confirm-list"></ol>
-        <div class="exam-sheet-actions">
-          <button type="button" class="btn-secondary" id="exam-confirm-close">解答に戻る</button>
-          <button type="button" class="btn-primary" id="exam-confirm-submit" disabled>提出する</button>
+        <div class="paper-bar">
+          <span class="paper-name" id="paper-name">力試し模試</span>
+          <!-- V3.12：印を付けた問だけの一覧（利用者裁定「マーク状態だけ一覧で確認できるように」）。
+               解答の状況は出さない（V3.10 で消した解答一覧を名前を変えて戻さない）。 -->
+          <button type="button" class="paper-marks" id="paper-marks" aria-label="印を付けた問の一覧">☑ <b id="paper-marks-n">0</b></button>
+          <span class="paper-timer" id="paper-timer">残り --:--</span>
+        </div>
+        <p class="sc-lead paper-lead">上から順に解いてください。右の ☐ は自由に使える印です（復習で見返せます。評価には影響しません）。いちばん下に［提出する］があります。マークは何個でも塗れます（数は採点で見ます）。</p>
+        <ol class="paper-list" id="paper-list"></ol>
+        <div class="paper-foot">
+          <button type="button" class="btn-primary paper-submit" id="paper-submit">提出する</button>
         </div>
       </div>
     </section>
@@ -910,10 +908,9 @@
     <section id="screen-exam-review" class="screen" data-screen="exam_review">
       <div class="screen-scroll">
         <h2 class="sc-title">模試の復習</h2>
-        <p class="sc-lead" id="exam-review-lead">評価は既定が入っています（誤答は「難しい」・正解は「普通」・前に解いた肢は前回のまま）。変えたい肢だけ押してください。この画面を離れると記録されます。</p>
-        <div class="exam-review-pager" id="exam-review-pager" hidden></div>
+        <p class="sc-lead" id="exam-review-lead">問をタップすると開きます（開くのは1問ずつ）。評価は既定が入っています（誤答は「難しい」・正解は「普通」・前に解いた肢は前回のまま）。変えたい肢だけ押してください。この画面を離れると記録されます。</p>
+        <!-- V3.09：30問ずつのページは撤去。問は畳んだ見出しで並び、開くのは1問だけ（中身は開いたときに描く） -->
         <ol class="exam-review-list" id="exam-review-list"></ol>
-        <div class="exam-review-pager is-bottom" id="exam-review-pager2" hidden></div>
         <div class="exam-sheet-actions">
           <button type="button" class="btn-primary" id="exam-review-done">評価を記録して終える</button>
         </div>
@@ -928,6 +925,9 @@
              「なぜ今日開いたのか」を画面が説明できないと、
              解禁が偶然に見える。条件そのものも書き換える。 -->
         <p class="exam-ease" id="exam-ease" hidden></p>
+        <!-- V3.11：中断した模試の入口（利用者裁定「途中でやめても途中から再開できるように」）。
+             中身は part2 refreshExamResumeBar。押すと続きから。 -->
+        <button type="button" class="exam-resume-bar" id="exam-resume-bar" hidden></button>
         <!-- V3.01：無料版の1行。鍵が無いときだけ出す（part2 openExamList）。
              無料版の設計 §3-3：「1回ぶん」と「受けた日」はカードに出す。ここは全体の案内。 -->
         <p class="exam-free-note" id="exam-free-note" hidden>無料版：<b>プチ模試とハーフ模試を1回ずつ</b>受けられます（体験用の予想問題）。フル模試・いじわる模試と予想問題の続きは製品版です。過去問の必修は全部使えます。</p>
@@ -1438,7 +1438,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260911_Omoidasu_V3.08 / cache v3.08.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260911_Omoidasu_V3.13 / cache v3.13.0</p>
         </section>
       </div>
     </section>
@@ -1937,6 +1937,40 @@
     <p class="exam-buy-line" id="exam-buy-line" hidden>予想問題の続きと、フル模試・いじわる模試は製品版に入っています。<button type="button" class="link-btn" id="exam-buy-open">製品版を見る</button></p>
   </div>
 
+  <!-- V3.12：印を付けた問だけの一覧。問N と印を付けた肢の番号だけ（解答の状況は出さない）。 -->
+  <div class="modal-card" id="modal-exam-marks" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title">印を付けた問</h3>
+    <div class="modal-body">
+      <p class="modal-note" id="exam-mark-note">行をタップするとその問へ移ります。</p>
+      <ol class="mark-list" id="exam-mark-list"></ol>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>閉じる</button>
+    </div>
+  </div>
+
+  <!-- V3.11：中断した模試の2択。模試カードを押したときに出る（力試しモードの帯からは直接続きから）。 -->
+  <div class="modal-card" id="modal-exam-resume" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title">中断した模試があります</h3>
+    <div class="modal-body"><p id="exam-resume-body"></p></div>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="exam-resume-go">続きから</button>
+      <button type="button" class="btn-secondary" id="exam-resume-fresh">最初から始める</button>
+      <button type="button" class="btn-ghost" data-close>やめる</button>
+    </div>
+  </div>
+
+  <!-- V3.10：提出の確認（利用者裁定）。文言はこれだけ。未回答の数は出さない
+       （自己責任。本番のマークシートと同じで、空欄は自分で見直す）。残り時間は part2 が書く。 -->
+  <div class="modal-card" id="modal-exam-submit" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title">見直しはしましたか？</h3>
+    <div class="modal-body"><p id="exam-submit-body">試験終了まで残り○○分です。</p></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-ghost" data-close>見直す</button>
+      <button type="button" class="btn-primary" id="exam-submit-go">これで提出</button>
+    </div>
+  </div>
+
   <!-- V2.18：模試後の復習。誤答＝解説つき全展開／正答＝畳んで問題文のみ（タップで展開）。
        上部に単元別の得点グラフ（どの単元が足りないかを一目で） -->
   <!-- V3.06：復習の入口の2択（利用者裁定）。V2.18 の折りたたみ一覧（#modal-exam-review・単元グラフつき）は
@@ -2095,14 +2129,14 @@
   </div>
 </div>
 
-<script src="./questions.js?v=3.08"></script>
+<script src="./questions.js?v=3.13"></script>
 <!-- V2.99：体験用の予想問題（無料版の球・90問）。無くても本体は動く（起動診断の必須には入れない）。 -->
-<script src="./questions_free_mock.js?v=3.08"></script>
-<script src="./storage.js?v=3.08"></script>
-<script src="./scheduler.js?v=3.08"></script>
+<script src="./questions_free_mock.js?v=3.13"></script>
+<script src="./storage.js?v=3.13"></script>
+<script src="./scheduler.js?v=3.13"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=3.08"></script>
-<script src="./license.js?v=3.08"></script>
+<script src="./drive.js?v=3.13"></script>
+<script src="./license.js?v=3.13"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

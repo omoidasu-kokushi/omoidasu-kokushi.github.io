@@ -28,6 +28,7 @@ def ok(name, cond, detail=""):
 base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 def rd(n): return io.open(os.path.join(base, n), encoding="utf-8").read()
 p1, p2, sc = rd("20260815_main_part1_V1.38.js"), rd("20260815_main_part2_V1.45.js"), rd("scheduler.js")
+ih = rd("index.html")
 
 ok("提出時に applyExamResult を呼ばない（保留に置く）", "K.applyExamResult(" not in p2 and "function buildExamPending" in p2
    and "S.setMeta('exam_pending', pending)" in p2)
@@ -37,8 +38,9 @@ ok("記録は applyEvaluation（門番も同じ）。日次の数・分母には
 ok("☐は記録に ground_on として残る（評価には使わない）", "if (typeof ctx.groundOn === 'boolean') { log.ground_on = ctx.groundOn; }" in sc)
 ok("結果を閉じたら保留を記録する", "on($('#modal-exam-result [data-close]'), 'click', function () {" in p2 and "flushExamPending().then" in p2)
 ok("起動時に保留を拾う", "function flushExamPendingOnBoot" in p2 and "return flushExamPendingOnBoot();" in p2)
-ok("☐の説明が「用途自由の印」になっている（ヒント・ガイド・aria-label）", "自由に使える印です" in p1 and "自由に使える印。" in p2
-   and 'aria-label="この肢に印を付ける' in p1 and "長期記憶へ昇格" not in p1.split("function renderChoices")[1].split("function renderNumericInput")[0])
+# V3.10：模試は問題用紙（part2 renderExamPaper）。前書きは index.html、吹き出しは part2、aria-label は肢の描画側
+ok("☐の説明が「用途自由の印」になっている（前書き・ガイド・aria-label）", "自由に使える印です" in ih and "自由に使える印。" in p2
+   and 'aria-label="この肢に印を付ける' in p2 and "長期記憶へ昇格" not in p2.split("function renderExamPaper")[1][:2500])
 ok("applyExamResult は残っている（旧記録の意味）", "function applyExamResult" in sc and "V3.05 から呼ばれない" in sc)
 
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -59,40 +61,40 @@ with sync_playwright() as p:
       const S = window.Storage, K = window.Scheduler, M = window.Main, H = window.Half2;
       const out = {}; const wait = (ms) => new Promise(r => setTimeout(r, ms));
       const q = (id) => document.getElementById(id);
-      const origU = S.getUnlockState;
       S.getUnlockState = () => Promise.resolve([{ id: 'mock_30', unlocked: true }]);
-      const origW = K.shouldWarnBeforeExam;
       K.shouldWarnBeforeExam = async () => ({ warn: false });
+      S.getExamHistory = () => Promise.resolve([]);
       await H.startExam('mock_30', 'real');
-      S.getUnlockState = origU; K.shouldWarnBeforeExam = origW;
-      for (let i = 0; i < 100; i++) { if (M.state.session && M.state.session.mode === 'exam' && M.state.current) break; await wait(50); }
+      for (let i = 0; i < 100; i++) { if (M.state.session && M.state.session.mode === 'exam'
+        && q('screen-exam-paper').classList.contains('is-active')) break; await wait(50); }
       M.closeModals();
-      const len = M.state.session.questions.length;
+      const ex = window.Half2Impl.state.exam;
+      const len = ex.questions.length;
       const logs0 = await S.countLogs();
       const total0 = await S.getMeta('total_questions_answered', 0);
       /* 問3を「既出・易しい・期日ずみ」にしておく（模試を組んだ写しにも反映させる） */
-      const q3 = M.state.session.questions[2];
+      const q3 = ex.questions[2];
       const now = Date.now(), patchPrev = {};
       (q3.atoms || []).forEach(a => { patchPrev[a.atom_id] = { answer_count: 1, correct_count: 1, last_eval: 'easy',
         last_answered_at: now - 40 * 86400000, srs_step: 4, interval_code: '30d', due_date: now - 86400000 };
         Object.assign(a, patchPrev[a.atom_id]); });
       await S.updateAtomsBulk(patchPrev);
+      /* V3.10：1枚の問題用紙。肢をタップして塗り、☐をタップして印を付ける */
       const plan = {};   /* q_id → {right, marked:[atom_id]} */
-      for (let i = 0; i < len; i++) {
-        M.examJump(i); await wait(30);
-        const cur = M.state.current;
-        const correct = cur.atoms.filter(a => a.is_correct).map(a => a.original_num);
-        const wrong = cur.atoms.filter(a => !a.is_correct).map(a => a.original_num);
+      ex.questions.forEach((qq, i) => {
+        const li = document.querySelector('#paper-list .pq[data-index="' + i + '"]');
+        const atoms = (qq.atoms || []).slice().sort((a, b) => a.original_num - b.original_num);
+        const correct = atoms.filter(a => a.is_correct).map(a => a.original_num);
+        const wrong = atoms.filter(a => !a.is_correct).map(a => a.original_num);
         const right = (i % 2 === 0) || i === 2;   /* 偶数と問3は正解 */
-        cur.selected = right ? correct.slice() : [wrong[0]];
+        (right ? correct : [wrong[0]]).forEach(n => li.querySelector('.choice-card[data-num="' + n + '"] .choice-body').click());
         const marked = [];
-        if (i % 3 === 0) { const a = cur.atoms[1] || cur.atoms[0]; cur.eliminated[a.atom_id] = true; marked.push(a.atom_id); }
-        plan[cur.question.q_id] = { right, marked, atoms: cur.atoms.map(a => a.atom_id) };
-        M.confirmAnswer(); await wait(30);
-        if (q('screen-exam-sheet').classList.contains('is-active')) { q('exam-confirm-close').click(); await wait(120); }
-      }
-      q('btn-exam-list').click(); await wait(250);
-      q('exam-confirm-submit').click();
+        if (i % 3 === 0) { const a = atoms[1] || atoms[0];
+          li.querySelector('.choice-card[data-atom-id="' + a.atom_id + '"] .choice-mark').click(); marked.push(a.atom_id); }
+        plan[qq.q_id] = { right, marked, atoms: atoms.map(a => a.atom_id) };
+      });
+      q('paper-submit').click(); await wait(250);
+      q('exam-submit-go').click();
       for (let i = 0; i < 100; i++) { if (!q('modal-exam-result').hidden) break; await wait(100); }
       out.resultOpen = !q('modal-exam-result').hidden;
       out.scoreLine = q('exam-score').textContent;

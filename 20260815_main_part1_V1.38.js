@@ -820,7 +820,7 @@
     home: '看護師国家試験 対策',
     quiz: '', random: 'ランダムモード',
     dashboard: 'ダッシュボード', search: 'キーワード検索 ＆ テーマ別 弱点分析',
-    starred: 'マイ★お気に入りノート', exam: '力試しモード', exam_sheet: '解答一覧',   /* V3.04 */
+    starred: 'マイ★お気に入りノート', exam: '力試しモード', exam_paper: '力試し模試',   /* V3.10：問題用紙（V3.04 の解答一覧は消した） */
     exam_review: '模試の復習',   /* V3.06 */
     knock: 'テーマ別 弱点ノック', settings: '設定'
   };
@@ -872,7 +872,30 @@
     return Promise.resolve(screen);
   }
 
+  /* V3.10：問題用紙（模試）から◀戻る／ホームを1度確認する（通常の出題画面は今までどおり確認しない）。
+     V3.11（利用者裁定「誤タップ防止はしよう。途中でやめても途中から再開できるように」）：
+     **解答は消えない**。塗った肢・☑・残り時間は控えてあり、力試しモードから続きから始められる。
+     V3.10 の「やめる＝採点されずに消える」という文言は撤回した（消えないので嘘になる）。 */
+  function confirmLeaveExam() {
+    /* 見る先は画面ではなくセッション（V2.22 と同じ理由：⚙設定へ寄り道してからホームを押しても模試は生きている） */
+    if (state.session.mode !== 'exam') { return Promise.resolve(true); }
+    return confirmAction({ title: '模試を中断しますか',
+      body: '塗った解答・印・残り時間はそのまま残ります。力試しモードから［続きから］で戻れます。',
+      ok: '中断する' });
+  }
+
   function goBack() {
+    if (state.screen === 'exam_paper' && state.session.mode === 'exam') {
+      return confirmLeaveExam().then(function (yes) {
+        if (!yes) { return null; }
+        endSession();
+        return goBackNow();
+      });
+    }
+    return goBackNow();
+  }
+
+  function goBackNow() {
     var prev = state.screenStack.pop() || 'home';
     if (state.screen === 'quiz') { endSession(); }
     return go(prev, { replace: true }).then(function (r) {
@@ -885,9 +908,6 @@
 
          描画は待たせない。失敗しても戻る操作そのものは通す。 */
       if (prev === 'home' && state.booted) { refreshHome().catch(noop); }
-      /* V3.04：解答一覧（画面）から◀戻るで解答画面へ帰るときは、その問題を描き直す
-         （ヘッダーのパンくずと保存ずみの解答を戻す。未確定の選び直しは捨てる＝examJump と同じ） */
-      if (prev === 'quiz' && isExamMode() && state.current && state.current.question) { renderQuestion(); }
       return r;
     });
   }
@@ -1637,16 +1657,8 @@
       btn.classList.remove('is-oq-next');
     }
 
-    /* --- V2.17：模試の前後移動と、保存済み解答の復元（設計メモ） --- */
-    var nav = $('#exam-nav');
-    if (nav) { nav.hidden = !isExamMode(); }
-    if (isExamMode()) {
-      refreshExamNav();   /* V3.03：前へ／次へ／提出する の有効・無効 */
-      if (typeof hooks.examSavedFor === 'function') {
-        var sv = hooks.examSavedFor(q.q_id);
-        if (sv) { restoreExamAnswer(sv); }
-      }
-    }
+    /* V2.17〜V3.09 はここで模試のナビと保存ずみ解答の復元をしていた。
+       V3.10：模試は問題用紙（後半 renderExamPaper）になり、この画面を通らない。 */
 
     armInterlock();
     /* ガイドは「今それを押してほしい瞬間」にだけ出す */
@@ -1832,31 +1844,11 @@
     }).join('');
     setHtml('#choice-list', html);
 
-    /* 模試の根拠チェックは、言われないと気づかれない。
-       V2.23：初回は説明を開いた状態で出し、以後も［？］でいつでも読める。
-       初回だけだと、聞き流したり久々に模試をやったときに戻れない（利用者要望）。
-       V3.03（利用者裁定「こんなデカく出さないでいい。☐列の上に小さいハテナ、押したら説明」）：
-       ［？］は☐列の上の小さい印だけ。**既定は閉じる**（初回も開かない）。押せばいつでも読める。 */
-    var old = $('.ground-help');
-    if (old) { old.parentNode.removeChild(old); }
-    if (exam) {
-      var open = !state.groundHintShown && false;   /* V3.03：既定は閉じる（変数は残す） */
-      state.groundHintShown = true;
-      var wrap = doc.createElement('div');
-      wrap.className = 'ground-help';
-      wrap.innerHTML =
-        '<button type="button" class="ground-help-btn" aria-expanded="' + (open ? 'true' : 'false') + '"' +
-        ' aria-label="右の☐チェックの説明">?</button>' +
-        '<p class="ground-hint"' + (open ? '' : ' hidden') + '>右の <b>☐</b> は自由に使える印です。' +
-        '迷った二択などに付けておくと、解答一覧と復習で見返せます。評価には影響しません。</p>';   /* V3.05 */
-      var list = $('#choice-list');
-      list.parentNode.insertBefore(wrap, list);
-      wrap.querySelector('.ground-help-btn').addEventListener('click', function () {
-        var hp = wrap.querySelector('.ground-hint');
-        hp.hidden = !hp.hidden;
-        this.setAttribute('aria-expanded', hp.hidden ? 'false' : 'true');
-      });
-    }
+    /* V2.23〜V3.09 はここに模試の☐の説明（［？］）があった。V3.10：模試は問題用紙になり、
+       説明は問題用紙の前書き（.paper-lead）に1行で書く。この画面に模試は来ない。
+       古い版の DOM が残っている端末のために、見つけたら外すところだけ残す。 */
+    var oldHelp = $('.ground-help');
+    if (oldHelp && oldHelp.parentNode) { oldHelp.parentNode.removeChild(oldHelp); }
   }
 
   function renderNumericInput(q) {
@@ -2453,7 +2445,19 @@
     return rest;
   }
 
-  function prepareAtomExplanation(html, atom) {
+  /* --- V3.13（利用者の指摘）：正誤を二重に出さない ---
+   *
+   * 「解説を見るを開くと元々あった⇒誤り に加えてさらに⇒誤りと出てきて無駄。
+   *   解説の中身に「誤り:」は入れないでいい」
+   *
+   * V2.95 で正誤チップは **details の外**（`.cx-verdict`）へ出した。開いても閉じても常に見えている。
+   * それなのに本文の頭にも「⇒ 誤り：」を足していたので、開いた瞬間に同じ語が2つ並んでいた。
+   * `noChip` を渡された場所（＝ボタンで開く形の本文）では足さない。
+   *
+   * **`open` モード（最初から全部出す）では足す。** あちらは `.cx-verdict` を持たず、
+   * 本文が唯一の正誤の出どころなので、外すと「どっちだったのか」が画面から消える。 */
+  function prepareAtomExplanation(html, atom, opts) {
+    var noChip = !!(opts && opts.noChip);
     var out = prepareExplanationHtml(
                 stripAtomLead(stripAtomEcho(html, atom)) || '');   /* V2.78 */
     out = out.replace(/^\s*(?:・|<br\s*\/?>)+\s*/i, '');
@@ -2463,11 +2467,13 @@
       return out.replace(re, '<span class="cx-arrow" aria-hidden="true">⇒</span>$1');
     }
     if (!out.trim()) {
-      return '<span class="cx-arrow" aria-hidden="true">⇒</span>' +
-             '<span class="vd-chip" data-verdict="' + (atom.is_correct ? 'correct' : 'wrong') + '">' +
-             (atom.is_correct ? '正解' : '誤り') + '</span>' +
+      return (noChip ? '' :
+               '<span class="cx-arrow" aria-hidden="true">⇒</span>' +
+               '<span class="vd-chip" data-verdict="' + (atom.is_correct ? 'correct' : 'wrong') + '">' +
+               (atom.is_correct ? '正解' : '誤り') + '</span>') +
              '<span class="cx-noexp">この選択肢の解説はまだありません</span>';
     }
+    if (noChip) { return out; }
     return '<span class="cx-arrow" aria-hidden="true">⇒</span>' +
            '<span class="vd-chip" data-verdict="' + (atom.is_correct ? 'correct' : 'wrong') + '">' +
            (atom.is_correct ? '正解：' : '誤り：') + '</span>' + out;
@@ -2593,7 +2599,8 @@
            '<span class="cx-exp-cta">解説を見る</span>' +
            '</summary>' +
            '<div class="explanation-body">' +
-           prepareAtomExplanation(a.explanation, a) +
+           /* V3.13：左の .cx-verdict が正誤を出しているので、本文の頭には足さない（同じ語が2つ並ぶ） */
+           prepareAtomExplanation(a.explanation, a, { noChip: true }) +
            '</div></details>' +
            '</div>';
   }
@@ -3307,7 +3314,11 @@
   }
 
   function renderMermaid(code) {
-    var frame = $('#mermaid-frame');
+    return renderMermaidInto($('#mermaid-frame'), code);
+  }
+
+  /* V3.09：枠を指定して描く。模試の復習（一覧）は問ごとに自分の枠を持つので、#mermaid-frame 固定では足りない。 */
+  function renderMermaidInto(frame, code) {
     if (!frame) { return Promise.resolve(); }
 
     if (!code) {
@@ -3642,70 +3653,9 @@
     return stepForward();
   }
 
-  /* V2.17：模試で保存済みの解答を画面へ戻す。graded は false のまま
-     （確定し直せば part2 側が置き換える）。think_ms の初回性は part2 が守る。 */
-  function restoreExamAnswer(sv) {
-    var cur = state.current;
-    if (!cur) { return; }
-    if (cur.question.question_type === 'numeric') {
-      var inp = $('#numeric-input');
-      if (inp && sv.numeric_input !== undefined && sv.numeric_input !== null) {
-        inp.value = sv.numeric_input;
-      }
-      var b0 = $('#btn-confirm');
-      if (b0) { b0.disabled = false; b0.textContent = '解答を確定する'; }
-      return;
-    }
-    cur.selected = (sv.atoms || []).filter(function (a) { return a.picked; })
-      .map(function (a) { return a.original_num; });
-    cur.eliminated = {};
-    (sv.atoms || []).forEach(function (a) { if (a.ground_on) { cur.eliminated[a.atom_id] = true; } });
-    $$('#choice-list .choice-card').forEach(function (c) {
-      var n = parseInt(c.getAttribute('data-num'), 10);
-      toggleClass(c, 'is-selected', cur.selected.indexOf(n) >= 0);
-      var id = c.getAttribute('data-atom-id');
-      var on = !!cur.eliminated[id];
-      toggleClass(c, 'is-eliminated', on);
-      var mk = c.querySelector('.choice-mark[data-kind="ground"]');
-      if (mk) { mk.setAttribute('aria-pressed', on ? 'true' : 'false'); mk.textContent = on ? '☑' : '☐'; }
-    });
-    var need = needCount(cur.atoms);
-    var b = $('#btn-confirm');
-    if (b) {
-      var left = need - cur.selected.length;
-      b.disabled = (left !== 0);
-      b.textContent = (left === 0) ? '解答を確定する'
-        : (left > 0) ? (left + 'つ選んでください') : ((-left) + 'つ多いです');
-    }
-  }
-
-  /* --- V3.03：模試ナビの状態（利用者裁定） ---
-     [前へ] は先頭で無効。[次へ] は末尾で無効（末尾の「一覧へ」はやめた。一覧は［解答一覧］から）。
-     [提出する] は**全問解答し終わるまで非アクティブ**。残りの数は後半（hooks.examUnanswered）が数える。
-     押せない理由をボタンに書く：「提出する（あと3問）」。 */
-  function refreshExamNav() {
-    if (!isExamMode()) { return; }
-    var s = state.session;
-    var pb = $('#btn-exam-prev');
-    if (pb) { pb.disabled = s.index <= 0; }
-    var nb = $('#btn-exam-next');
-    if (nb) { nb.disabled = s.index >= s.questions.length - 1; nb.textContent = '次へ ▶'; }
-    var sb = $('#btn-exam-submit');
-    if (sb) {
-      var un = (typeof hooks.examUnanswered === 'function') ? hooks.examUnanswered() : s.questions.length;
-      sb.disabled = un > 0;
-      sb.textContent = un > 0 ? ('提出する（あと' + un + '問）') : '提出する';
-    }
-  }
-
-  /* V2.17：模試中だけ、指定の問題へ移動する（未確定の選び直しは捨てる） */
-  function examJump(i) {
-    if (!isExamMode()) { return; }
-    var s = state.session;
-    if (i < 0 || i >= s.questions.length) { return; }
-    s.index = i;
-    renderQuestion();
-  }
+  /* V2.17〜V3.09 はここに模試の保存ずみ解答の復元（restoreExamAnswer）・ナビの状態（refreshExamNav）・
+     問題の移動（examJump）があった。V3.10：模試は1枚の問題用紙（後半 renderExamPaper）になり、
+     前後の移動そのものが無くなったので消した。 */
 
   function stepForward() {
     var s = state.session;
@@ -4249,9 +4199,13 @@
          'settings' なので旧条件（screen === 'quiz'）では畳まれず、
          模試の hooks が生き残って、次に始めた通常学習の解答が
          丸ごと記録されなかった（§49）。 */
-      if (state.session.mode) { endSession(); }
-      go('home', { replace: true });
-      refreshHome().catch(noop);
+      /* V3.10：問題用紙（模試）の上でだけ1度確認する（解答が消えるため） */
+      confirmLeaveExam().then(function (yes) {
+        if (!yes) { return; }
+        if (state.session.mode) { endSession(); }
+        go('home', { replace: true });
+        refreshHome().catch(noop);
+      });
     });
     on($('#btn-settings'), 'click', function () { Half2.openSettings(); });
     /* V1.53：無料枠まわり。案内は1箇所（openBuyDialog）に集める。 */
@@ -4409,21 +4363,7 @@
 
     /* --- サムゾーン --- */
     on($('#btn-next'), 'click', function () { nextQuestion(); });
-    /* V2.17：模試ナビ */
-    on($('#btn-exam-prev'), 'click', function () { examJump(state.session.index - 1); });
-    on($('#btn-exam-next'), 'click', function () {
-      /* V3.03：末尾では押せない（一覧は［解答一覧］から）。押せてしまっても一覧へ */
-      if (state.session.index >= state.session.questions.length - 1) {
-        if (typeof hooks.openExamConfirm === 'function') { hooks.openExamConfirm(); }
-      } else { examJump(state.session.index + 1); }
-    });
-    on($('#btn-exam-list'), 'click', function () {
-      if (typeof hooks.openExamConfirm === 'function') { hooks.openExamConfirm(); }
-    });
-    /* V3.03：提出は一覧と別のボタン。全問解答まで非アクティブ（refreshExamNav）。実行は後半（examSubmit） */
-    on($('#btn-exam-submit'), 'click', function () {
-      if (typeof hooks.examSubmit === 'function') { hooks.examSubmit(); }
-    });
+    /* V2.17〜V3.09 の模試ナビ（前へ／次へ／解答一覧／提出する）の束ねはここにあった。V3.10 で問題用紙へ（後半） */
 
     /* --- モーダル共通 --- */
     on($('#confirm-go'), 'click', function () {
@@ -4702,8 +4642,7 @@
      途中で戻った場合に後半が張った時計やバーが止められず、
      ホームへ戻ってもテーマ別弱点ノックの残り時間が動き続けていた。 */
   var hooks = { afterGrade: null, afterCommit: null, onFinish: null, onAbort: null,
-                examUnanswered: null, examSubmit: null,    /* V3.03：模試ナビが後半に聞く */
-                beforeLeave: null };                      /* V3.06：画面を離れるとき */
+                beforeLeave: null };                      /* V3.06：画面を離れるとき。V3.10：模試ナビの examUnanswered／examSubmit は消した */
 
   var Half2 = {
     /* --- その場ガイド（初回だけ・1つずつ） ---
@@ -4890,6 +4829,7 @@
     unionTags     : unionTags,
     fitStemHeight : fitStemHeight,
     renderMermaid : renderMermaid,
+    renderMermaidInto: renderMermaidInto,   /* V3.09 */
     renderUserImage: renderUserImage,  pickUserImage: pickUserImage,
     reportQuestion: reportQuestion,  reportBody: reportBody,
     isBundledQuestion: isBundledQuestion,
@@ -4911,8 +4851,7 @@
     forgetAtom    : forgetAtom,
     setEval       : setEval,
     nextQuestion  : nextQuestion,
-    examJump      : examJump,
-    refreshExamNav: refreshExamNav,       /* V3.03 */
+    /* V3.10：examJump／refreshExamNav（模試ナビ）は消した。模試は後半の問題用紙（Half2 の exam paper API） */
     toggleCurrentQuestionStar: toggleCurrentQuestionStar,
     toggleAtomStarById       : toggleAtomStarById,
 

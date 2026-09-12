@@ -119,6 +119,45 @@ def answer_current_ui(pg, want_right=True, ground=True, timeout=15000):
         return False
 
 
+def fill_exam_paper(pg, accuracy=1.0, ground_ratio=0.0, submit=True, timeout=60000):
+    """V3.10：模試は1枚の問題用紙。全問を塗って、最下部の［提出する］で出す。
+
+    V2.17〜V3.09 は1問ずつ answer_current_ui を呼んでいた（前後移動と確定があった）。
+    問題用紙には確定が無く、塗った瞬間が解答なので、1回の evaluate で全問を塗る。
+      accuracy     … 正解にする割合（合否を作るため。37 は100と互いに素なので 0〜99 を一巡する）
+      ground_ratio … ☐を付ける割合（記録の ground_on を作る）
+    戻り値 {answered, ground}
+    """
+    pg.wait_for_selector("#paper-list .pq", timeout=timeout)
+    pg.wait_for_timeout(300)
+    n = pg.evaluate("""([acc, gr]) => {
+      const ex = window.Half2Impl.state.exam;
+      let answered = 0, ground = 0;
+      ex.questions.forEach((qq, i) => {
+        const li = document.querySelector('#paper-list .pq[data-index="' + i + '"]');
+        if (!li) { return; }
+        const want = ((i * 37) % 100) < acc * 100;
+        const inp = li.querySelector('.pq-num-input');
+        if (inp) { inp.value = (want && qq.numeric_answer != null) ? String(qq.numeric_answer) : '1'; answered++; return; }
+        const atoms = (qq.atoms || []).slice().sort((a, b) => a.original_num - b.original_num);
+        const right = atoms.filter(a => a.is_correct).map(a => a.original_num);
+        const wrong = atoms.filter(a => !a.is_correct).map(a => a.original_num);
+        const pick = want ? right : (wrong.length ? wrong.slice(0, Math.max(1, right.length)) : right.slice(0, 1));
+        pick.forEach(num => { const c = li.querySelector('.choice-card[data-num="' + num + '"] .choice-body'); if (c) { c.click(); } });
+        if (pick.length) { answered++; }
+        if (((i * 37 + 11) % 100) < gr * 100) {
+          li.querySelectorAll('.choice-mark').forEach(b => b.click()); ground++; }
+      });
+      return { answered: answered, ground: ground };
+    }""", [accuracy, ground_ratio])
+    if submit:
+        pg.click("#paper-submit")
+        pg.wait_for_selector("#modal-exam-submit:not([hidden])", timeout=8000)
+        pg.click("#exam-submit-go")
+        pg.wait_for_timeout(2500)
+    return n
+
+
 def answer_and_next(pg, want_right=True, timeout=15000):
     """通常モード（解説を挟む）で1問解いて次へ進む。"""
     if not answer_current_ui(pg, want_right=want_right, ground=False, timeout=timeout):

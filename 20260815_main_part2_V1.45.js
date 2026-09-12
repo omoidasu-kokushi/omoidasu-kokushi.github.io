@@ -2326,6 +2326,9 @@ var QR_MATRIX = [
    * ====================================================================== */
 
   var EXAM_SIZE = { mock_30: 30, mock_60: 60, mock_120: 120, mock_weak: 120 };
+  /* V3.10：制限時間。本番の配分（午前120問160分＝80秒/問）をそのまま。0分で自動提出、5分前に1回だけ通知 */
+  var EXAM_LIMIT_MS = { mock_30: 40 * 60000, mock_60: 80 * 60000, mock_120: 160 * 60000, mock_weak: 160 * 60000 };
+  var EXAM_WARN_MS = 5 * 60000;
 
   /* --- 無料版のカード表示に要る情報（V3.01・段2） ---
      鍵が無いときだけ返す（購入済みは null）。
@@ -2354,6 +2357,7 @@ var QR_MATRIX = [
       /* V3.01：無料版の1行（画面の上）。購入済みは出さない。 */
       var fnote = $('#exam-free-note');
       if (fnote) { fnote.hidden = !freeInfo; }
+      refreshExamResumeBar();   /* V3.11：中断した模試の帯 */
 
       /* --- 直前期の緩和（V1.95） ---
          効いているときだけ、**理由と、いま実際に必要な割合**を出す。
@@ -2852,8 +2856,12 @@ var QR_MATRIX = [
         id: examId, style: style || 'real',
         questions: q.questions, answers: [], index: 0,
         startedAt: Date.now(), size: q.questions.length,
-        variant: q.variant || null          /* V2.96：印で固定した模試だけ非null */
+        variant: q.variant || null,         /* V2.96：印で固定した模試だけ非null */
+        picks: {},                          /* V3.10：q_id → 選んだ肢の番号の配列（問題用紙の状態） */
+        limitMs: EXAM_LIMIT_MS[examId] || 80000 * q.questions.length,
+        deadline: 0, warned: false, timer: null
       };
+      st.exam.deadline = st.exam.startedAt + st.exam.limitMs;
 
       /* V2.80：いじわる模試で類似問題に替えたときは、そう言う。
          黙って別の問題を出すと「弱点が出るはずなのに違う問題だ」と思われる。
@@ -2864,65 +2872,18 @@ var QR_MATRIX = [
               + '覚えているだけか、分かっているかを分けるためです', 5200);
       }
 
-      /* 模試は解説を挟まず全問回答 → 一括採点。前半のフックで割り込む。 */
-      /* V2.17：解答は q_id で置き換え式（前後移動して解き直せる）。
-         採点は「全解答を提出する」まで一切走らない（本番に即した設計メモ準拠）。 */
-      M.hooks.afterGrade = function (cur) {
-        var entry = {
-          q_id: cur.question.q_id,
-          atoms: cur.atoms.map(function (a) {
-            return {
-              atom_id: a.atom_id,
-              original_num: a.original_num,
-              is_correct: !!a.is_correct,
-              picked: cur.selected.indexOf(a.original_num) >= 0,
-              ground_on: !!cur.eliminated[a.atom_id]
-            };
-          }),
-          answered_right: cur.answeredRight,
-          /* 反応時間はこの瞬間にしか取れない（採点は最後にまとめて走る）。V1.79 */
-          think_ms: (typeof M.thinkMsForCurrent === 'function') ? M.thinkMsForCurrent() : null,
-          unit: cur.question.unit,
-          numeric_input: (cur.numericInput !== undefined) ? cur.numericInput : null
-        };
-        var at = -1;
-        for (var i = 0; i < st.exam.answers.length; i++) {
-          if (st.exam.answers[i].q_id === entry.q_id) { at = i; break; }
-        }
-        if (at >= 0) {
-          /* 解き直し：think_ms だけは初回の値を守る（計測の意味・V1.79） */
-          entry.think_ms = st.exam.answers[at].think_ms;
-          st.exam.answers[at] = entry;
-        } else {
-          st.exam.answers.push(entry);
-          M.state.session.answeredCount++;
-        }
-        if (M.state.session.index >= M.state.session.questions.length - 1) {
-          /* 末尾の解答を確定したら解答一覧へ（未回答の確認と提出はそこで） */
-          if (typeof M.refreshExamNav === 'function') { M.refreshExamNav(); }   /* V3.03 */
-          openExamConfirm();
-        } else {
-          M.stepForward();
-        }
-        return false;   /* 解説フェーズを描画しない */
-      };
-      /* V3.03：模試ナビの［提出する］の状態（全問解答まで非アクティブ）と、押したときの実行 */
-      M.hooks.examUnanswered = function () { return examUnansweredCount(); };
-      M.hooks.examSubmit = function () { return submitExamFromNav(); };
-      M.hooks.onFinish = function (sess) {
-        if (sess.mode !== 'exam') { return false; }
-        /* V2.17：末尾到達でも自動採点しない。必ず最終確認を通す */
-        openExamConfirm();
-        return true;
-      };
-      M.hooks.examSavedFor = function (qid) {
-        if (!st.exam) { return null; }
-        for (var i = 0; i < st.exam.answers.length; i++) {
-          if (st.exam.answers[i].q_id === qid) { return st.exam.answers[i]; }
-        }
-        return null;
-      };
-      M.hooks.openExamConfirm = openExamConfirm;
+      /* --- V3.10：模試は1枚の問題用紙（利用者裁定 2026-09-12） -------------------
+         「模試自体全てスクロールでは駄目なの？そうすれば次へ前へボタンが不要になる」
+         「一覧表示的な機能も無くす。チェックを入れた問題も自分で確認することでより本番度が増す」
+         「最下部に到達したときに『提出する』ボタンが出てくるだけ。解き終わってない問題があっても押せる」
+
+         V1.x〜V3.09 は出題画面（part1）を1問ずつ使い、afterGrade で解答を横取りして answers に溜め、
+         前へ／次へ／解答一覧／提出のナビで行き来していた（V2.17〜V3.09）。それを全部やめ、
+         全問を1枚に描く（renderExamPaper）。解答は問題用紙の状態（st.exam.picks・☑は DOM）そのもので、
+         提出のときに1度だけ answers に写す（collectPaperAnswers）。採点（gradeExam）以降は今までどおり。
+
+         失うもの：反応時間（think_ms）。「押せるようになった瞬間」が無いので模試の記録だけ null（通常学習は無傷）。
+         0.5秒の思考インターロック（§4-2）も掛けない（本番に無い）。 */
 
       /* --- 途中でやめたときの後片付け（V1.85・新設） -----------------------
          `endSession()` は **hooks を消さない**。消すのは各モードの役目で、
@@ -2943,13 +2904,406 @@ var QR_MATRIX = [
       };
 
       global.setTimeout(function () { tip('ground'); }, 1200);
-      M.state.session = {
-        mode: 'exam', sessionId: 'EX' + Date.now().toString(36),
-        questions: q.questions, index: 0, answeredCount: 0,
-        startedAt: Date.now(), hostQueue: null, hostIndex: 0
+      return mountPaper();
+    });
+  }
+
+  /* V3.11：問題用紙を画面に載せる。新規（finishLaunch）と再開（resumeExam）で同じものを張る。
+     ここを2箇所に書くと、片方だけ onAbort を張り忘れる（V1.85 で実際に起きた壊れ方）。 */
+  function mountPaper(resumeState) {
+    M.state.session = {
+      mode: 'exam', sessionId: 'EX' + Date.now().toString(36),
+      questions: st.exam.questions, index: 0, answeredCount: 0,
+      startedAt: Date.now(), hostQueue: null, hostIndex: 0
+    };
+    K.Interrupt.endSession();
+    return M.go('exam_paper').then(function () {
+      renderExamPaper();
+      if (resumeState) { applyPaperState(resumeState); }
+      refreshMarkCount();   /* V3.12：再開したときも印の数を合わせる */
+      startPaperTimer();
+      return st.exam;
+    });
+  }
+
+  /* ======================================================================
+   * 問題用紙（V3.10）
+   * ====================================================================== */
+  var EXAM_NAME = { mock_30: 'プチ模試 30問', mock_60: 'ハーフ模試 60問', mock_120: 'フル模試 120問', mock_weak: 'いじわる模試 120問' };
+
+  function renderExamPaper() {
+    var ex = st.exam;
+    if (!ex) { return; }
+    setText('#paper-name', (EXAM_NAME[ex.id] || '力試し模試') + (ex.style === 'final' ? '（直前）' : ''));
+    var html = ex.questions.map(function (q, i) {
+      var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
+      var need = Math.max(1, atoms.filter(function (a) { return !!a.is_correct; }).length);
+      var numeric = (q.question_type === 'numeric');
+      var instr = numeric ? '数値で答える' : (need >= 2 ? need + 'つ選ぶ' : '1つ選ぶ');
+      var body = numeric
+        ? '<div class="pq-numeric"><input type="number" inputmode="decimal" class="pq-num-input" placeholder="数値"></div>'
+        : '<ul class="choice-list is-exam pq-choices">' + atoms.map(function (a) {
+            return '<li class="choice-card" data-atom-id="' + esc(a.atom_id) + '" data-num="' + a.original_num + '">' +
+                   '<span class="choice-num">' + a.original_num + '</span>' +
+                   '<button type="button" class="choice-body"><span class="choice-text">' + esc(a.text || '') + '</span></button>' +
+                   '<button type="button" class="choice-mark" data-kind="ground" aria-pressed="false"' +
+                   ' aria-label="この肢に印を付ける（用途は自由。復習で見返せます）">☐</button></li>';
+          }).join('') + '</ul>';
+      var img = q.image_url
+        ? '<details class="pq-img"><summary>別冊画像を見る 📷</summary><img src="' + esc(q.image_url) + '" alt="別冊画像" loading="lazy"></details>' : '';
+      return '<li class="pq" data-qid="' + esc(q.q_id) + '" data-index="' + i + '">' +
+             '<div class="pq-head"><span class="pq-no">問' + (i + 1) + '</span><span class="pq-instr">' + instr + '</span></div>' +
+             '<p class="pq-stem">' + esc(q.stem || '') + '</p>' + img + body + '</li>';
+    }).join('');
+    setHtml('#paper-list', html);
+    if (global.scrollTo) { global.scrollTo(0, 0); }
+  }
+
+  /* 肢のタップ（V3.10・利用者裁定「択一問題も択二問題も選択肢いくらでも選べるようにしておいて。選択ミスもユーザーの責任」）。
+     **数で止めない。** 1つ選ぶ問でも2つ3つ塗れる。もう一度押すと外れる（紙の消しゴム）。
+     アプリが「1つ選ぶ問です」と割り込むのは、本番のマークシートには無い介入。
+     数が合わなければ採点で不正解になるだけ（recommendEvaluations は正解の集合と完全一致でだけ正解にする）。 */
+  function onPaperChoice(card) {
+    var ex = st.exam;
+    if (!ex) { return; }
+    var li = card.closest('.pq');
+    var q = li && ex.questions[parseInt(li.getAttribute('data-index'), 10)];
+    if (!q) { return; }
+    var num = parseInt(card.getAttribute('data-num'), 10);
+    var sel = ex.picks[q.q_id] || (ex.picks[q.q_id] = []);
+    var at = sel.indexOf(num);
+    if (at >= 0) { sel.splice(at, 1); } else { sel.push(num); }
+    li.querySelectorAll('.choice-card').forEach(function (c) {
+      c.classList.toggle('is-selected', sel.indexOf(parseInt(c.getAttribute('data-num'), 10)) >= 0);
+    });
+    savePaperState();   /* V3.11 */
+  }
+
+  function onPaperMark(card, btn) {
+    var on = btn.getAttribute('aria-pressed') !== 'true';
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.textContent = on ? '☑' : '☐';
+    card.classList.toggle('is-eliminated', on);
+    refreshMarkCount();   /* V3.12 */
+    savePaperState();     /* V3.11 */
+  }
+
+  /* --- V3.12：印だけの一覧（利用者裁定「マーク状態だけ一覧で確認できるようにして」） ---
+     出すのは**問の番号と、印を付けた肢の番号だけ**。答えたかどうかは出さない。
+     V3.10 で消した解答一覧（どの問が未回答かが一目で分かる画面）を、名前を変えて戻さないため。
+     印は DOM が正（collectPaperAnswers と同じ読み方）。 */
+  function markedQuestions() {
+    var ex = st.exam;
+    var list = $('#paper-list');
+    if (!ex || !list) { return []; }
+    var out = [];
+    ex.questions.forEach(function (q, i) {
+      var li = list.querySelector('.pq[data-index="' + i + '"]');
+      if (!li) { return; }
+      var nums = [];
+      li.querySelectorAll('.choice-mark[aria-pressed="true"]').forEach(function (b) {
+        var c = b.closest('.choice-card');
+        if (c) { nums.push(parseInt(c.getAttribute('data-num'), 10)); }
+      });
+      if (nums.length) { out.push({ index: i, nums: nums.sort(function (a, b) { return a - b; }) }); }
+    });
+    return out;
+  }
+
+  function refreshMarkCount() {
+    var btn = $('#paper-marks');
+    if (!btn) { return 0; }
+    var n = markedQuestions().length;
+    setText('#paper-marks-n', String(n));
+    btn.classList.toggle('is-on', n > 0);
+    return n;
+  }
+
+  function openExamMarks() {
+    var rows = markedQuestions();
+    setHtml('#exam-mark-list', rows.length ? rows.map(function (r) {
+      return '<li class="mk-row" data-index="' + r.index + '">' +
+             '<span class="mk-no">問' + (r.index + 1) + '</span>' +
+             '<span class="mk-nums">☑ ' + r.nums.map(circled).join('') + '</span>' +
+             '<span class="mk-go">▸</span></li>';
+    }).join('') : '<p class="mark-empty">まだ印はありません。各肢の右の ☐ を押すと、ここに並びます。</p>');
+    setText('#exam-mark-note', rows.length ? '行をタップするとその問へ移ります。' : '');
+    openModal('#modal-exam-marks');
+    return rows.length;
+  }
+
+  function jumpToPaperQuestion(index) {
+    var li = $('#paper-list') && $('#paper-list').querySelector('.pq[data-index="' + index + '"]');
+    if (!li) { return false; }
+    closeModals();
+    if (li.scrollIntoView) { global.setTimeout(function () { li.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 30); }
+    return true;
+  }
+
+  /* 提出：問題用紙の状態を answers に写す。未回答は picked が空のまま入る（採点は不正解・§4-3 で正解肢が「難しい」）。
+     反応時間は取れない（think_ms: null）。 */
+  function collectPaperAnswers() {
+    var ex = st.exam;
+    var list = $('#paper-list');
+    return ex.questions.map(function (q, i) {
+      var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
+      var li = list ? list.querySelector('.pq[data-index="' + i + '"]') : null;
+      var picked = [], numericInput = null;
+      if (q.question_type === 'numeric') {
+        var inp = li && li.querySelector('.pq-num-input');
+        var val = parseFloat(String((inp && inp.value) || '').replace(/[,，\s]/g, ''));
+        if (isFinite(val)) {
+          numericInput = val;
+          var expect = q.numeric_answer;
+          var tol = Math.max(Math.abs(expect) * 0.005, 0.05);   /* 丸め誤差を許容（出題画面と同じ） */
+          picked = (Math.abs(val - expect) <= tol) ? [1] : [];
+        }
+      } else {
+        picked = (ex.picks[q.q_id] || []).slice();
+      }
+      var marks = {};
+      if (li) {
+        li.querySelectorAll('.choice-mark[aria-pressed="true"]').forEach(function (b) {
+          var c = b.closest('.choice-card');
+          if (c) { marks[c.getAttribute('data-atom-id')] = true; }
+        });
+      }
+      var rec = K.recommendEvaluations(atoms, picked);
+      return {
+        q_id: q.q_id,
+        atoms: atoms.map(function (a) {
+          return { atom_id: a.atom_id, original_num: a.original_num, is_correct: !!a.is_correct,
+                   picked: picked.indexOf(a.original_num) >= 0, ground_on: !!marks[a.atom_id] };
+        }),
+        answered_right: !!rec.answered_right,
+        think_ms: null,
+        unit: q.unit,
+        numeric_input: numericInput,
+        unanswered: (q.question_type === 'numeric') ? (numericInput === null) : (picked.length === 0)
       };
-      K.Interrupt.endSession();
-      return M.go('quiz').then(function () { M.renderQuestion(); return st.exam; });
+    });
+  }
+
+  /* 提出の確認（利用者裁定）：「見直しはしましたか？試験終了まで残り○○分です。」だけ。未回答の数は出さない */
+  function openExamSubmit() {
+    var ex = st.exam;
+    if (!ex) { return; }
+    var left = Math.max(0, ex.deadline - Date.now());
+    setText('#exam-submit-body', '試験終了まで残り' + Math.ceil(left / 60000) + '分です。');
+    openModal('#modal-exam-submit');
+  }
+
+  function submitPaper(opts) {
+    var ex = st.exam;
+    if (!ex || ex.submitted) { return Promise.resolve(null); }
+    ex.submitted = true;
+    stopPaperTimer();
+    closeModals();
+    var answers = collectPaperAnswers();
+    ex.answers = answers;
+    if (opts && opts.timeUp) { toast('試験終了の時刻です。提出しました', 4200); }
+    /* V3.11：提出した模試はもう中断ではない。控えを先に消す（残っていると結果の裏で「続きから」が出る） */
+    return clearExamResume().then(function () { return gradeExam(answers); });
+  }
+
+  /* --- 残り時間（教室の時計） --- */
+  function fmtRemain(ms) {
+    var s = Math.max(0, Math.ceil(ms / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    var mm = (h ? String(m).padStart(2, '0') : String(m)), ss = String(sec).padStart(2, '0');
+    return (h ? h + ':' : '') + mm + ':' + ss;
+  }
+
+  function tickPaper() {
+    var ex = st.exam;
+    if (!ex || ex.submitted) { return; }
+    var left = ex.deadline - Date.now();
+    var el = $('#paper-timer');
+    if (el) { el.textContent = '残り ' + fmtRemain(left); el.classList.toggle('is-warn', left <= EXAM_WARN_MS); }
+    if (!ex.warned && left <= EXAM_WARN_MS) { ex.warned = true; toast('残り5分です', 3600); }
+    if (left <= 0) { submitPaper({ timeUp: true }); }
+  }
+
+  function startPaperTimer() {
+    stopPaperTimer();
+    tickPaper();
+    if (st.exam) { st.exam.timer = global.setInterval(tickPaper, 1000); }
+  }
+
+  function stopPaperTimer() {
+    if (st.exam && st.exam.timer) { global.clearInterval(st.exam.timer); st.exam.timer = null; }
+  }
+
+  /* ======================================================================
+   * 中断と再開（V3.11・利用者裁定「誤タップ防止はしよう。途中でやめても途中から再開できるように」）
+   *
+   * 控えるのは「画面に見えているもの」だけ：塗った肢・☑・入力した数値・残り時間・問の並び。
+   * 問題そのものは控えない（q_id だけ。台帳から取り直す）。120問ぶんの本文と解説を meta に置くと
+   * 同期にも復元にも乗ってしまう（§20：送るのは増えた分だけ）。
+   *
+   * 時計は**止める**。中断中も進めると、翌朝アプリを開いた瞬間に「残り0分」で自動提出になる。
+   * 本番に寄せる理屈より、実際に起きる壊れ方のほうが重い。
+   * ====================================================================== */
+  var RESUME_KEY = 'exam_resume';
+  var resumeTimer = null;
+
+  /* いまの問題用紙の状態。☑と数値は DOM が正（collectPaperAnswers と同じ読み方をする） */
+  function paperStateNow() {
+    var ex = st.exam;
+    if (!ex || !ex.questions) { return null; }
+    var list = $('#paper-list');
+    var marks = {}, numeric = {};
+    if (list) {
+      ex.questions.forEach(function (q, i) {
+        var li = list.querySelector('.pq[data-index="' + i + '"]');
+        if (!li) { return; }
+        var m = {};
+        li.querySelectorAll('.choice-mark[aria-pressed="true"]').forEach(function (b) {
+          var c = b.closest('.choice-card');
+          if (c) { m[c.getAttribute('data-atom-id')] = true; }
+        });
+        if (Object.keys(m).length) { marks[q.q_id] = m; }
+        var inp = li.querySelector('.pq-num-input');
+        if (inp && String(inp.value).trim() !== '') { numeric[q.q_id] = inp.value; }
+      });
+    }
+    var picks = {};
+    Object.keys(ex.picks || {}).forEach(function (k) {
+      if ((ex.picks[k] || []).length) { picks[k] = ex.picks[k].slice(); }
+    });
+    return {
+      exam_id: ex.id, style: ex.style || 'real', variant: ex.variant || null,
+      q_ids: ex.questions.map(function (q) { return q.q_id; }),
+      picks: picks, marks: marks, numeric: numeric,
+      remain_ms: Math.max(0, ex.deadline - Date.now()), limit_ms: ex.limitMs,
+      size: ex.size, saved_at: Date.now()
+    };
+  }
+
+  function answeredInState(rs) {
+    if (!rs) { return 0; }
+    var n = Object.keys(rs.picks || {}).length;
+    Object.keys(rs.numeric || {}).forEach(function (k) { if (!(rs.picks || {})[k]) { n++; } });
+    return n;
+  }
+
+  /* 1タップごとに書かない（IndexedDB へ毎回行くと、連打で詰まる）。少し待ってからまとめて書く */
+  function savePaperState() {
+    if (resumeTimer) { global.clearTimeout(resumeTimer); }
+    resumeTimer = global.setTimeout(function () { resumeTimer = null; flushPaperState(); }, 600);
+  }
+
+  function flushPaperState() {
+    if (resumeTimer) { global.clearTimeout(resumeTimer); resumeTimer = null; }
+    var rs = paperStateNow();
+    if (!rs || (st.exam && st.exam.submitted)) { return Promise.resolve(null); }
+    return S.setMeta(RESUME_KEY, rs).catch(function (e) { console.error('[exam_resume]', e); });
+  }
+
+  function clearExamResume() {
+    if (resumeTimer) { global.clearTimeout(resumeTimer); resumeTimer = null; }
+    return S.setMeta(RESUME_KEY, null).catch(function (e) { console.error('[exam_resume]', e); });
+  }
+
+  function loadExamResume() {
+    return S.getMeta(RESUME_KEY, null).then(function (rs) {
+      return (rs && rs.q_ids && rs.q_ids.length) ? rs : null;
+    });
+  }
+
+  function resumeLabel(rs) {
+    return (EXAM_NAME[rs.exam_id] || '力試し模試')
+      + '／残り ' + fmtRemain(rs.remain_ms || 0)
+      + '／解答ずみ ' + answeredInState(rs) + '問（全' + rs.q_ids.length + '問）';
+  }
+
+  /* 力試しモードの帯。中断が無ければ出さない */
+  function refreshExamResumeBar() {
+    var bar = $('#exam-resume-bar');
+    if (!bar) { return Promise.resolve(null); }
+    return loadExamResume().then(function (rs) {
+      if (!rs) { bar.hidden = true; return null; }
+      bar.hidden = false;
+      bar.innerHTML = '▶ 中断した模試を続ける<br><small>' + esc(resumeLabel(rs)) + '</small>';
+      return rs;
+    }).catch(function () { bar.hidden = true; return null; });
+  }
+
+  /* 模試カードを押したときの2択（続きから／最初から） */
+  function openExamResume(rs, examId) {
+    st.exam.resumeAskedFor = examId || null;
+    setText('#exam-resume-body', resumeLabel(rs)
+      + '。［続きから］はこの模試を中断したところから、［最初から始める］は中断した解答を捨てて'
+      + (examId && examId !== rs.exam_id ? '選んだ模試を' : 'この模試を') + '新しく始めます。');
+    openModal('#modal-exam-resume');
+  }
+
+  function applyPaperState(rs) {
+    var ex = st.exam;
+    var list = $('#paper-list');
+    if (!ex || !list || !rs) { return; }
+    ex.questions.forEach(function (q, i) {
+      var li = list.querySelector('.pq[data-index="' + i + '"]');
+      if (!li) { return; }
+      var sel = ex.picks[q.q_id] || [];
+      li.querySelectorAll('.choice-card').forEach(function (c) {
+        c.classList.toggle('is-selected', sel.indexOf(parseInt(c.getAttribute('data-num'), 10)) >= 0);
+      });
+      var m = (rs.marks || {})[q.q_id] || {};
+      li.querySelectorAll('.choice-card').forEach(function (c) {
+        var on = !!m[c.getAttribute('data-atom-id')];
+        c.classList.toggle('is-eliminated', on);
+        var b = c.querySelector('.choice-mark[data-kind="ground"]');
+        if (b) { b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.textContent = on ? '☑' : '☐'; }
+      });
+      var inp = li.querySelector('.pq-num-input');
+      if (inp && (rs.numeric || {})[q.q_id] !== undefined) { inp.value = rs.numeric[q.q_id]; }
+    });
+  }
+
+  function resumeExam() {
+    return loadExamResume().then(function (rs) {
+      if (!rs) { toast('中断した模試が見つかりません'); return null; }
+      return S.getQuestionsFull(rs.q_ids).then(function (list) {
+        var by = {};
+        list.forEach(function (q) { by[q.q_id] = q; });
+        var qs = rs.q_ids.map(function (id) { return by[id]; }).filter(Boolean);
+        if (!qs.length) {
+          return clearExamResume().then(function () {
+            toast('中断した模試の問題が見つかりませんでした（データを入れ直したときに起こります）', 5000);
+            return refreshExamResumeBar().then(function () { return null; });
+          });
+        }
+        if (qs.length < rs.q_ids.length) {
+          toast('問題が ' + (rs.q_ids.length - qs.length) + '問 見つからないので、その分を除いて再開します', 4600);
+        }
+        /* V2.22：前のセッションが畳まれずに残っていても、模試は更地から始める */
+        if (M.state.session && M.state.session.mode) { M.endSession(); }
+        st.exam = {
+          id: rs.exam_id, style: rs.style || 'real',
+          questions: qs, answers: [], index: 0,
+          startedAt: Date.now(), size: qs.length,
+          variant: rs.variant || null,
+          picks: {},
+          limitMs: rs.limit_ms || (80000 * qs.length),
+          /* 残りが0で控えられていることは無い（0になった瞬間に提出して控えを消すため）。
+             それでも0だったときに開いた瞬間の自動提出にならないよう、1秒だけ床を置く。 */
+          deadline: Date.now() + Math.max(rs.remain_ms || 0, 1000),
+          warned: false, timer: null, resumed: true
+        };
+        qs.forEach(function (q) {
+          if ((rs.picks || {})[q.q_id]) { st.exam.picks[q.q_id] = rs.picks[q.q_id].slice(); }
+        });
+        M.hooks.onAbort = function (mode) {
+          if (mode !== 'exam') { return; }
+          abortExam();
+        };
+        return mountPaper(rs);
+      });
+    }).catch(function (e) {
+      console.error('[exam_resume]', e);
+      toast('中断した模試を開けませんでした：' + (e && e.message ? e.message : e), 5000);
+      return null;
     });
   }
 
@@ -2973,7 +3327,7 @@ var QR_MATRIX = [
    *   30問ずつのページ。プチ=1／ハーフ=2／フル・いじわる=4
    *   V2.18 の折りたたみ一覧（単元グラフつき）はこれに置き換えた。単元ごとの正答率は結果画面（60問以上）に残る
    * ====================================================================== */
-  var REVIEW_PAGE = 30;
+  /* V3.06 の REVIEW_PAGE（30問ずつ）は V3.09 で撤去（開くのは1問だけになった） */
 
   function openExamReview() {
     var ex = st.exam;
@@ -2996,7 +3350,7 @@ var QR_MATRIX = [
         finishExamReview(false);
       };
       closeModals();
-      return M.go('exam_review').then(function () { renderExamReviewPage(0); return ex.review; });
+      return M.go('exam_review').then(function () { renderExamReviewList(); return ex.review; });
     });
   }
 
@@ -3007,99 +3361,155 @@ var QR_MATRIX = [
     return null;
   }
 
-  function renderExamReviewPage(page) {
+  /* --- V3.09：問は1つだけ開く（利用者裁定「問2タップしたら問1閉じるみたいな感じ」） ---
+     一覧は見出しだけを全問ぶん描く（○×・問N・問題文2行・あなたの答え／正解）。中身（肢のブロック・全体解説・
+     比較表・図解）は**開いたときに描き、閉じたら捨てる**。120問でも DOM は見出し120個＋開いている1問ぶんで済むので、
+     V3.06 の30問ずつのページは要らなくなった（撤去）。最初は問1だけ開く。
+     比較表は通常の解説画面と同じ prepareExplanationHtml。図解は開いたときだけ描く（エンジンは初回に読む・通常と同じ）。 */
+  function renderExamReviewList() {
     var ex = st.exam, rv = ex.review;
-    var total = ex.questions.length;
-    var pages = Math.max(1, Math.ceil(total / REVIEW_PAGE));
-    page = Math.max(0, Math.min(pages - 1, page || 0));
-    rv.page = page;
     var by = {};
     (ex.answers || []).forEach(function (a) { by[a.q_id] = a; });
-    var clean = (typeof M.sanitizeExplanationHtml === 'function') ? M.sanitizeExplanationHtml : function (h) { return esc(String(h || '')); };
-    var now = Date.now();
-    var from = page * REVIEW_PAGE, to = Math.min(total, from + REVIEW_PAGE);
-
+    rv.answersBy = by;
     var html = '';
-    for (var i = from; i < to; i++) {
-      var q = ex.questions[i];
+    var firstWrong = -1;
+    ex.questions.forEach(function (q, i) {
       var a = by[q.q_id];
-      var it = pendingItemFor(q.q_id);
       var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
       var picked = a ? a.atoms.filter(function (x) { return x.picked; }).map(function (x) { return x.original_num; }) : [];
-      var marks = {};
-      if (a) { a.atoms.forEach(function (x) { if (x.ground_on) { marks[x.atom_id] = true; } }); }
       var right = !!(a && a.answered_right);
-      var ansNums = picked.map(circled).join('') || '—';
-      var corNums = atoms.filter(function (x) { return x.is_correct; }).map(function (x) { return circled(x.original_num); }).join('');
-      var evalOf = {};
-      if (it) { it.atoms.forEach(function (x) { evalOf[x.atom_id] = x.eval; }); }
-
-      var blocks = atoms.map(function (at) {
-        var wasPicked = picked.indexOf(at.original_num) >= 0;
-        var handledRight = (wasPicked === !!at.is_correct);
-        var chosen = evalOf[at.atom_id] || null;
-        var dec = K.commitDecision(at, handledRight, 'exam', now);
-        var masterOk = K.isMasterUnlocked(at);
-        var evalsHtml = '';
-        if (!it) {
-          evalsHtml = '<p class="eval-count">この模試の評価は記録ずみです</p>';
-        } else if (!dec.commit) {
-          evalsHtml = '<div class="eval-locked"><span class="el-main">この選択肢は仕上がっています</span>' +
-                      '<span class="el-sub">まだ期日ではないので、この回は記録しません</span></div>';
-        } else {
-          var demoteNote = dec.demote
-            ? '<p class="eval-demote-note">期日前でしたが間違えたため、既定は<b>「難しい」</b>。うっかりなら「普通」に押し直せます</p>' : '';
-          evalsHtml = demoteNote + '<div class="eval-group" role="group" aria-label="選択肢' + at.original_num + 'の評価">' +
-            [{ k: 'hard', b: '難', s: 'しい' }, { k: 'normal', b: '普', s: '通' }, { k: 'easy', b: '易', s: 'しい' }, { k: 'master', b: 'マ', s: 'スター' }]
-            .map(function (e) {
-              var dis = (e.k === 'master' && !masterOk) || (dec.demote && (e.k === 'easy' || e.k === 'master'));
-              return '<button type="button" class="eval-btn eval-' + e.k + (e.k === chosen ? ' is-active' : '') + '"' +
-                     ' data-eval="' + e.k + '"' + (dis ? ' disabled' : '') + '>' +
-                     '<span class="eval-label"><b>' + e.b + '</b><small>' + e.s + '</small></span></button>';
-            }).join('') + '</div>';
-        }
-        return '<article class="cx ' + (at.is_correct ? 'is-correct' : 'is-wrong') + (wasPicked ? ' is-picked' : '') +
-               '" data-atom-id="' + esc(at.atom_id) + '" data-num="' + at.original_num + '">' +
-               '<div class="cx-line">' +
-               '<span class="cx-num">' + circled(at.original_num) + '</span>' +
-               '<span class="cx-text">' + esc(at.text || '') + '</span>' +
-               (wasPicked ? '<span class="cx-pick">あなたの答え</span>' : '') +
-               (marks[at.atom_id] ? '<span class="cx-mark" title="模試で付けた印">☑</span>' : '') +
-               '</div>' +
-               '<div class="cx-exp explanation-body">' + M.renderAtomBody(at, rv.mode) + '</div>' +
-               evalsHtml + '</article>';
-      }).join('');
-
-      var overall = (q.overall_explanation && String(q.overall_explanation).trim())
-        ? '<details class="xr-overall"><summary>全体解説</summary><div class="explanation-body">' + clean(q.overall_explanation) + '</div></details>' : '';
-
-      html += '<li class="xr-q" data-qid="' + esc(q.q_id) + '" data-index="' + i + '">' +
-              '<div class="xr-head">' +
+      if (!right && firstWrong < 0) { firstWrong = i; }
+      var ansNums = picked.map(circled).join('') || (a && a.numeric_input !== null && a.numeric_input !== undefined ? String(a.numeric_input) : '未回答');   /* V3.10：未回答のまま提出できる */
+      var cor = atoms.filter(function (x) { return x.is_correct; });
+      var corNums = cor.map(function (x) { return circled(x.original_num); }).join('');
+      /* --- V3.13（利用者裁定）：正解した問は**問題文と答えの肢だけ**見せて閉じておく ---
+         「正解した問題まで開かれてる。正解した問題は問題文と答えの選択肢だけ見せて、残りは閉じといていいよ」
+         合っていた問で読みたいのは「何が答えだったか」だけ。自分の答えは正解と同じなので出さない。 */
+      var sum = right
+        ? '正解 <b>' + esc(corNums) + '</b> <span class="xr-ans">'
+          + esc(cor.map(function (x) { return String(x.text || '').trim(); }).filter(Boolean).join('／')) + '</span>'
+        : 'あなたの答え <b>' + esc(ansNums) + '</b>　／　正解 <b>' + esc(corNums) + '</b>';
+      html += '<li class="xr-q' + (right ? ' is-right' : '') + '" data-qid="' + esc(q.q_id) + '" data-index="' + i + '">' +
+              '<button type="button" class="xr-head" aria-expanded="false">' +
               '<span class="xr-mark ' + (right ? 'is-correct' : 'is-wrong') + '" aria-label="' + (right ? '正解' : '不正解') + '">' + (right ? '○' : '×') + '</span>' +
               '<span class="xr-no">問' + (i + 1) + '</span>' +
-              '<p class="xr-stem">' + esc(q.stem || '') + '</p></div>' +
-              '<p class="xr-sum">あなたの答え <b>' + esc(ansNums) + '</b>　／　正解 <b>' + esc(corNums) + '</b>' +
+              '<p class="xr-stem">' + esc(q.stem || '') + '</p>' +
+              '<span class="xr-chev" aria-hidden="true">▾</span></button>' +
+              '<p class="xr-sum' + (right ? ' is-right' : '') + '">' + sum +
               (q.unit ? '　<span>' + esc(q.unit) + '</span>' : '') + '</p>' +
-              '<div class="rv-choices">' + blocks + '</div>' + overall + '</li>';
-    }
-    setHtml('#exam-review-list', html);
-
-    /* ページ（30問ずつ） */
-    var pagerHtml = '';
-    if (pages > 1) {
-      for (var p = 0; p < pages; p++) {
-        var a0 = p * REVIEW_PAGE + 1, b0 = Math.min(total, (p + 1) * REVIEW_PAGE);
-        pagerHtml += '<button type="button" class="' + (p === page ? 'is-active' : '') + '" data-page="' + p + '">' + a0 + '〜' + b0 + '問</button>';
-      }
-    }
-    ['#exam-review-pager', '#exam-review-pager2'].forEach(function (sel) {
-      var el = $(sel);
-      if (!el) { return; }
-      el.innerHTML = pagerHtml;
-      el.hidden = pages <= 1;
+              '<div class="xr-body" hidden></div></li>';
     });
+    setHtml('#exam-review-list', html);
+    rv.openIndex = -1;
+    /* V3.13：最初に開くのは**最初に間違えた問**。全問正解なら開かない（読む用が無いのに1問だけ開くと迷う） */
+    if (firstWrong >= 0) { openExamReviewQ(firstWrong, { noScroll: true }); }
     if (global.scrollTo) { global.scrollTo(0, 0); }
   }
+
+  /* 1問の中身（肢のブロック・全体解説・比較表・図解）。V3.06 の renderExamReviewPage の1問ぶんをそのまま。 */
+  function examReviewBodyHtml(q, i) {
+    var ex = st.exam, rv = ex.review;
+    var a = (rv.answersBy || {})[q.q_id];
+    var it = pendingItemFor(q.q_id);
+    var clean = (typeof M.sanitizeExplanationHtml === 'function') ? M.sanitizeExplanationHtml : function (h) { return esc(String(h || '')); };
+    var now = Date.now();
+    var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
+    var picked = a ? a.atoms.filter(function (x) { return x.picked; }).map(function (x) { return x.original_num; }) : [];
+    var marks = {};
+    if (a) { a.atoms.forEach(function (x) { if (x.ground_on) { marks[x.atom_id] = true; } }); }
+    var evalOf = {};
+    if (it) { it.atoms.forEach(function (x) { evalOf[x.atom_id] = x.eval; }); }
+
+    var blocks = atoms.map(function (at) {
+      var wasPicked = picked.indexOf(at.original_num) >= 0;
+      var handledRight = (wasPicked === !!at.is_correct);
+      var chosen = evalOf[at.atom_id] || null;
+      var dec = K.commitDecision(at, handledRight, 'exam', now);
+      var masterOk = K.isMasterUnlocked(at);
+      var evalsHtml = '';
+      if (!it) {
+        evalsHtml = '<p class="eval-count">この模試の評価は記録ずみです</p>';
+      } else if (!dec.commit) {
+        evalsHtml = '<div class="eval-locked"><span class="el-main">この選択肢は仕上がっています</span>' +
+                    '<span class="el-sub">まだ期日ではないので、この回は記録しません</span></div>';
+      } else {
+        var demoteNote = dec.demote
+          ? '<p class="eval-demote-note">期日前でしたが間違えたため、既定は<b>「難しい」</b>。うっかりなら「普通」に押し直せます</p>' : '';
+        evalsHtml = demoteNote + '<div class="eval-group" role="group" aria-label="選択肢' + at.original_num + 'の評価">' +
+          [{ k: 'hard', b: '難', s: 'しい' }, { k: 'normal', b: '普', s: '通' }, { k: 'easy', b: '易', s: 'しい' }, { k: 'master', b: 'マ', s: 'スター' }]
+          .map(function (e) {
+            var dis = (e.k === 'master' && !masterOk) || (dec.demote && (e.k === 'easy' || e.k === 'master'));
+            return '<button type="button" class="eval-btn eval-' + e.k + (e.k === chosen ? ' is-active' : '') + '"' +
+                   ' data-eval="' + e.k + '"' + (dis ? ' disabled' : '') + '>' +
+                   '<span class="eval-label"><b>' + e.b + '</b><small>' + e.s + '</small></span></button>';
+          }).join('') + '</div>';
+      }
+      return '<article class="cx ' + (at.is_correct ? 'is-correct' : 'is-wrong') + (wasPicked ? ' is-picked' : '') +
+             '" data-atom-id="' + esc(at.atom_id) + '" data-num="' + at.original_num + '">' +
+             '<div class="cx-line">' +
+             '<span class="cx-num">' + circled(at.original_num) + '</span>' +
+             '<span class="cx-text">' + esc(at.text || '') + '</span>' +
+             (wasPicked ? '<span class="cx-pick">あなたの答え</span>' : '') +
+             (marks[at.atom_id] ? '<span class="cx-mark" title="模試で付けた印">☑</span>' : '') +
+             '</div>' +
+             '<div class="cx-exp explanation-body">' + M.renderAtomBody(at, rv.mode) + '</div>' +
+             evalsHtml + '</article>';
+    }).join('');
+
+    var overall = (q.overall_explanation && String(q.overall_explanation).trim())
+      ? '<details class="xr-overall"><summary>全体解説</summary><div class="explanation-body">' + clean(q.overall_explanation) + '</div></details>' : '';
+    /* V3.09：比較表・図解（タップで表示）。比較表は通常の解説画面と同じ prepareExplanationHtml。図解は開いたときに描く */
+    var table = (q.comparison_table && String(q.comparison_table).trim())
+      ? '<details class="xr-table"><summary>比較表を見る</summary><div class="explanation-body">' +
+        (typeof M.prepareExplanationHtml === 'function' ? M.prepareExplanationHtml(q.comparison_table) : clean(q.comparison_table)) +
+        '</div></details>' : '';
+    var fig = (q.mermaid_code && String(q.mermaid_code).trim())
+      ? '<details class="xr-fig"><summary>図解を見る</summary><div class="xr-mmd" data-drawn="0"></div></details>' : '';
+    return '<div class="rv-choices">' + blocks + '</div>' + overall + table + fig;
+  }
+
+  /* 問を開く。開いていた問は閉じて中身を捨てる（評価は保留に入っているので描き直せる） */
+  function openExamReviewQ(index, opts) {
+    var ex = st.exam, rv = ex.review;
+    if (!rv) { return; }
+    var list = $('#exam-review-list');
+    if (!list) { return; }
+    var items = list.querySelectorAll('.xr-q');
+    var prev = (rv.openIndex >= 0) ? items[rv.openIndex] : null;
+    if (prev) {
+      prev.classList.remove('is-open');
+      var ph = prev.querySelector('.xr-head'); if (ph) { ph.setAttribute('aria-expanded', 'false'); }
+      var pb = prev.querySelector('.xr-body'); if (pb) { pb.innerHTML = ''; pb.hidden = true; }
+    }
+    if (index === rv.openIndex) { rv.openIndex = -1; return; }   /* 同じ問をもう一度押したら畳むだけ */
+    var li = items[index];
+    if (!li) { rv.openIndex = -1; return; }
+    var q = ex.questions[index];
+    var body = li.querySelector('.xr-body');
+    body.innerHTML = examReviewBodyHtml(q, index);
+    body.hidden = false;
+    li.classList.add('is-open');
+    var h = li.querySelector('.xr-head'); if (h) { h.setAttribute('aria-expanded', 'true'); }
+    rv.openIndex = index;
+    if (!(opts && opts.noScroll) && li.scrollIntoView) {
+      global.setTimeout(function () { li.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 30);
+    }
+  }
+
+  /* 図解：details を開いた瞬間に1回だけ描く（通常の解説画面の「図解を見る」と同じ。エンジンは初回に読む） */
+  function onExamReviewFigToggle(det) {
+    if (!det.open) { return; }
+    var frame = det.querySelector('.xr-mmd');
+    if (!frame || frame.getAttribute('data-drawn') === '1') { return; }
+    frame.setAttribute('data-drawn', '1');
+    var li = det.closest('.xr-q');
+    var q = li ? st.exam.questions[parseInt(li.getAttribute('data-index'), 10)] : null;
+    if (!q || typeof M.renderMermaidInto !== 'function') { return; }
+    M.renderMermaidInto(frame, q.mermaid_code);
+  }
+
+  /* V3.06 の名前は残す（テスト・呼び出し元の互換）。ページはもう無い */
+  function renderExamReviewPage() { return renderExamReviewList(); }
 
   /* 評価ボタン：押した瞬間に保留へ（次へは無い）。保留に無い肢（記録ずみ）は何もしない。 */
   function onExamReviewEval(btn) {
@@ -3134,90 +3544,19 @@ var QR_MATRIX = [
 
   /* V2.18 の openExamReview（折りたたみ一覧＋単元グラフ）はここにあった。V3.06 で上の画面に置き換えて消した。 */
 
-  /* V2.17：提出前の最終確認。全問一覧（自分の答え・根拠チェック数・未回答）を出し、
-     行タップでその問題へ戻す。「全解答を提出する」で初めて gradeExam が走る。
-     V3.04（利用者裁定）：モーダルではなく**画面**（#screen-exam-sheet）。行に問題文を出す
-     （解答画面よりひと回り小さく・2行まで）。「問1がどんな問題でどう悩んだのか」が一覧で分かるように、
-     ☑を付けた肢も番号で出す（☑は用途自由の印・V3.05）。 */
-  function openExamConfirm() {
-    var ex = st.exam;
-    if (!ex) { return; }
-    var by = {};
-    ex.answers.forEach(function (a) { by[a.q_id] = a; });
-    var un = 0;
-    setHtml('#exam-confirm-list', ex.questions.map(function (q, i) {
-      var a = by[q.q_id];
-      var ans;
-      if (a) {
-        var nums = (a.atoms || []).filter(function (x) { return x.picked; })
-          .map(function (x) { return circled(x.original_num); }).join('');
-        var marks = (a.atoms || []).filter(function (x) { return x.ground_on; })
-          .map(function (x) { return circled(x.original_num); }).join('');
-        ans = '答え <b>' + esc(nums || (a.numeric_input !== null && a.numeric_input !== undefined
-                        ? String(a.numeric_input) : '—')) + '</b>'
-              + (marks ? '　☑ ' + esc(marks) : '');
-      } else { un++; ans = '未回答'; }
-      return '<li class="ec-row' + (a ? '' : ' is-un') + '" data-index="' + i + '">' +
-             '<span class="ec-no">' + (i + 1) + '</span>' +
-             '<div class="ec-main">' +
-             '<p class="ec-stem">' + esc(q.stem || '') + '</p>' +
-             '<p class="ec-ans">' + ans + '</p></div>' +
-             '<span class="ec-go">▸</span></li>';
-    }).join(''));
-    setText('#exam-confirm-note', (un > 0 ? ('未回答が ' + un + ' 問あります。') : '')
-      + '行をタップするとその問題に戻れます。提出するまで採点されません。');
-    ex.unanswered = un;
-    /* V2.18：空欄のまま提出はさせない（利用者裁定）。全問回答で初めて押せる
-       V3.03：文言を解答画面の［提出する］と揃える（「提出する（あと◯問）」） */
-    var sub = $('#exam-confirm-submit');
-    if (sub) {
-      sub.disabled = un > 0;
-      sub.textContent = un > 0 ? ('提出する（未回答 ' + un + ' 問）') : '提出する';
-    }
-    /* V3.04：画面へ。quiz は積まない（戻りは必ず解答画面の同じ問題へ） */
-    return M.go('exam_sheet', { replace: false });
-  }
-
   function abortExam() {
+    /* V3.11：畳む＝中断。控えてから片付ける（DOM はまだ残っているので、ここで読める）。
+       V3.10 までは「やめる＝解答が消える」だった（利用者裁定で撤回）。 */
+    if (st.exam && !st.exam.submitted) { flushPaperState(); }
+    stopPaperTimer();   /* V3.10：時計を止める */
     M.hooks.afterGrade = null;
     M.hooks.onFinish = null;
     M.hooks.onAbort = null;
-    M.hooks.examSavedFor = null;      /* V2.17 */
-    M.hooks.openExamConfirm = null;   /* V2.17 */
-    M.hooks.examUnanswered = null;    /* V3.03 */
-    M.hooks.examSubmit = null;        /* V3.03 */
     if (st.exam) { st.exam.answers = []; st.exam.aborted = true; }
   }
 
-  /* --- V3.03：一覧と提出を分ける（利用者裁定） ---
-     未回答の数は st.exam.answers から数える（一覧を開かなくても分かるように）。
-     解答画面の［提出する］は、一覧を経ずに出せる。押した先で1度だけ確認する
-     （提出は取り消せない。一覧の［提出する］は一覧そのものが確認なので聞かない）。 */
-  function examUnansweredCount() {
-    var ex = st.exam;
-    if (!ex || !ex.questions) { return 0; }
-    var by = {};
-    (ex.answers || []).forEach(function (a) { by[a.q_id] = true; });
-    var un = 0;
-    ex.questions.forEach(function (q) { if (!by[q.q_id]) { un++; } });
-    return un;
-  }
-
-  function submitExamFromNav() {
-    var ex = st.exam;
-    if (!ex) { return Promise.resolve(false); }
-    var un = examUnansweredCount();
-    if (un > 0) { toast('未回答が ' + un + ' 問あります。全問に答えると提出できます', 3200); return Promise.resolve(false); }
-    return M.confirmAction({
-      title: '全解答を提出しますか',
-      body: ex.questions.length + '問すべてに答えました。提出すると採点され、解答は変えられません。',
-      ok: '提出する'
-    }).then(function (yes) {
-      if (!yes) { return false; }
-      gradeExam(ex.answers);
-      return true;
-    });
-  }
+  /* V2.17〜V3.09 はここに提出前の解答一覧（openExamConfirm）と、ナビの提出（examUnansweredCount／submitExamFromNav）が
+     あった。V3.10：問題用紙の［提出する］→ openExamSubmit → submitPaper に置き換えて消した。 */
 
   /* --- 模試の評価（V3.05・利用者裁定 2026-09-12） ---
      V1.x〜V3.04 は第11章③「正解＋根拠ON→易／マ、それ以外→難」を提出時に適用していた。
@@ -3384,15 +3723,12 @@ var QR_MATRIX = [
   }
 
   function showExamResult(result) {
+    stopPaperTimer();   /* V3.10 */
     M.hooks.afterGrade = null;
     M.hooks.onFinish = null;
     /* V1.85：onAbort も必ず外す。張ったままだと、次のモードを畳んだときに
        模試の後片付けが走る（いまは無害だが、無害さに寄りかからない）。 */
     M.hooks.onAbort = null;
-    M.hooks.examSavedFor = null;      /* V2.17 */
-    M.hooks.openExamConfirm = null;   /* V2.17 */
-    M.hooks.examUnanswered = null;    /* V3.03 */
-    M.hooks.examSubmit = null;        /* V3.03 */
     M.endSession();
 
     var r = result;
@@ -4536,9 +4872,7 @@ var QR_MATRIX = [
             '<button type="button" class="star-btn" data-star-level="0" tabindex="-1">☆</button>',
     ground: '<button type="button" class="choice-mark" data-kind="ground" tabindex="-1">☐</button>→' +
             '<button type="button" class="choice-mark" data-kind="ground" aria-pressed="true" tabindex="-1">☑</button>（各肢の右端・欄外）',
-    exam_nav: '<span class="exam-nav guide-ui-row"><button type="button" class="exam-nav-btn" tabindex="-1">◀ 前へ</button>' +
-          '<button type="button" class="exam-nav-btn is-list" tabindex="-1">一覧・提出</button>' +
-          '<button type="button" class="exam-nav-btn" tabindex="-1">次へ ▶</button></span>',
+    exam_nav: '<button type="button" class="btn-primary paper-submit guide-ui-row" tabindex="-1">提出する</button>',   /* V3.10：問題用紙の最下部 */
     tagpill: '<span class="tag-pill" tabindex="-1">#人口動態統計</span><span class="tag-pill" tabindex="-1">#保健統計指標</span>',
     memo: '<button type="button" class="cx-memo-btn" tabindex="-1">✏</button>（各肢の右）',
     summary: '<span class="guide-ui-row"><button type="button" class="sum-dot" data-eval="hard" tabindex="-1">①</button>' +
@@ -4669,8 +5003,8 @@ var QR_MATRIX = [
     { head: '模試（力試し）',
       ui: 'exam_nav',
       items: [ { k: 'exam', ui: 'exam_card' }, { k: 'ground', ui: 'ground' },
-               { ui: 'exam_nav', step: '前後の移動と提出',
-                 text: '模試では前の問題へ戻ってやり直せます。［一覧・提出］で全問の解答状況を見て、全問に答えると提出できます。採点は提出まで走りません。' },
+               { ui: 'exam_nav', step: '問題用紙と提出',
+                 text: '模試は1枚の問題用紙です。全問が上から並び、肢をタップした瞬間がそのまま解答（もう一度押すと外れます）。いちばん下の［提出する］で提出します。未回答があっても提出できるので、本番と同じように自分で見直してください。制限時間は本番の配分（80秒/問）で、0分になると自動で提出されます。' },
                { ui: 'screen_exam_review', step: '提出後の復習',
                  text: '採点だけでは終わりません。上に単元別の得点グラフが出て、どの単元が何点足りないかが分かります。その下に全問が並び、間違えた問題は解説つきで開いた状態、正解した問題は畳んだ状態（タップで開く）。ここで弱点を確かめてから次の学習へ進んでください。' } ] },
     { head: '検索・分析・★ノート',
@@ -6373,9 +6707,9 @@ var QR_MATRIX = [
     settings: { step:'設定',         sel:'#screen-settings .import-box',
                 text:'自作の問題データはここから取り込めます。書き出したバックアップも同じ欄に貼れます。',
                 place:'below' },
-    ground:   { step:'模試のコツ',   sel:'#choice-list .choice-mark',
+    ground:   { step:'模試のコツ',   sel:'#paper-list .choice-mark',
                 text:'右の☐は自由に使える印。迷った二択などに付けておくと、' +
-                     '解答一覧と復習で見返せます。評価には影響しません。' }   /* V3.05 */
+                     '復習で見返せます。評価には影響しません。' }   /* V3.05／V3.10：問題用紙へ */
   };
 
   var tipState = { seen: null, showing: null, queueLock: false };
@@ -6844,6 +7178,15 @@ var QR_MATRIX = [
     flushExamPending: flushExamPending,  updateExamPending: updateExamPending,   /* V3.05 */
     buildExamPending: buildExamPending,
     startExamReview: startExamReview,    renderExamReviewPage: renderExamReviewPage,   /* V3.06 */
+    /* V3.10：問題用紙（テストと通し検証から） */
+    renderExamPaper: renderExamPaper, collectPaperAnswers: collectPaperAnswers,
+    openExamSubmit: openExamSubmit, submitPaper: submitPaper, tickPaper: tickPaper,
+    /* V3.11：中断と再開 */
+    /* V3.12：印だけの一覧 */
+    markedQuestions: markedQuestions, refreshMarkCount: refreshMarkCount, openExamMarks: openExamMarks,
+    paperStateNow: paperStateNow, flushPaperState: flushPaperState, clearExamResume: clearExamResume,
+    loadExamResume: loadExamResume, resumeExam: resumeExam, refreshExamResumeBar: refreshExamResumeBar,
+    renderExamReviewList: renderExamReviewList, openExamReviewQ: openExamReviewQ,       /* V3.09 */
     finishExamReview: finishExamReview,
     state: st
   };
@@ -7032,29 +7375,54 @@ var QR_MATRIX = [
       if (!c) { return; }
       /* V3.01：無料版でフル・いじわるは有料版。押したら購入の案内へ（解禁の判定には触らない）。 */
       if (c.getAttribute('data-free') === 'paid-only') { M.openBuyDialog(); return; }
-      startExam(c.dataset.examId);
+      /* V3.11：中断した模試があるときは、黙って新しく始めない（続きから／最初から を聞く）。
+         聞くのはここ1箇所だけ。startExam の中に入れると、警告ダイアログや受け方の2択から
+         戻ってくる経路でもう一度聞くことになる。 */
+      var id = c.dataset.examId;
+      loadExamResume().then(function (rs) {
+        if (rs) { openExamResume(rs, id); } else { startExam(id); }
+      });
     });
     /* V3.01（段4）：結果画面の下の購入への線。文面は BUY_URL 1箇所（§7-B）。 */
     on($('#exam-buy-open'), 'click', function () { global.open(M.BUY_URL, '_blank', 'noopener'); });
-    /* V2.17：最終確認モーダル → V3.04：解答一覧の画面。戻るときは解答画面を描き直す（同じ問題へ） */
-    function backToExam(index) {
-      if (!st.exam || !M.state.session || M.state.session.mode !== 'exam') { return M.go('home', { replace: true }); }
-      return M.go('quiz', { replace: true }).then(function () {
-        M.examJump(isNum(index) ? index : M.state.session.index);
-      });
-    }
-    on($('#exam-confirm-close'), 'click', function () { backToExam(); });
-    on($('#exam-confirm-list'), 'click', function (ev) {
-      var row = ev.target.closest('.ec-row');
-      if (!row) { return; }
-      backToExam(parseInt(row.getAttribute('data-index'), 10));
+    /* V3.10：問題用紙。肢のタップ＝解答、☐＝印。［提出する］→ 確認 → 採点 */
+    on($('#paper-list'), 'click', function (ev) {
+      if (!st.exam || st.exam.submitted || !M.state.session || M.state.session.mode !== 'exam') { return; }
+      var card = ev.target.closest('.choice-card');
+      if (!card) { return; }
+      var mark = ev.target.closest('.choice-mark');
+      if (mark) { ev.stopPropagation(); onPaperMark(card, mark); return; }
+      if (ev.target.closest('.choice-body')) { onPaperChoice(card); }
     });
-    on($('#exam-confirm-submit'), 'click', function () {
-      if (!st.exam) { return; }
-      /* V2.18：ボタン自体が未回答時は無効。二重の門番として実行側でも弾く */
-      if ((st.exam.unanswered || 0) > 0) { return; }
+    on($('#paper-submit'), 'click', function () { openExamSubmit(); });
+    /* V3.12：印だけの一覧 */
+    on($('#paper-marks'), 'click', function () { openExamMarks(); });
+    on($('#exam-mark-list'), 'click', function (ev) {
+      var row = ev.target.closest('.mk-row');
+      if (row) { jumpToPaperQuestion(parseInt(row.getAttribute('data-index'), 10)); }
+    });
+    on($('#exam-submit-go'), 'click', function () { submitPaper(); });
+    /* V3.11：数値の入力も控える */
+    on($('#paper-list'), 'input', function (ev) {
+      if (ev.target && ev.target.classList && ev.target.classList.contains('pq-num-input')) { savePaperState(); }
+    });
+    /* V3.11：中断と再開 */
+    on($('#exam-resume-bar'), 'click', function () { closeModals(); resumeExam(); });
+    on($('#exam-resume-go'), 'click', function () { closeModals(); resumeExam(); });
+    on($('#exam-resume-fresh'), 'click', function () {
+      var id = st.exam.resumeAskedFor;
       closeModals();
-      gradeExam(st.exam.answers);
+      clearExamResume().then(function () { return refreshExamResumeBar(); })
+        .then(function () { if (id) { startExam(id); } });
+    });
+    /* アプリを閉じる・裏に回る瞬間に控える（待たせないので debounce は飛ばす）。
+       ここが無いと、ホームボタンで閉じた最後の数タップが落ちる。 */
+    global.addEventListener('pagehide', function () {
+      if (M.state.session && M.state.session.mode === 'exam') { flushPaperState(); }
+    });
+    global.document.addEventListener('visibilitychange', function () {
+      if (global.document.visibilityState === 'hidden'
+          && M.state.session && M.state.session.mode === 'exam') { flushPaperState(); }
     });
     /* V2.18：模試後の復習 → V3.06：入口の2択 → 全画面のスクロール一覧 */
     on($('#btn-exam-review'), 'click', function () { openExamReview(); });
@@ -7062,14 +7430,19 @@ var QR_MATRIX = [
     on($('#exam-review-style-open'), 'click', function () { startExamReview('open'); });
     on($('#exam-review-list'), 'click', function (ev) {
       var b = ev.target.closest('.eval-btn');
-      if (b && !b.disabled) { onExamReviewEval(b); }
+      if (b && !b.disabled) { onExamReviewEval(b); return; }
+      /* V3.09：見出しで開閉（開くのは1問だけ） */
+      var h = ev.target.closest('.xr-head');
+      if (h) { var li = h.closest('.xr-q'); if (li) { openExamReviewQ(parseInt(li.getAttribute('data-index'), 10)); } }
     });
-    ['#exam-review-pager', '#exam-review-pager2'].forEach(function (sel) {
-      on($(sel), 'click', function (ev) {
-        var b = ev.target.closest('button[data-page]');
-        if (b) { renderExamReviewPage(parseInt(b.getAttribute('data-page'), 10)); }
-      });
-    });
+    /* V3.09：図解は details を開いた瞬間に描く（toggle は bubble しないので capture で拾う） */
+    var xrList = $('#exam-review-list');
+    if (xrList) {
+      xrList.addEventListener('toggle', function (ev) {
+        var det = ev.target;
+        if (det && det.classList && det.classList.contains('xr-fig')) { onExamReviewFigToggle(det); }
+      }, true);
+    }
     on($('#exam-review-done'), 'click', function () { finishExamReview(true); });
     /* V3.05：結果を閉じたら（復習しない）保留の評価を既定のまま記録する。
        閉じるボタンは data-close（共通の closeModals）なので、ここで先に記録を走らせる。 */

@@ -127,29 +127,15 @@ def snapshot(pg):
 
 
 def run_exam_ui(pg, exam_id, size, accuracy, ground_ratio=1.0, cap=None):
-    """模試を画面から通しで受験する。正解率を指定できる（合否を作るため）。"""
+    """模試を画面から通しで受験する。正解率を指定できる（合否を作るため）。
+       V3.10：1枚の問題用紙（journey_lib.fill_exam_paper）。cap は使わない（全問を一度に塗る）。"""
     pg.evaluate("([id, n]) => window.Half2Impl.launchExam(id, n, 'real')", [exam_id, size])
     try:
-        pg.wait_for_selector("#choice-list .choice-card, #numeric-wrap", timeout=60000)
+        n = fill_exam_paper(pg, accuracy=accuracy, ground_ratio=ground_ratio)
     except Exception:
         return None
-    n = cap or (size + 10)
-    answered = 0
-    for i in range(n):
-        if pg.is_visible("#modal-exam-result"):
-            break
-        # 37 は100と互いに素なので 0〜99 を一巡する。
-        # 997 を使うと (1000-3i) になり **前半が全部「不正解」に偏る**（実際に踏んで 1/30 になった）。
-        want = ((i * 37) % 100) < accuracy * 100
-        gr = ((i * 37 + 11) % 100) < ground_ratio * 100
-        try:
-            if not answer_current_ui(pg, want_right=want, ground=gr, timeout=20000):
-                break
-        except Exception:
-            break
-        answered += 1
-        pg.wait_for_timeout(110)
-    pg.wait_for_timeout(3000)
+    answered = n["answered"]
+    pg.wait_for_timeout(1500)
     res = pg.evaluate("""() => {
       const m = document.querySelector('#modal-exam-result');
       return { shown: !!(m && !m.hidden),

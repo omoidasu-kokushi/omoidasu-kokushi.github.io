@@ -187,22 +187,16 @@ def check_modes(pg, say, C, errs):
         _EXAM_N = int(_os.environ.get("JALL_EXAM_N", "120"))
         js("([id,n]) => window.Half2Impl.launchExam(id, n, 'real')", ["mock_weak", _EXAM_N])
         try:
-            pg.wait_for_selector("#choice-list .choice-card, #numeric-wrap", timeout=60000)
+            pg.wait_for_selector("#paper-list .pq", timeout=60000)   # V3.10：1枚の問題用紙
             ok = True
         except Exception:
             ok = False
         C("いじわる模試が起動する", ok)
         if ok:
-            from journey_lib import answer_current_ui
-            done = 0
-            for i in range(125):
-                if pg.is_visible("#modal-exam-result"):
-                    break
-                if not answer_current_ui(pg, want_right=(i % 4 != 0), ground=True, timeout=20000):
-                    break
-                done += 1
-                pg.wait_for_timeout(60)
-            pg.wait_for_timeout(2500)
+            from journey_lib import fill_exam_paper
+            n = fill_exam_paper(pg, accuracy=0.75, ground_ratio=1.0)
+            done = n["answered"]
+            pg.wait_for_timeout(2000)
             shown = js("""() => { const m=document.querySelector('#modal-exam-result');
                          return { shown: !!(m && !m.hidden),
                                   body: (m?m.textContent:'').replace(/\\s+/g,' ').slice(0,200) }; }""")

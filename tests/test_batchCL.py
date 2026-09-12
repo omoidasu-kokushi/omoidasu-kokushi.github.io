@@ -28,18 +28,21 @@ def read(f):
 
 import glob as _g
 p1 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part1_V*.js")))[-1])
+p2 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part2_V*.js")))[-1])
 js = read(p1)
+js2 = read(p2)
 css = read("styles.css")
 seg = js.split("function showVerdictPopup(")[1][:600]
 ok("ポップアップは模試中に早期returnする", "isExamMode()" in seg)
 ok("取り違えの経緯がコードに書いてある", "食い違う" in seg)
 ok("カード側の色付けが消えている", ".choice-card.is-eliminated{ }" in css)
 ok("旧・縁色ルールが残っていない", "is-eliminated{ border-left" not in css)
-ok("模試では欄外配置のスタイルがある", '#choice-list.is-exam .choice-mark[data-kind="ground"]' in css)
-ok("描画側が is-exam を付け外しする", "toggleClass($('#choice-list'), 'is-exam', exam)" in js)
+# V3.10：模試は問題用紙（#paper-list）へ。欄外配置は .paper-list .choice-list.is-exam に同じ置き方で持つ
+ok("模試では欄外配置のスタイルがある（問題用紙）", '.paper-list .choice-list.is-exam .choice-mark[data-kind="ground"]' in css)
+ok("描画側が is-exam を付ける（問題用紙の肢の列）", 'class="choice-list is-exam pq-choices"' in js2)
 ok("模試ではカードのoverflowを開放している（V2.16：欄外チェックが刈り取られない）",
-   "overflow:visible" in css.split("#choice-list.is-exam .choice-card")[1][:120])
-ok("番号セルの左角丸を自前で維持している", "#choice-list.is-exam .choice-num" in css)
+   "overflow:visible" in css.split(".paper-list .choice-list.is-exam .choice-card")[1][:120])
+ok("番号セルの左角丸を自前で維持している", ".paper-list .choice-list.is-exam .choice-num" in css)
 
 from playwright.sync_api import sync_playwright
 

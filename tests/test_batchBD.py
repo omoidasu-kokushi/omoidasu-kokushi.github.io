@@ -31,8 +31,8 @@ p2 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part2_V*.js")))[-1
 js = read(p2)
 
 ok("模試の記録にも think_ms を載せる", "think_ms        : isNum(ctx.thinkMs)" in kjs)
-ok("受験中に反応時間を控える（採点は最後なので後からでは取れない）",
-   "think_ms: (typeof M.thinkMsForCurrent === 'function')" in js)
+ok("模試の記録は反応時間を空にする（V3.10・利用者裁定）", "think_ms: null," in js
+   and "think_ms: (typeof M.thinkMsForCurrent === 'function')" not in js)
 ok("採点で控えた値を渡す（V3.05：保留 → 記録のときに渡す）", "thinkMs: it.think_ms" in js and "think_ms: a.think_ms" in js)
 ok("なぜ模試だけ空欄だったかが書いてある", "模試だけが空欄" in kjs)
 ok("模試の評価の既定は 4-3（V3.05：第11章③の昇格・降格は利用者裁定で廃止）",
@@ -72,71 +72,46 @@ with sync_playwright() as p:
 
     # 30問プチ模試を通しで受験する（本数は抑える。通ることが目的）
     pg.evaluate("window.Half2Impl.launchExam('mock_30', 30, 'real')")
-    pg.wait_for_selector("#choice-list .choice-card", timeout=30000)
-    ok("模試が始まり、1問目が出る",
-       (pg.text_content("#q-counter") or "").strip().startswith("1 /"),
-       pg.text_content("#q-counter"))
+    pg.wait_for_selector("#paper-list .pq", timeout=30000)
+    pg.wait_for_timeout(500)
+    ok("模試が始まり、全問が1枚に並ぶ（V3.10）",
+       pg.evaluate("() => document.querySelectorAll('#paper-list .pq').length") >= 30,
+       str(pg.evaluate("() => document.querySelectorAll('#paper-list .pq').length")))
 
-    answered = 0
-    ground = 0
-    for i in range(40):
-        try:
-            pg.wait_for_function(
-                "() => document.querySelector('#choice-list .choice-card')"
-                " || (document.querySelector('#numeric-wrap')"
-                "     && document.querySelector('#numeric-wrap').offsetParent !== null)",
-                timeout=6000)
-        except Exception:
-            break
-        # 数値問題は選択肢カードが出ない。扱えないと途中で止まる。
-        if pg.is_visible("#numeric-wrap"):
-            pg.fill("#numeric-input", "1")
-        else:
-            # 0.5秒のインターロック中は肢が押せない（pointer-events:none）。
-            # 待たずに押すと「element is not visible」で落ちる。
-            pg.wait_for_selector("#choice-list.is-ready", timeout=15000)
-            # 解除直後は肢が「スッ」と浮き上がる最中（transition .2s）で、
-            # そのまま押すと not stable で落ちる。動きが収まるまで待つ。
-            pg.wait_for_timeout(300)
-            # 根拠トグルは右端の ☐（.choice-mark）。左の番号バッジではない。
-            if i % 2 == 0:
-                marks = pg.locator("#choice-list .choice-mark")
-                hit = 0
-                for k in range(marks.count()):
-                    try:
-                        marks.nth(k).click(timeout=5000)
-                        hit += 1
-                    except Exception:
-                        pass
-                if hit:
-                    ground += 1
-            cards = pg.locator("#choice-list .choice-card")
-            for k in range(cards.count()):
-                try:
-                    cards.nth(k).click(timeout=6000)
-                except Exception:
-                    continue
-                if not pg.evaluate("() => document.querySelector('#btn-confirm').disabled"):
-                    break
-        try:
-            pg.wait_for_selector("#btn-confirm:not([disabled])", timeout=8000)
-            pg.click("#btn-confirm")
-        except Exception:
-            break
-        answered += 1
-        # 模試は確定すると自動で次へ進む（解説を挟まない）。［次へ］は押さない。
-        pg.wait_for_timeout(120)
-        # V2.17：最終問題の確定で「最終確認」一覧が開く（自動採点はしない）
-        if pg.is_visible("#screen-exam-sheet.is-active") or pg.is_visible("#modal-exam-result"):   # V3.04：一覧は画面
-            break
+    # V3.10：模試は1枚の問題用紙。肢をタップして塗り、☐で印を付け、最下部の［提出する］で出す。
+    #        「途中で止まらないか」は、全問ぶんの .pq が並び、全部塗れることで見る。
+    res0 = pg.evaluate("""() => {
+      const ex = window.Half2Impl.state.exam;
+      let answered = 0, ground = 0;
+      ex.questions.forEach((qq, i) => {
+        const li = document.querySelector('#paper-list .pq[data-index="' + i + '"]');
+        if (!li) { return; }
+        const inp = li.querySelector('.pq-num-input');
+        if (inp) { inp.value = '1'; answered++; return; }
+        const cards = [...li.querySelectorAll('.choice-card')];
+        if (!cards.length) { return; }
+        const atoms = (qq.atoms || []).slice().sort((a, b) => a.original_num - b.original_num);
+        const need = Math.max(1, atoms.filter(a => a.is_correct).length);
+        const nums = (i % 3 === 0)
+          ? atoms.filter(a => a.is_correct).map(a => a.original_num)
+          : atoms.filter(a => !a.is_correct).map(a => a.original_num).slice(0, need);
+        (nums.length ? nums : [atoms[0].original_num]).forEach(n => {
+          const c = li.querySelector('.choice-card[data-num="' + n + '"] .choice-body'); if (c) { c.click(); } });
+        answered++;
+        if (i % 2 === 0) { cards.forEach(c => c.querySelector('.choice-mark').click()); ground++; }
+      });
+      return { answered, ground, rows: document.querySelectorAll('#paper-list .pq').length };
+    }""")
+    answered, ground = res0["answered"], res0["ground"]
 
-    ok("30問を最後まで解ける（途中で止まらない）", answered >= 30, "answered=%d" % answered)
+    ok("30問を最後まで解ける（途中で止まらない）", answered >= 30 and res0["rows"] >= 30, json.dumps(res0))
     ok("根拠ONにした問題がある（自動昇格の経路を通す）", ground >= 5, "ground=%d" % ground)
 
-    # V2.17：提出前の最終確認を通ってから採点する
-    pg.wait_for_selector("#screen-exam-sheet.is-active", timeout=8000)   # V3.04：解答一覧の画面
-    ok("提出前の解答一覧が出る（自動採点しない）", True)
-    pg.click("#exam-confirm-submit")
+    # V3.10：提出は最下部だけ。押すと確認（文言だけ）→［これで提出］で採点
+    pg.click("#paper-submit")
+    pg.wait_for_selector("#modal-exam-submit:not([hidden])", timeout=8000)
+    ok("提出の前に1度だけ確認する（自動採点しない）", True)
+    pg.click("#exam-submit-go")
     pg.wait_for_timeout(2500)
     res = pg.evaluate("""() => {
       const m = document.querySelector('#modal-exam-result');
@@ -174,7 +149,9 @@ with sync_playwright() as p:
     ok("難は20分後の段に入る（V2.20）", srs["steps"]["m10"] > 0, json.dumps(srs["steps"]))
     ok("☐は ground_on として記録に残る（評価には使わない）", srs["ground"] >= 30, json.dumps(srs))
     ok("模試の記録に think_ms の欄がある（V1.78の抜けを塞いだ）", srs["hasField"], json.dumps(srs))
-    ok("模試でも反応時間が入る", srs["withThink"] > 0, json.dumps(srs))
+    # V3.10（利用者裁定「反応時間は模試は気にしないでいい」）：問題用紙には
+    # 「押せるようになった瞬間」が無いので、模試の記録は null。欄そのものは残す（上の観点）。
+    ok("模試の反応時間は空（V3.10・利用者裁定）", srs["withThink"] == 0, json.dumps(srs))
 
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))
     br.close()

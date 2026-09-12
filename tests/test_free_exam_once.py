@@ -111,38 +111,24 @@ def wait_count(pg, want, limit=30):
 MODAL = """(sel) => { const m = document.querySelector(sel); return !!(m && !m.hidden); }"""
 
 def run_exam_ui(pg, size):
-    """始まっている模試を最後まで解いて提出する（batchBD と同じ道）"""
-    pg.wait_for_selector("#choice-list .choice-card", timeout=30000)
-    answered = 0
-    for i in range(size + 10):
-        try:
-            pg.wait_for_function(
-                "() => document.querySelector('#choice-list .choice-card')"
-                " || (document.querySelector('#numeric-wrap') && document.querySelector('#numeric-wrap').offsetParent !== null)",
-                timeout=6000)
-        except Exception:
-            break
-        if pg.is_visible("#numeric-wrap"):
-            pg.fill("#numeric-input", "1")
-        else:
-            pg.wait_for_selector("#choice-list.is-ready", timeout=15000)
-            pg.wait_for_timeout(250)
-            cards = pg.locator("#choice-list .choice-card")
-            for k in range(cards.count()):
-                try: cards.nth(k).click(timeout=5000)
-                except Exception: continue
-                if not pg.evaluate("() => document.querySelector('#btn-confirm').disabled"): break
-        try:
-            pg.wait_for_selector("#btn-confirm:not([disabled])", timeout=8000)
-            pg.click("#btn-confirm")
-        except Exception:
-            break
-        answered += 1
-        pg.wait_for_timeout(100)
-        if pg.is_visible("#screen-exam-sheet.is-active") or pg.is_visible("#modal-exam-result"):   # V3.04：一覧は画面
-            break
-    pg.wait_for_selector("#screen-exam-sheet.is-active", timeout=8000)   # V3.04
-    pg.click("#exam-confirm-submit")
+    """始まっている模試を最後まで解いて提出する（V3.10：1枚の問題用紙）"""
+    pg.wait_for_selector("#paper-list .pq", timeout=30000)
+    pg.wait_for_timeout(400)
+    answered = pg.evaluate("""() => {
+      const ex = window.Half2Impl.state.exam;
+      let n = 0;
+      ex.questions.forEach((qq, i) => {
+        const li = document.querySelector('#paper-list .pq[data-index="' + i + '"]');
+        if (!li) { return; }
+        const inp = li.querySelector('.pq-num-input');
+        if (inp) { inp.value = '1'; n++; return; }
+        const c = li.querySelector('.choice-card .choice-body');
+        if (c) { c.click(); n++; }
+      });
+      return n; }""")
+    pg.click("#paper-submit")
+    pg.wait_for_selector("#modal-exam-submit:not([hidden])", timeout=8000)
+    pg.click("#exam-submit-go")
     pg.wait_for_timeout(2500)
     return answered
 

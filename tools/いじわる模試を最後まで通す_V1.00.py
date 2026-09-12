@@ -26,7 +26,7 @@
     python3 tools/いじわる模試を最後まで通す_V1.00.py
 
 【速い版でも本番と同じ経路を通ること】
-  ・押す要素は同じ（#choice-list .choice-mark と .choice-card .choice-body、#btn-confirm）
+  ・押す要素は同じ（#paper-list の .choice-mark と .choice-card .choice-body、#paper-submit → これで提出）
   ・根拠マークを1回の evaluate にまとめただけで、委譲ハンドラは本番と同じものが動く
   ・外したのは 260ms の保険待ちだけ（#choice-list.is-ready を待っているので二重だった）
 
@@ -55,45 +55,15 @@ with sync_playwright() as pw:
     pg.wait_for_timeout(900); tour_skip(pg); close_modals(pg)
     print("  起動まで %.1f秒"%(time.time()-t0),flush=True)
     pg.evaluate("([id,n]) => window.Half2Impl.launchExam(id, n, 'real')", ["mock_weak",120])
-    pg.wait_for_selector("#choice-list .choice-card, #numeric-wrap", timeout=60000)
+    pg.wait_for_selector("#paper-list .pq", timeout=60000)   # V3.10：1枚の問題用紙
     C("いじわる模試が起動する", True)
-    # 速い版：journey_lib.answer_current_ui と同じ経路（同じ要素を click）だが
-    #   ・260ms の保険待ちを外す（#choice-list.is-ready を待っているので二重）
-    #   ・根拠マークの4クリックを1回の evaluate にまとめる
-    #     （委譲で拾う実装なので、dispatch でも本番と同じハンドラを通る）
-    FAST = """(right) => {
-      const cur = window.Main.state.current;
-      if (!cur) return 0;
-      const atoms = cur.atoms || [];
-      document.querySelectorAll('#choice-list .choice-mark').forEach(m => m.click());
-      const nums = right ? atoms.filter(a=>a.is_correct).map(a=>a.original_num)
-                         : (atoms.filter(a=>!a.is_correct).map(a=>a.original_num).slice(0,1)
-                            .concat(atoms.filter(a=>a.is_correct).length?[]:[]));
-      const pick = nums.length ? nums : atoms.slice(0,1).map(a=>a.original_num);
-      pick.forEach(n => {
-        const el = document.querySelector("#choice-list .choice-card[data-num='"+n+"'] .choice-body");
-        if (el) el.click();
-      });
-      return pick.length;
-    }"""
-    ts=time.time(); done=0
-    for i in range(125):
-        if pg.is_visible("#modal-exam-result"): break
-        try:
-            pg.wait_for_selector("#choice-list.is-ready, #numeric-wrap", timeout=12000)
-        except Exception: break
-        if pg.is_visible("#numeric-wrap"):
-            v = pg.evaluate("()=>{const q=window.Main.state.current&&window.Main.state.current.question;"
-                            "return q&&q.numeric_answer!=null?String(q.numeric_answer):'1';}")
-            pg.fill("#numeric-input", v)
-        else:
-            if not pg.evaluate(FAST, (i%4!=0)): break
-        try:
-            pg.wait_for_selector("#btn-confirm:not([disabled])", timeout=8000)
-            pg.click("#btn-confirm")
-        except Exception: break
-        done+=1
-        if done%30==0: print("    %d問 %.0f秒"%(done,time.time()-ts),flush=True)
+    # V3.10：確定が無くなり、塗った瞬間が解答。1回の evaluate で120問ぶんを塗って最下部から提出する
+    #        （V2.17〜V3.09 は1問ずつ #btn-confirm を押していた）。
+    ts=time.time()
+    from journey_lib import fill_exam_paper
+    n = fill_exam_paper(pg, accuracy=0.75, ground_ratio=1.0)
+    done = n["answered"]
+    print("    %d問 %.0f秒"%(done,time.time()-ts),flush=True)
     try: pg.wait_for_selector("#modal-exam-result:not([hidden])", timeout=8000)
     except Exception: pass
     shown=pg.evaluate("""() => { const m=document.querySelector('#modal-exam-result');
