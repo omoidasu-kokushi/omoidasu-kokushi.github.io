@@ -14,8 +14,9 @@
   ・1肢ずつ＝解説は「解説を見る」で開く（details）／全肢＝最初から開いている。設定（explain_mode）は変えない
   ・評価は既定（保留）が点いている。押すと保留が変わる。**この時点では記録しない**
   ・画面を離れる（◀戻る／ホーム／［評価を記録して終える］）と保留が記録され、変えた評価で入る。保留は空
-  ・（V3.06 の30問ずつのページは V3.09 で撤去）問は畳んだ見出しで並び、**開くのは1問だけ**（問2を開くと問1が閉じ、中身は捨てる）。
-    最初は問1だけ開く。同じ見出しをもう一度押すと畳む。押した評価は保留にあるので、開き直しても残っている
+  ・（V3.06 の30問ずつのページは V3.09 で撤去）問は畳んだ見出しで並ぶ。同じ見出しをもう一度押すと畳む。
+    押した評価は保留にあるので、開き直しても残っている
+  ・**V3.17：開閉は問ごとに独立**（V3.09 の「開くのは1問だけ」は撤回）。予め開くのは間違えた問（→ test_exam_review_open.py）
   ・比較表・図解はタップで表示（details）。図解は開いた瞬間に1回だけ描く（自分の枠へ・renderMermaidInto）
 """
 import os, sys, io, json
@@ -34,8 +35,8 @@ ok("復習は画面。2択のモーダルがある。旧モーダル（V2.18）�
    and 'id="exam-review-style-button"' in ih and 'id="exam-review-style-open"' in ih and 'id="modal-exam-review"' not in ih)
 sec = ih[ih.index('id="screen-exam-review"'):ih.index('id="screen-exam"')]
 ok("復習の画面に「次へ」は無い（終えるボタンだけ）", "btn-next" not in sec and 'id="exam-review-done"' in sec and "次へ" not in sec)
-ok("問は1つだけ開く（ページの帯は撤去）", "function openExamReviewQ" in p2 and "var REVIEW_PAGE = 30;" not in p2 and 'id="exam-review-pager"' not in ih
-   and "pb.innerHTML = ''; pb.hidden = true;" in p2)
+ok("問は見出しで開閉する（ページの帯は撤去）", "function openExamReviewQ" in p2 and "var REVIEW_PAGE = 30;" not in p2 and 'id="exam-review-pager"' not in ih
+   and "body.innerHTML = ''; body.hidden = true;" in p2)
 ok("開いた問へ寄せるとき固定ヘッダーの下に潜らない（scroll-margin-top）", "scroll-margin-top:96px" in css[css.index(".xr-q{"):css.index(".xr-q{")+200])
 ok("比較表・図解はタップで表示。図解は自分の枠へ描く", "'<details class=\"xr-table\"><summary>比較表を見る</summary>" in p2
    and "'<details class=\"xr-fig\"><summary>図解を見る</summary>" in p2 and "function renderMermaidInto" in p1 and "M.renderMermaidInto(frame, q.mermaid_code)" in p2)
@@ -103,8 +104,13 @@ with sync_playwright() as p:
       out.noNext = !scr.querySelector('#btn-next') && !scr.textContent.includes('次へ');
       out.noPager = !q('exam-review-pager');
       const b1 = items[0];
+      /* V3.17：予め開くのは**間違えた問だけ**（問1は誤答・偶数番が誤答）。正解した問は見出しだけ */
       out.q1Open = b1.classList.contains('is-open') && !b1.querySelector('.xr-body').hidden
-        && Array.from(items).slice(1).every(li => !li.classList.contains('is-open') && li.querySelector('.xr-body').innerHTML === '');
+        && Array.from(items).every(li => {
+             const wrong = !!li.querySelector('.xr-mark.is-wrong');
+             return wrong ? li.classList.contains('is-open')
+                          : (!li.classList.contains('is-open') && li.querySelector('.xr-body').innerHTML === '');
+           });
       out.q1Wrong = b1.querySelector('.xr-mark').classList.contains('is-wrong') && /あなたの答え/.test(b1.querySelector('.xr-sum').textContent);
       out.q1Stem = b1.querySelector('.xr-stem').textContent === H.st.exam.questions[0].stem;
       out.q1Picked = !!b1.querySelector('.cx.is-picked .cx-pick');
@@ -123,19 +129,21 @@ with sync_playwright() as p:
       out.pendingChanged = it.atoms.filter(x => x.atom_id === targetId)[0].eval === 'normal';
       out.notRecordedYet = (await S.getAllLogs()).filter(l => l.mode === 'exam').length === 0;
       out.settingUnchanged = (await S.getMeta('explain_mode', null)) === modeBefore;
-      /* 問2を開く → 問1が閉じて中身が捨てられる。問2（正解）の既定は 普 */
+      /* V3.17：問2（正解・閉じている）を開いても問1は開いたまま。問2（正解）の既定は 普 */
       items[1].querySelector('.xr-head').click(); await wait(300);
       const b2 = items[1];
-      out.accordion = b2.classList.contains('is-open') && !b1.classList.contains('is-open') && b1.querySelector('.xr-body').innerHTML === ''
-        && b1.querySelector('.xr-head').getAttribute('aria-expanded') === 'false';
+      out.accordion = b2.classList.contains('is-open') && b1.classList.contains('is-open')
+        && !b1.querySelector('.xr-body').hidden
+        && b1.querySelector('.xr-head').getAttribute('aria-expanded') === 'true';
       out.q2DefaultNormal = Array.from(b2.querySelectorAll('.cx .eval-group')).every(g => g.querySelector('.eval-btn.is-active').getAttribute('data-eval') === 'normal');
+      /* 同じ見出しをもう一度押すと畳む（他の問は動かない） */
+      b1.querySelector('.xr-head').click(); await wait(250);
+      out.toggleClose = !b1.classList.contains('is-open') && b1.querySelector('.xr-body').hidden
+        && b2.classList.contains('is-open');
       /* 問1を開き直す → 押した評価は残っている（保留から描く） */
       b1.querySelector('.xr-head').click(); await wait(300);
-      out.activeKeptAfterRerender = b1.classList.contains('is-open') && !b2.classList.contains('is-open')
+      out.activeKeptAfterRerender = b1.classList.contains('is-open')
         && b1.querySelector('.cx[data-atom-id="' + targetId + '"] .eval-btn.is-active').getAttribute('data-eval') === 'normal';
-      /* 同じ見出しをもう一度押すと畳む */
-      b1.querySelector('.xr-head').click(); await wait(200);
-      out.toggleClose = !b1.classList.contains('is-open') && b1.querySelector('.xr-body').hidden;
       /* 全肢表示：描き直すと解説が最初から開いている（問1が開く） */
       H.st.exam.review.mode = 'open'; H.renderExamReviewList(); await wait(200);
       const b1o = document.querySelectorAll('#exam-review-list .xr-q')[0];
@@ -169,12 +177,12 @@ with sync_playwright() as p:
       return out; }""")
     ok("［復習を始める］→ 2択のモーダル → 全画面の復習（題は「模試の復習」）", r["styleModal"] and r["screenOpen"] and r["title"] == "模試の復習", r["title"])
     ok("全問が並び、次へは無い。ページの帯も無い", r["count"] == 30 and r["noNext"] and r["noPager"], r["count"])
-    ok("最初は問1だけ開いていて、他の問は見出しだけ（中身は空）", r["q1Open"])
+    ok("間違えた問は最初から開き、正解した問は見出しだけ（中身は空）", r["q1Open"])
     ok("問1（誤答）：×・問題文・あなたの答え・☑・肢の数だけブロック・⇒正誤", r["q1Wrong"] and r["q1Stem"] and r["q1Picked"] and r["q1Mark"] and r["q1Blocks"] and r["q1Verdict"], r)
     ok("1肢ずつ：解説は「解説を見る」で開く", r["buttonMode"])
     ok("評価の既定が点いている（誤答は難）", r["q1DefaultHard"])
     ok("押すと保留が変わる。まだ記録しない。設定は変えない", r["activeMoved"] and r["pendingChanged"] and r["notRecordedYet"] and r["settingUnchanged"])
-    ok("問2を開くと問1が閉じて中身が捨てられる。問2（正解）の既定は普", r["accordion"] and r["q2DefaultNormal"])
+    ok("問2を開いても問1は開いたまま（開閉は問ごとに独立）。問2（正解）の既定は普", r["accordion"] and r["q2DefaultNormal"])
     ok("問1を開き直しても押した評価は残る。同じ見出しをもう一度押すと畳む", r["activeKeptAfterRerender"] and r["toggleClose"])
     ok("全肢表示：解説が最初から開く", r["openMode"])
     ok("比較表・図解はタップで表示（畳んだ状態で描く）。図解は開くまで描かない", r["tableFig"] and r["figNotDrawnYet"])

@@ -153,7 +153,7 @@ with sync_playwright() as p:
       const rightN = ex.answers.filter(a => a.answered_right).length;
       out.closedMatchesRight = document.querySelectorAll('#exam-review-list .xr-mark.is-correct').length === rightN;
       out.wrongExpanded = document.querySelectorAll('#exam-review-list .xr-mark.is-wrong').length === len - rightN;
-      out.graphRows = document.querySelectorAll('#exam-review-list .xr-q.is-open .eval-group').length >= 1;   /* 開いた問で評価が押せる（V3.09：開くのは1問） */
+      out.graphRows = document.querySelectorAll('#exam-review-list .xr-q.is-open .eval-group').length >= 1;   /* 開いた問で評価が押せる（V3.17：間違えた問は最初から開いている） */
       /* 解説の開閉（1肢ずつ） */
       const firstExp = document.querySelector('#exam-review-list details.cx-exp');
       const wasOpen = firstExp.open;

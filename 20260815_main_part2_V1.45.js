@@ -3388,7 +3388,9 @@ var QR_MATRIX = [
     return null;
   }
 
-  /* --- V3.09：問は1つだけ開く（利用者裁定「問2タップしたら問1閉じるみたいな感じ」） ---
+  /* --- V3.09：問は1つだけ開く（利用者裁定「問2タップしたら問1閉じるみたいな感じ」）
+         → V3.17 で撤回。開閉は問ごとに独立、間違えた問は最初から全部開く。1つだけになったのは全体解説（§V3.17） --- */
+  /* --- 一覧の描き方 ---
      一覧は見出しだけを全問ぶん描く（○×・問N・問題文2行・あなたの答え／正解）。中身（肢のブロック・全体解説・
      比較表・図解）は**開いたときに描き、閉じたら捨てる**。120問でも DOM は見出し120個＋開いている1問ぶんで済むので、
      V3.06 の30問ずつのページは要らなくなった（撤去）。最初は問1だけ開く。
@@ -3399,13 +3401,13 @@ var QR_MATRIX = [
     (ex.answers || []).forEach(function (a) { by[a.q_id] = a; });
     rv.answersBy = by;
     var html = '';
-    var firstWrong = -1;
+    var wrongs = [];
     ex.questions.forEach(function (q, i) {
       var a = by[q.q_id];
       var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
       var picked = a ? a.atoms.filter(function (x) { return x.picked; }).map(function (x) { return x.original_num; }) : [];
       var right = !!(a && a.answered_right);
-      if (!right && firstWrong < 0) { firstWrong = i; }
+      if (!right) { wrongs.push(i); }   /* V3.17：間違えた問は全部開く */
       var ansNums = picked.map(circled).join('') || (a && a.numeric_input !== null && a.numeric_input !== undefined ? String(a.numeric_input) : '未回答');   /* V3.10：未回答のまま提出できる */
       var cor = atoms.filter(function (x) { return x.is_correct; });
       var corNums = cor.map(function (x) { return circled(x.original_num); }).join('');
@@ -3427,9 +3429,11 @@ var QR_MATRIX = [
               '<div class="xr-body" hidden></div></li>';
     });
     setHtml('#exam-review-list', html);
-    rv.openIndex = -1;
-    /* V3.13：最初に開くのは**最初に間違えた問**。全問正解なら開かない（読む用が無いのに1問だけ開くと迷う） */
-    if (firstWrong >= 0) { openExamReviewQ(firstWrong, { noScroll: true }); }
+    /* V3.17（利用者裁定）：予め閉じておくのは**正解した問だけ**。
+       「復習時に予め閉じててほしいのは正解だった問題だけです。不正解の問題まで閉じちゃってる」
+       V3.13 は「最初に間違えた問だけ」開いていたので、2問目以降の誤答は毎回押して開く必要があった。
+       全問正解なら1問も開かない（読む用が無い）。 */
+    wrongs.forEach(function (i) { openExamReviewQ(i, { noScroll: true }); });
     if (global.scrollTo) { global.scrollTo(0, 0); }
   }
 
@@ -3495,32 +3499,42 @@ var QR_MATRIX = [
     return '<div class="rv-choices">' + blocks + '</div>' + overall + table + fig;
   }
 
-  /* 問を開く。開いていた問は閉じて中身を捨てる（評価は保留に入っているので描き直せる） */
+  /* 問を開く／畳む。V3.17：開閉は**問ごとに独立**（他の問は触らない）。
+     畳むときは中身を捨てる（評価は保留に入っているので、開き直せば押した評価のまま描ける）。 */
   function openExamReviewQ(index, opts) {
     var ex = st.exam, rv = ex.review;
     if (!rv) { return; }
     var list = $('#exam-review-list');
     if (!list) { return; }
-    var items = list.querySelectorAll('.xr-q');
-    var prev = (rv.openIndex >= 0) ? items[rv.openIndex] : null;
-    if (prev) {
-      prev.classList.remove('is-open');
-      var ph = prev.querySelector('.xr-head'); if (ph) { ph.setAttribute('aria-expanded', 'false'); }
-      var pb = prev.querySelector('.xr-body'); if (pb) { pb.innerHTML = ''; pb.hidden = true; }
-    }
-    if (index === rv.openIndex) { rv.openIndex = -1; return; }   /* 同じ問をもう一度押したら畳むだけ */
-    var li = items[index];
-    if (!li) { rv.openIndex = -1; return; }
-    var q = ex.questions[index];
+    var li = list.querySelectorAll('.xr-q')[index];
+    if (!li) { return; }
     var body = li.querySelector('.xr-body');
+    var h = li.querySelector('.xr-head');
+    if (li.classList.contains('is-open')) {           /* 同じ見出しをもう一度押したら畳む */
+      li.classList.remove('is-open');
+      if (h) { h.setAttribute('aria-expanded', 'false'); }
+      if (body) { body.innerHTML = ''; body.hidden = true; }
+      return;
+    }
+    var q = ex.questions[index];
     body.innerHTML = examReviewBodyHtml(q, index);
     body.hidden = false;
     li.classList.add('is-open');
-    var h = li.querySelector('.xr-head'); if (h) { h.setAttribute('aria-expanded', 'true'); }
-    rv.openIndex = index;
+    if (h) { h.setAttribute('aria-expanded', 'true'); }
     if (!(opts && opts.noScroll) && li.scrollIntoView) {
       global.setTimeout(function () { li.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 30);
     }
+  }
+
+  /* V3.17：全体解説**だけ**は1つしか開かない（利用者裁定「1つしか開けないのは全体解説だけ。その他はいい」）。
+     いちばん長い読み物なので、複数開いたままだと今どこを読んでいるのか分からなくなる。
+     比較表・図解は短いので何個開いても構わない。 */
+  function onExamReviewOverallToggle(det) {
+    if (!det.open) { return; }
+    var list = $('#exam-review-list');
+    if (!list) { return; }
+    var all = list.querySelectorAll('details.xr-overall[open]');
+    for (var i = 0; i < all.length; i++) { if (all[i] !== det) { all[i].open = false; } }
   }
 
   /* 図解：details を開いた瞬間に1回だけ描く（通常の解説画面の「図解を見る」と同じ。エンジンは初回に読む） */
@@ -7478,7 +7492,7 @@ var QR_MATRIX = [
     on($('#exam-review-list'), 'click', function (ev) {
       var b = ev.target.closest('.eval-btn');
       if (b && !b.disabled) { onExamReviewEval(b); return; }
-      /* V3.09：見出しで開閉（開くのは1問だけ） */
+      /* V3.09：見出しで開閉 → V3.17：開閉は問ごとに独立（他の問は畳まない） */
       var h = ev.target.closest('.xr-head');
       if (h) { var li = h.closest('.xr-q'); if (li) { openExamReviewQ(parseInt(li.getAttribute('data-index'), 10)); } }
     });
@@ -7487,7 +7501,9 @@ var QR_MATRIX = [
     if (xrList) {
       xrList.addEventListener('toggle', function (ev) {
         var det = ev.target;
-        if (det && det.classList && det.classList.contains('xr-fig')) { onExamReviewFigToggle(det); }
+        if (!det || !det.classList) { return; }
+        if (det.classList.contains('xr-fig')) { onExamReviewFigToggle(det); return; }
+        if (det.classList.contains('xr-overall')) { onExamReviewOverallToggle(det); }   /* V3.17 */
       }, true);
     }
     on($('#exam-review-done'), 'click', function () { finishExamReview(true); });

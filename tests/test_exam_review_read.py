@@ -11,7 +11,8 @@
      V3.09 の全体解説・比較表・図解は「文字が緑なだけ」の行で、押せることが読み取れなかった。
 
 【ここで固定すること】
-  ・最初に開くのは**最初に間違えた問**。全問正解なら1問も開かない
+  ・最初に開くのは**間違えた問**。全問正解なら1問も開かない
+    （V3.13 は「最初に間違えた問だけ」だったが、V3.17 で「間違えた問は全部」に変えた。→ test_exam_review_open.py）
   ・正解した問の見出しは「正解 ③ ＋ その肢の本文」（自分の答えは出さない。正解と同じなので）
   ・間違えた問の見出しは今までどおり「あなたの答え ② ／ 正解 ①」
   ・ボタンで開く形の解説は、本文の頭に正誤チップを足さない（左の .cx-verdict が常に出している）
@@ -33,8 +34,8 @@ p1, p2 = rd("20260815_main_part1_V1.38.js"), rd("20260815_main_part2_V1.45.js")
 ok("ボタンで開く形だけチップを足さない", "prepareAtomExplanation(a.explanation, a, { noChip: true })" in p1
    and "if (mode === 'open') { return prepareAtomExplanation(a.explanation, a); }" in p1
    and "function prepareAtomExplanation(html, atom, opts)" in p1)
-ok("最初に開くのは最初に間違えた問", "if (!right && firstWrong < 0) { firstWrong = i; }" in p2
-   and "if (firstWrong >= 0) { openExamReviewQ(firstWrong, { noScroll: true }); }" in p2
+ok("開くのは間違えた問（正解した問は開かない）", "if (!right) { wrongs.push(i); }" in p2
+   and "wrongs.forEach(function (i) { openExamReviewQ(i, { noScroll: true }); });" in p2
    and "openExamReviewQ(0, { noScroll: true });" not in p2)
 ok("正解した問の見出しは「正解 ③ 本文」", "'正解 <b>' + esc(corNums) + '</b> <span class=\"xr-ans\">'" in p2
    and ".xr-sum.is-right .xr-ans{" in css)
@@ -143,7 +144,7 @@ with sync_playwright() as p:
 
     a = run(pg, False)
     ok("復習は全問ぶん並ぶ", a["rows"], json.dumps(a, ensure_ascii=False)[:260])
-    ok("最初に開くのは最初に間違えた問（1問だけ）", a["openIdx"] == 0 and a["openCount"] == 1, a["openIdx"])
+    ok("開くのは間違えた問（問1・問2の2問。正解した問は開かない）", a["openIdx"] == 0 and a["openCount"] == 2, a["openIdx"])
     ok("正解した問は閉じたまま・問題文は出る", a["rightClosed"] and a["rightStem"])
     ok("正解した問の見出しは「正解 ③ ＋ 肢の本文」（自分の答えは出さない）", a["rightSum"])
     ok("間違えた問の見出しは「あなたの答え ／ 正解」のまま", a["wrongSum"])
