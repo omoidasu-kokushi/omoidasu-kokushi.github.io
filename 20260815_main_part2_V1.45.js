@@ -920,7 +920,7 @@
     });
 
     function fieldLabel(f) {
-      return { stem: '問題文', atom: '選択肢', explanation: '解説', table: '比較表' }[f] || f;
+      return { stem: '問題文', atom: '選択肢', explanation: '解説', table: '一緒に覚えたい！' }[f] || f;
     }
   }
 
@@ -3491,7 +3491,7 @@ var QR_MATRIX = [
       ? '<details class="xr-overall"><summary>全体解説</summary><div class="explanation-body">' + clean(q.overall_explanation) + '</div></details>' : '';
     /* V3.09：比較表・図解（タップで表示）。比較表は通常の解説画面と同じ prepareExplanationHtml。図解は開いたときに描く */
     var table = (q.comparison_table && String(q.comparison_table).trim())
-      ? '<details class="xr-table"><summary>比較表を見る</summary><div class="explanation-body">' +
+      ? '<details class="xr-table"><summary>一緒に覚えたい！</summary><div class="explanation-body">' +
         (typeof M.prepareExplanationHtml === 'function' ? M.prepareExplanationHtml(q.comparison_table) : clean(q.comparison_table)) +
         '</div></details>' : '';
     var fig = (q.mermaid_code && String(q.mermaid_code).trim())
@@ -4744,7 +4744,7 @@ var QR_MATRIX = [
         '手順は取り込み欄のすぐ上、「はじめての方へ」を開いてください。</p>' +
         '<ul>' +
         '<li><b>10列目の正解は 0 から数えます。</b>1番目が正解なら 0 です。</li>' +
-        '<li><b>8列目は問題文</b>、解説は比較表も図解も<b>すべて11列目</b>です。</li>' +
+        '<li><b>8列目は問題文</b>、解説は一緒に覚えたい！も図解も<b>すべて11列目</b>です。</li>' +
         '<li>同じ問題をもう一度取り込んでも、★・評価・書き換えた解説は消えません。増えるのではなく上書きされます。</li>' +
         '<li>正解の指定と解説の記述が食い違う行は、取り込まずに行番号を出します。' +
         'この検算があるので、1行ズレたまま何百問も覚えてしまう事故が起きません。</li>' +
@@ -6662,7 +6662,7 @@ var QR_MATRIX = [
                 text:'解説が回りくどいと感じたら、鉛筆から自分の言葉に書き換えられます。' +
                      '元の解説はいつでも開けます。' },
     detail:   { step:'5/6 詳しい解説', sel:'#btn-detail',
-                text:'全体解説・比較表・図解はここにまとめてあります。' +
+                text:'全体解説・一緒に覚えたい！・図解はここにまとめてあります。' +
                      '1肢ずつの解説で足りないときに開いてください。' },
     summary:  { step:'6/6 評価の一覧', sel:'#tz-summary',
                 text:'4つの丸は各選択肢の評価です。濃い色が自分で選んだもの。タップでその選択肢へ移動します。' },

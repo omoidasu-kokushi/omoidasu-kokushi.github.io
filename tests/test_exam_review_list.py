@@ -38,7 +38,7 @@ ok("復習の画面に「次へ」は無い（終えるボタンだけ）", "btn
 ok("問は見出しで開閉する（ページの帯は撤去）", "function openExamReviewQ" in p2 and "var REVIEW_PAGE = 30;" not in p2 and 'id="exam-review-pager"' not in ih
    and "body.innerHTML = ''; body.hidden = true;" in p2)
 ok("開いた問へ寄せるとき固定ヘッダーの下に潜らない（scroll-margin-top）", "scroll-margin-top:96px" in css[css.index(".xr-q{"):css.index(".xr-q{")+200])
-ok("比較表・図解はタップで表示。図解は自分の枠へ描く", "'<details class=\"xr-table\"><summary>比較表を見る</summary>" in p2
+ok("一緒に覚えたい！・図解はタップで表示。図解は自分の枠へ描く", "'<details class=\"xr-table\"><summary>一緒に覚えたい！</summary>" in p2
    and "'<details class=\"xr-fig\"><summary>図解を見る</summary>" in p2 and "function renderMermaidInto" in p1 and "M.renderMermaidInto(frame, q.mermaid_code)" in p2)
 ok("評価は押した瞬間に保留へ（次へ無し）", "function onExamReviewEval" in p2 and "updateExamPending(qid, patch)" in p2)
 ok("画面を離れたら記録（beforeLeave）", "hooks.beforeLeave(state.screen, screen)" in p1 and "M.hooks.beforeLeave = function (from, to) {" in p2
