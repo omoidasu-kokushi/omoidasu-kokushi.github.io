@@ -132,9 +132,14 @@ def runtime_checks():
            r["before"] is True and r["after"] is False and r["screen"] == "home", json.dumps(r))
 
         # 受け方を選んだら、そのスタイルで始まる
+        # V2.96／V2.99：鍵が無いプチ模試は印（free_a）で組み、そのとき ranks（S/A 絞り）は外す
+        # （体験用の球は30問ちょうど。絞ると size に届かず、通常の組み方へ落ちて印の外が混ざる）。
+        # ここで見たいのは「直前モードを選ぶと S/A＋既習寄り」という受け方の配分なので、
+        # 購入済み（印で組まない）の道で見る。観点は変えていない。
         r = pg.evaluate("""async () => {
-          const S = window.Storage, K = window.Scheduler;
+          const S = window.Storage, K = window.Scheduler, L = window.NurseLicense;
           const origUnlock = S.getUnlockState, origWarn = K.shouldWarnBeforeExam, origQ = K.buildQueue;
+          const origPaid = L.isPaid; L.isPaid = () => true;
           let seen = null;
           S.getUnlockState = () => Promise.resolve([{ id:'mock_30', unlocked:true }]);
           K.shouldWarnBeforeExam = () => Promise.resolve({ warn:false });
@@ -153,6 +158,7 @@ def runtime_checks():
                 await new Promise(r => setTimeout(r, 40)); } }
           } finally {
             S.getUnlockState = origUnlock; K.shouldWarnBeforeExam = origWarn; K.buildQueue = origQ;
+            L.isPaid = origPaid;
           }
           return { ranks: seen && seen.ranks, mix: seen && seen.mix,
                    style: window.Half2Impl.st && window.Half2Impl.st.exam

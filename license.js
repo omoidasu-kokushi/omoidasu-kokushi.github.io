@@ -33,9 +33,20 @@
     y: 'TAIciL2mXb2eeBVeIV9IjT9uL8Vu_oxNHzZ4PrTUINM'
   };
 
-  /* 無料で解ける問題数。「解いた問題」＝全部の肢に一度は答えた問題。
-     肢ではなく問題で数える理由は、利用者から見た数え方と揃えるため
-     （ホームの「残り◯問」も問題で数えている）。 */
+  /* --- 無料で開く範囲（V3.00・案B・利用者裁定 2026-09-11） ---
+     数ではなく**単元**で決める。鍵が無いとき、新しい問題として出すのは
+       ・単元が FREE_UNITS のもの（＝過去問の必修。出典を問わない）
+       ・印つきの予想問題（体験用の模試の球・free_a／free_b）
+       ・一度でも触った問題（復習は止めない・V1.53 の原則）
+     だけ。無料版の設計（2026-09-08）「必修は全部無料。必修を人質に取らない」をそのまま符号化した。
+     数（FREE_LIMIT）で止めると、必修249問を解き切れない（200問で止まる）うえ、
+     必修が増えるたびに数を直すことになる。単元なら数を持たない（§1-3）。
+     判定は単元名に FREE_UNITS の語を含むか（scheduler の isHissu と同じ見分け方）。 */
+  var FREE_UNITS = ['必修'];
+
+  /* 旧：無料で解ける問題数（V1.53）。**V3.00 からは門に使わない（撤廃）。**
+     定数は残す：起動診断（index.html の REQUIRED）と旧テストが「ある」ことを見るため。
+     数える意味はもう無い。使い切りの文言（「200問を解き終えました」）も V3.00 で消した。 */
   var FREE_LIMIT = 200;
 
   var PREFIX = 'OMOI1';
@@ -143,24 +154,39 @@
   function isPaid() { return !!state.ok; }
   function payload() { return state.payload; }
 
-  /* 無料枠の残り。home の値をそのまま渡す。
-     ここで数え直さないのは、数え方が2箇所に分かれると必ずずれるから。 */
+  /* 単元が無料の範囲か。 */
+  function unitIsFree(unit) {
+    var u = String(unit || '');
+    for (var i = 0; i < FREE_UNITS.length; i++) {
+      if (u.indexOf(FREE_UNITS[i]) >= 0) { return true; }
+    }
+    return false;
+  }
+
+  /* 無料の状態。home の solved_ever をそのまま渡す（数え方を2箇所に分けない）。
+     V3.00：locked は常に false。門は「解いた数」ではなく単元で決めるので、
+     「使い切った」という状態そのものが無い。止まるのは範囲を選んだときで、
+     それは scheduler の buildQueue が options.freeUnits で判定する。
+     limit／left は無い（null）。used は記録として返す（ホームの表示には使わない）。 */
   function gate(solvedEver) {
     var used = Math.max(0, Number(solvedEver || 0));
     if (isPaid()) {
-      return { paid: true, locked: false, used: used, limit: null, left: null };
+      return { paid: true, locked: false, used: used, limit: null, left: null, units: null };
     }
     return {
       paid: false,
-      locked: used >= FREE_LIMIT,
+      locked: false,
       used: used,
-      limit: FREE_LIMIT,
-      left: Math.max(0, FREE_LIMIT - used)
+      limit: null,
+      left: null,
+      units: FREE_UNITS.slice()
     };
   }
 
   global.NurseLicense = {
     FREE_LIMIT: FREE_LIMIT,
+    FREE_UNITS: FREE_UNITS,        /* V3.00 */
+    unitIsFree: unitIsFree,        /* V3.00 */
     verify: verify,
     load: load,
     activate: activate,

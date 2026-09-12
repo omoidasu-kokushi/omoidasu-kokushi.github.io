@@ -87,6 +87,8 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
+    # V2.99：同梱データ（見本＋体験用）の取り込みが終わってから数える（数が動いている最中に測らない）
+    pg.wait_for_function("window.__INIT_DONE === true", timeout=60000)
 
     d = pg.evaluate("""async (t) => {
       const r = await window.Storage.importText(t);

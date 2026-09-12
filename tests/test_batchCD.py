@@ -70,11 +70,14 @@ with sync_playwright() as pw:
         draws.push(L.findIndex(x => x.q_id === target.q_id));
         if (nq.hissu) hissu = { dir: nq.hissu.dir, share: nq.hissu.share };
       }
-      return { total: qs.length, unAtoms: un, target: target.q_id, draws, hissu };
+      /* V2.99：体験用の予想問題（pool mock・90問）も同梱されるようになった。
+         「シードが入りきったか」は本体（main）の数で見る。 */
+      return { total: qs.filter(q => (q.pool || 'main') !== 'mock').length, unAtoms: un, target: target.q_id, draws, hissu };
     }""")
     # V2.89（2026-09-09）：同梱シードを453問 → 必修249問へ入れ替えた（利用者裁定）。
     # 見たいのは「未学習の必修が枠で切られないか」なので、問数そのものは
     # 固定値ではなく「シードが入りきっているか」だけを見る。
+    # V2.99：体験用の予想問題90問（pool mock）も同梱される。数えるのは本体（main）だけ。
     ok("シードが入りきってから検証している", r["total"] == 249, str(r["total"]))
     ok("未学習が対象の肢だけ残っている", 0 < r["unAtoms"] <= 6, r["unAtoms"])
     ok("必修の枠は cap で働いている（前提の確認）",

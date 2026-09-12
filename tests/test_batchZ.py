@@ -200,7 +200,8 @@ with sync_playwright() as p:
       const cs = await S.getConceptStats();
       const atoms = await S.getAllAtoms();
       const have = new Set();
-      atoms.forEach(a => (a.tags || []).forEach(t => have.add(t)));
+      /* V2.99：模試待ち（pool mock）の肢のタグはノックに出せない。それ以外から選ぶ */
+      atoms.filter(a => a.pool !== 'mock').forEach(a => (a.tags || []).forEach(t => have.add(t)));
       const tag = (cs.find(x => have.has(x.tag)) || {}).tag
                 || Array.from(have)[0]
                 || (window.CONCEPT_TAGS_MASTER || [])[0].tag;

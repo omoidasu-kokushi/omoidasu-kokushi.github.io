@@ -29,12 +29,15 @@ with sync_playwright() as p:
         pg.wait_for_timeout(200)
     pg.wait_for_timeout(300)
 
+    # V2.99：体験用の予想問題90問（別ファイル）も同梱されるようになった。取り込み完了の合図を待つ。
+    pg.wait_for_function("window.__INIT_DONE === true", timeout=60000)
     base = pg.evaluate("""async () => ({
         q: await window.Storage.countQuestions(),
         a: await window.Storage.countAtoms() })""")
     # V1.42：シードを実データ457問に差し替えた。件数は questions.js の
     # SEED_QUESTIONS_TSV の行数で決まるので、ここでは固定値にしない。
-    SEED_Q = base["q"]
+    # V2.99：総数には体験用90問も入る。再インポートで「更新」される数はシードの問数。
+    SEED_Q = pg.evaluate("() => JSON.parse(window.SEED_QUESTIONS_TSV).questions.length")
     ok("シードが入っている（100問以上）", base["q"] >= 100 and base["a"] >= base["q"] * 2, str(base))
 
     # ユーザーデータを仕込む：★・メモ・進捗
@@ -71,7 +74,7 @@ with sync_playwright() as p:
                  memo: a.user_memo, qmemo: q.user_memo, star: a.is_starred, qstar: q.is_starred,
                  due: a.due_date, cnt: a.answer_count, ev: a.last_eval }; }""",
         seeded)
-    ok("問題数が増えていない", after["qc"] == SEED_Q, str(after["qc"]))
+    ok("問題数が増えていない", after["qc"] == base["q"], str(after["qc"]))
     ok("選択肢メモが消えていない", after["memo"] == "**自分の言葉**の解説", str(after["memo"]))
     ok("全体解説メモが消えていない", after["qmemo"] == "全体解説の書き換え", str(after["qmemo"]))
     ok("★（問題／選択肢）が消えていない", after["star"] and after["qstar"])
@@ -90,7 +93,8 @@ with sync_playwright() as p:
                  q: rep.questions, a: rep.atoms }; }""")
     ok("進捗リセットで学習済みが0になる", rt["mid"] == 0, str(rt))
     ok("バックアップ復元で学習済みが戻る", rt["back"] > 0, str(rt))
-    ok("復元件数がシードと一致", rt["q"] == SEED_Q and rt["a"] == base["a"], str(rt))
+    # V2.99：復元されるのは同梱ぶん全部（見本249＋体験用90）。総数（base）と一致することを見る
+    ok("復元件数がシードと一致", rt["q"] == base["q"] and rt["a"] == base["a"], str(rt))
     # 問題データを丸ごと含むので、シードの量に比例する。
     # 1問あたり8KBを超えたら、どこかで不要なものを抱え込んでいる。
     ok("バックアップJSONの1問あたりが8KB未満（%d KB / %d問）"

@@ -75,6 +75,12 @@ def runtime_checks():
         pg.wait_for_timeout(600)
 
         # ---------- 取り込み ----------
+        # V2.99：体験用の予想問題90問（pool mock・印つき）が同梱されるようになった。
+        # 模試待ちの数は「同梱ぶん」を基準に、この試験が入れた12問の足し引きで見る。
+        pg.wait_for_function("window.__INIT_DONE === true", timeout=60000)
+        base = pg.evaluate("""async () => { const h = await window.Scheduler.getHomeState();
+          return { lockedQ: h.mock_locked_questions || 0, lockedA: h.mock_locked_atoms || 0,
+                   diff: (h.total_questions_all || 0) - (h.total_questions || 0) }; }""")
         r = pg.evaluate("""async (seedJson) => {
           const S = window.Storage, K = window.Scheduler;
           const rep = await S.importText(seedJson);
@@ -91,10 +97,10 @@ def runtime_checks():
         ok("問題レコードに pool が入る", r["qPool"] == "mock", json.dumps(r))
         ok("アトムにも pool が落ちる（候補を組むのはアトム側）",
            r["aPool"] == "mock", json.dumps(r))
-        ok("模試待ちの問題数を数えられる", r["lockedQ"] == 12, json.dumps(r))
-        ok("模試待ちのアトム数を数えられる", r["lockedA"] == 48, json.dumps(r))
+        ok("模試待ちの問題数を数えられる", r["lockedQ"] == base["lockedQ"] + 12, json.dumps(r))
+        ok("模試待ちのアトム数を数えられる", r["lockedA"] == base["lockedA"] + 48, json.dumps(r))
         ok("見える問題数からは外れる",
-           r["totalAll"] - r["totalMain"] == 12, json.dumps(r))
+           r["totalAll"] - r["totalMain"] == base["diff"] + 12, json.dumps(r))
 
         # ---------- 出題経路 ----------
         r = pg.evaluate("""async () => {
@@ -129,11 +135,12 @@ def runtime_checks():
           const q = await K.buildQueue({ mode:'exam', count:20, applyGuard:false,
                      shuffle:true, includeMock:true,
                      mix:{ fresh:0, faded:0, unseen:1.0 } });
-          const mock = q.questions.filter(x => String(x.q_id).indexOf('MOCKQ_') === 0).length;
+          /* V2.99：同梱の体験用90問も pool mock。初見枠が予想問題（pool mock）で埋まることを見る */
+          const mock = q.questions.filter(x => x.pool === 'mock').length;
           return { mock, total: q.questions.length };
         }""")
         ok("初見枠は予想問題から先に埋まる（過去問を模試に食われない）",
-           r["mock"] == 12, json.dumps(r))
+           r["mock"] == 20 and r["total"] == 20, json.dumps(r))
 
         # ---------- 模試で出会うと本体へ昇格する ----------
         r = pg.evaluate("""async () => {
@@ -158,7 +165,7 @@ def runtime_checks():
         ok("模試で出会った予想問題は復習に乗る",
            r["inRev"] == 1, json.dumps(r))
         ok("以降は普通の問題として出せる", r["inById"] == 1, json.dumps(r))
-        ok("待機中の数がひとつ減る", r["lockedQ"] == 11, json.dumps(r))
+        ok("待機中の数がひとつ減る", r["lockedQ"] == base["lockedQ"] + 11, json.dumps(r))
 
         # ---------- 分母から外れていること ----------
         r = pg.evaluate("""async () => {
@@ -177,7 +184,7 @@ def runtime_checks():
                    lvTotal: lv.stats.total_atoms };
         }""")
         ok("模試の解禁の分母から外れる（永久に解禁できない状態を作らない）",
-           r["unlockAll"] - r["unlockDenom"] == 11, json.dumps(r))
+           r["unlockAll"] - r["unlockDenom"] == base["diff"] + 11, json.dumps(r))
         ok("分析ダッシュボードの分母から外れる（永久に赤いグラフを作らない）",
            r["dashTotal"] > 0, json.dumps(r))
         ok("ツリーの未学習バッジに数えない（消えない催促を作らない）",
@@ -196,7 +203,7 @@ def runtime_checks():
         }""", pg.evaluate(SEED))
         ok("取り込み直すと pool はデータどおりに戻る", r["pool"] == "mock", json.dumps(r))
         ok("それでも一度出会った問題は本体に残る（解放は台帳から導いている）",
-           r["inById"] == 1 and r["lockedQ"] == 11, json.dumps(r))
+           r["inById"] == 1 and r["lockedQ"] == base["lockedQ"] + 11, json.dumps(r))
 
         # ---------- 画面 ----------
         pg.evaluate("window.Main.refreshHome()")

@@ -166,7 +166,7 @@
     { level: 2, name: '数量マイルストーン', milestones: [100, 300, 500, 1000] },
     { level: 3, name: '全問題読破',         milestones: null },
     { level: 4, name: '弱点・つまずき一掃', milestones: null },
-    { level: 5, name: '完全制覇・殿堂入り', milestones: null }
+    { level: 5, name: 'いじわる模試 合格・殿堂入り', milestones: null }   /* V3.07：全マスター → いじわる模試の合格 */
   ];
 
   /* 3段階ビジュアルテーマ（第15章） */
@@ -794,6 +794,9 @@
            **いま入れておかないと、これから解く分のデータが永久に取れない。** */
         think_ms       : isNum(ctx.thinkMs) ? Math.round(ctx.thinkMs) : null
       };
+      /* V3.05：模試の☐（用途自由の印）。付けたかどうかを記録に残す（評価には使わない）。
+         模試以外の経路は渡さないので、項目そのものが載らない（§18 の ground_on は模試だけ）。 */
+      if (typeof ctx.groundOn === 'boolean') { log.ground_on = ctx.groundOn; }
 
       return S.commitAnswer(atomId, patch, log).then(function () {
         return S.getLogsByAtom(atomId);
@@ -885,6 +888,10 @@
   }
 
   /* ---- 模試の履歴連動 自動昇格／安全降格（第11章③） ----
+   * 【V3.05 から呼ばれない】利用者裁定（2026-09-12）「チェックマークが長期記憶への昇格とかはしないでいい。
+   * 用途自由で、迷ってる二択のチェックとかそういうのを一覧で確認するためにある」。
+   * 模試の評価は recommendEvaluations（第4章③）の既定を保留に置き、復習の［次へ］で確定する（part2 gradeExam）。
+   * 関数は旧記録（exam_pattern A/B/C）の意味を残すために置いておく。
    * 【正解 ＋ 根拠ON】
    *   パターンA（初見 または 過去『難』『普』）      → [易] 30日後 / 80pt
    *   パターンB（すでに『簡単30日以上』へ到達済み） → [マ] 180日後 / 100pt
@@ -1845,6 +1852,28 @@
           if (options.solvedOnly) {
             cands = cands.filter(function (c) { return c.unlearned === 0; });
           }
+          /* --- 無料版の門：単元で決める（V3.00・案B） ---
+             options.freeUnits があれば、新しい問題として出すのは
+               ・単元名に freeUnits の語を含む問題（＝必修。isHissu と同じ見分け方）
+               ・印つきの予想問題（pool mock かつ variant。体験用の模試の球）
+               ・一度でも触った問題（unlearned < 肢数。復習は止めない）
+             だけ。solvedOnly（V1.53）と同じで、ここは「無料版かどうか」を知らない。
+             ライセンスを見て freeUnits を渡すかどうかは呼び出し側（main）が決める。
+             止まったかどうか（門で全部落ちた）は free_gated で返す。範囲にもとから問題が
+             無いのと、門で落ちたのは別の案内になる（買い切りの案内は門のときだけ）。 */
+          var freeGated = false;
+          if (Array.isArray(options.freeUnits) && options.freeUnits.length) {
+            var fuList = options.freeUnits.map(function (u) { return String(u); });
+            var beforeFree = cands.length;
+            cands = cands.filter(function (c) {
+              if (c.unlearned < c.atoms.length) { return true; }
+              if (c.pool === 'mock' && c.variant) { return true; }
+              var un = String(c.unit || '');
+              for (var fi = 0; fi < fuList.length; fi++) { if (un.indexOf(fuList[fi]) >= 0) { return true; } }
+              return false;
+            });
+            freeGated = beforeFree > 0 && cands.length === 0;
+          }
           /* --- ランクで絞る（V1.50・直前モード用） ---
              本番の出題も基本問題が中心なので、S/A に寄せても
              「本番よりずっと易しい」にはならない。C を外すのが主な効果。 */
@@ -1858,10 +1887,13 @@
               mode: mode, questions: [],
               reason: options.solvedOnly
                 ? '無料でお試しいただける範囲を解き終えました'
-                : (wantVariant
-                    ? '印「' + wantVariant + '」の予想問題が入っていません'
-                    : '条件に合う問題が残っていません'),
-              locked: !!options.solvedOnly,
+                : (freeGated
+                    ? 'この範囲の新しい問題は製品版に入っています'   /* V3.02：画面の文字は「製品版」 */
+                    : (wantVariant
+                        ? '印「' + wantVariant + '」の予想問題が入っていません'
+                        : '条件に合う問題が残っていません')),
+              locked: !!options.solvedOnly || freeGated,
+              free_gated: freeGated,          /* V3.00 */
               variant: wantVariant,
               guard: null
             };
@@ -2365,15 +2397,34 @@
     return 100;
   }
 
+  /* --- Level 5 の再定義（V3.07・利用者裁定 2026-09-12） ---
+     旧：全アトムのマスター化（👑 ALL MASTERED）。マスターは30日以上のステップでしか押せず、
+         400日＋模試2回の通し検証で 15%。実質「模試を何度も受けた人」だけの到達点だった（§23-⑥）。
+         V3.05 で模試の昇格が無くなり、さらに遠のいた。
+     新：**いじわる模試（弱点120問）に合格したら Level 5**。「苦手なのばっか出されて合格点が出たら十分」。
+         進み具合＝解禁の進み（unlock_pct_mock_weak）の半分 → 解禁で50 → 受けて不合格で75 → 合格で100。
+         合格の印は meta.weak_mock_passed（永久。同期は片方でtrueなら true）。受けた印は weak_mock_taken。
+     全マスター（all_mastered）は情報として残す。Level・テーマ・王冠の条件には使わない。 */
+  function weakMockLevel(meta) {
+    var m = meta || {};
+    if (m.weak_mock_passed) { return { pct: 100, done: true, stage: 'passed' }; }
+    if (m.weak_mock_taken)  { return { pct: 75,  done: false, stage: 'taken' }; }
+    if (m.unlock_mock_weak) { return { pct: 50,  done: false, stage: 'unlocked' }; }
+    var up = isNum(m.unlock_pct_mock_weak) ? m.unlock_pct_mock_weak : 0;
+    return { pct: clamp(up, 0, 100) / 2, done: false, stage: 'locked' };
+  }
+
   function computeLevelRaw(preloaded) {
     return Promise.all([
       useAtoms(preloaded),
       S.getMeta('total_questions_answered', 0),
-      getScanAccuracy()
+      getScanAccuracy(),
+      S.loadMeta()
     ]).then(function (r) {
       var atoms = r[0];
       var totalAnswered = r[1] || 0;
       var scan = r[2];
+      var weak = weakMockLevel(r[3]);   /* V3.07 */
 
       /* --- 模試待ちの予想問題は、レベルの分母から外す（V1.56） ---
          Level 3 は「未解答アトムを0にする」。ランダムにも単元学習にも
@@ -2408,14 +2459,15 @@
       var l2Done = totalAnswered >= 1000;
       var l3Done = totalAtoms > 0 && unlearned === 0;
       var l4Done = totalAtoms > 0 && unlearned === 0 && hardOrNormal === 0;
-      var l5Done = totalAtoms > 0 && mastered === totalAtoms;
+      var l5Done = weak.done;                                  /* V3.07：いじわる模試の合格 */
+      var allMastered = totalAtoms > 0 && mastered === totalAtoms;   /* 情報として残す */
 
       var pcts = {
         1: scan.pct,
         2: milestonePct(totalAnswered, LEVEL_DEFS[1].milestones),
         3: totalAtoms > 0 ? ((totalAtoms - unlearned) / totalAtoms) * 100 : 0,
         4: totalAtoms > 0 ? ((totalAtoms - unlearned - hardOrNormal) / totalAtoms) * 100 : 0,
-        5: totalAtoms > 0 ? (mastered / totalAtoms) * 100 : 0
+        5: weak.pct                                              /* V3.07 */
       };
 
       var done = { 1: l1Done, 2: l2Done, 3: l3Done, 4: l4Done, 5: l5Done };
@@ -2460,9 +2512,11 @@
           mastered_atoms: mastered,
           unique_answered_questions: uniqueQ,
           total_answered_questions: totalAnswered,
-          scan_pct: scan.pct
+          scan_pct: scan.pct,
+          weak_mock_stage: weak.stage                           /* V3.07：locked／unlocked／taken／passed */
         },
-        all_mastered: l5Done
+        all_mastered: allMastered,
+        weak_mock_passed: l5Done                                /* V3.07 */
       };
     });
   }
@@ -2507,7 +2561,9 @@
               done_by_level: raw.done_by_level,
               stats: raw.stats,
               all_mastered: raw.all_mastered,
-              badge: raw.all_mastered ? '👑 ALL MASTERED' : null
+              weak_mock_passed: raw.weak_mock_passed,
+              /* V3.07：王冠はいじわる模試の合格。全マスターは別の印として残す（両方なら両方） */
+              badge: raw.weak_mock_passed ? '👑 いじわる模試 合格' : (raw.all_mastered ? '👑 ALL MASTERED' : null)
             };
           });
         });

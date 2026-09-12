@@ -33,10 +33,10 @@ js = read(p2)
 ok("模試の記録にも think_ms を載せる", "think_ms        : isNum(ctx.thinkMs)" in kjs)
 ok("受験中に反応時間を控える（採点は最後なので後からでは取れない）",
    "think_ms: (typeof M.thinkMsForCurrent === 'function')" in js)
-ok("採点で控えた値を渡す", "thinkMs: a.think_ms" in js)
+ok("採点で控えた値を渡す（V3.05：保留 → 記録のときに渡す）", "thinkMs: it.think_ms" in js and "think_ms: a.think_ms" in js)
 ok("なぜ模試だけ空欄だったかが書いてある", "模試だけが空欄" in kjs)
-ok("自動昇格・安全降格の規則が残っている（第11章③）",
-   "正解 ＋ 根拠ON" in js and "安全降格" in js)
+ok("模試の評価の既定は 4-3（V3.05：第11章③の昇格・降格は利用者裁定で廃止）",
+   "K.recommendEvaluations(atoms, picked).recommendations" in js and "K.applyExamResult(" not in js)
 
 # ---------------------------------------------------------------- 実行時検査
 from playwright.sync_api import sync_playwright
@@ -127,15 +127,15 @@ with sync_playwright() as p:
         # 模試は確定すると自動で次へ進む（解説を挟まない）。［次へ］は押さない。
         pg.wait_for_timeout(120)
         # V2.17：最終問題の確定で「最終確認」一覧が開く（自動採点はしない）
-        if pg.is_visible("#modal-exam-confirm") or pg.is_visible("#modal-exam-result"):
+        if pg.is_visible("#screen-exam-sheet.is-active") or pg.is_visible("#modal-exam-result"):   # V3.04：一覧は画面
             break
 
     ok("30問を最後まで解ける（途中で止まらない）", answered >= 30, "answered=%d" % answered)
     ok("根拠ONにした問題がある（自動昇格の経路を通す）", ground >= 5, "ground=%d" % ground)
 
     # V2.17：提出前の最終確認を通ってから採点する
-    pg.wait_for_selector("#modal-exam-confirm:not([hidden])", timeout=8000)
-    ok("提出前の最終確認が出る（自動採点しない）", True)
+    pg.wait_for_selector("#screen-exam-sheet.is-active", timeout=8000)   # V3.04：解答一覧の画面
+    ok("提出前の解答一覧が出る（自動採点しない）", True)
     pg.click("#exam-confirm-submit")
     pg.wait_for_timeout(2500)
     res = pg.evaluate("""() => {
@@ -146,28 +146,33 @@ with sync_playwright() as p:
     }""")
     ok("採点結果のモーダルが出る", res["shown"], json.dumps(res)[:200])
     ok("総合の点が出ている", "/ 30" in res["score"], res["score"][:120])
-    ok("自動昇格・安全降格の内訳が出ている",
-       "自動昇格" in res["score"] and "安全降格" in res["score"], res["score"][:160])
+    ok("評価の既定の内訳が出ている（V3.05）",
+       "評価の既定" in res["score"] and "難しい" in res["score"], res["score"][:160])
 
+    # V3.05：提出時は保留。結果を閉じると既定のまま記録される
+    pg.click('#modal-exam-result [data-close]')
+    pg.wait_for_timeout(2500)
     srs = pg.evaluate("""async () => {
       const S = window.Storage;
       const logs = await S.getAllLogs();
       const exam = logs.filter(l => l.mode === 'exam');
       const atoms = await S.getAllAtoms();
-      const c = { d30: 0, m10: 0 };
-      atoms.forEach(a => { if (a.interval_code === '30d') c.d30++;
+      const c = { h1: 0, m10: 0 };
+      atoms.forEach(a => { if (a.interval_code === '1h') c.h1++;
                            else if (a.interval_code === '20m') c.m10++; });
       return { exam: exam.length,
                withThink: exam.filter(l => typeof l.think_ms === 'number').length,
                hasField: exam.every(l => 'think_ms' in l),
-               patterns: exam.reduce((m,l) => { m[l.exam_pattern] = (m[l.exam_pattern]||0)+1; return m; }, {}),
+               patterns: exam.reduce((m,l) => { m[l.eval] = (m[l.eval]||0)+1; return m; }, {}),
+               ground: exam.filter(l => typeof l.ground_on === 'boolean').length,
                steps: c };
     }""")
     ok("模試の記録が台帳に積まれる", srs["exam"] >= 30, json.dumps(srs))
-    ok("パターンA（正解＋根拠ON→易）が発生する", (srs["patterns"].get("A") or 0) > 0, json.dumps(srs["patterns"]))
-    ok("パターンC（不正解/根拠OFF→難）が発生する", (srs["patterns"].get("C") or 0) > 0, json.dumps(srs["patterns"]))
-    ok("易は30日後の段に入る", srs["steps"]["d30"] > 0, json.dumps(srs["steps"]))
+    ok("正解の問題は「普通」で記録される（4-3・初見）", (srs["patterns"].get("normal") or 0) > 0, json.dumps(srs["patterns"]))
+    ok("不正解の問題は「難しい」で記録される（4-3）", (srs["patterns"].get("hard") or 0) > 0, json.dumps(srs["patterns"]))
+    ok("普通は1時間後の段に入る（初見）", srs["steps"]["h1"] > 0, json.dumps(srs["steps"]))
     ok("難は20分後の段に入る（V2.20）", srs["steps"]["m10"] > 0, json.dumps(srs["steps"]))
+    ok("☐は ground_on として記録に残る（評価には使わない）", srs["ground"] >= 30, json.dumps(srs))
     ok("模試の記録に think_ms の欄がある（V1.78の抜けを塞いだ）", srs["hasField"], json.dumps(srs))
     ok("模試でも反応時間が入る", srs["withThink"] > 0, json.dumps(srs))
 

@@ -132,7 +132,10 @@ with sync_playwright() as p:
     # ---------- 概念別弱点ノック ----------
     prep = pg.evaluate("""async () => {
       const S = window.Storage, K = window.Scheduler;
-      const atoms = await S.getAllAtoms();
+      /* V2.99：体験用の予想問題（pool mock・模試待ち）が同梱された。模試待ちの肢に評価を
+         書き込むと、ノックに出せない（模試で初めて出会う）タグが理解率の最下位に来て
+         ノックが0問になる。実際には模試待ちの肢に評価は付かないので、ここでも触らない。 */
+      const atoms = (await S.getAllAtoms()).filter(a => a.pool !== 'mock');
       const now = Date.now(), patch = {};
       atoms.forEach((a, i) => { if (i % 3 === 0) return;
         patch[a.atom_id] = { answer_count:1, correct_count:(i%2), last_eval:['hard','normal','easy'][i%3],

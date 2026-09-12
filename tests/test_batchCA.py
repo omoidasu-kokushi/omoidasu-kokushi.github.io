@@ -101,7 +101,8 @@ with sync_playwright() as p:
       const S = window.Storage, K = window.Scheduler;
       const base = await K.buildDashboard({ level:'unit', metric:'hesitation' });
       /* 記録を作る：同じ中項目の問題に、速い/遅いを混ぜる */
-      const qs = (await S.getAllQuestions()).slice(0, 20);
+      /* V2.99：体験用の予想問題（pool mock・模試待ち）は分析の分母に入らない（§19）。本体から20問 */
+      const qs = (await S.getAllQuestions()).filter(q => (q.pool || 'main') !== 'mock').slice(0, 20);
       let t = Date.now() - 86400000;
       const batch = [];
       for (let i = 0; i < qs.length; i++) {

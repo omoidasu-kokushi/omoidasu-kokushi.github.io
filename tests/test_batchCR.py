@@ -23,7 +23,7 @@ p1 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part1_V*.js")))[-1
 js1, css = read(p1), read("styles.css")
 ok("○×が太く大きい", "font-size:1.45em" in css and "text-stroke" in css)
 ok("［？］が常設される（初回だけの分岐をやめた）", "ground-help-btn" in js1 and "if (exam) {" in js1)
-ok("初回は開いた状態", "var open = !state.groundHintShown" in js1)
+ok("［？］の既定は閉じる（V3.03・利用者裁定「小さいハテナ、押したら説明」）", "var open = !state.groundHintShown && false" in js1)
 
 from playwright.sync_api import sync_playwright
 with sync_playwright() as p:
@@ -52,10 +52,10 @@ with sync_playwright() as p:
       await until(() => M.state.session && M.state.session.mode === 'exam' && M.state.current);
       const btn = document.querySelector('.ground-help-btn');
       const hint = document.querySelector('.ground-hint');
-      out.btnShown = !!btn;
-      out.openFirst = !!(hint && !hint.hidden);
-      btn.click(); out.closed = hint.hidden;      /* 閉じる */
-      btn.click(); out.reopened = !hint.hidden;   /* もう一度開ける＝常設 */
+      out.btnShown = !!btn && btn.textContent.trim() === '?';
+      out.openFirst = !!(hint && hint.hidden);    /* V3.03：既定は閉じている */
+      btn.click(); out.closed = !hint.hidden;     /* 押すと開く */
+      btn.click(); out.reopened = hint.hidden;    /* もう一度押すと閉じる＝常設のトグル */
       /* 次の問題でもボタンが居る */
       const cur = M.state.current; cur.selected = [cur.atoms[0].original_num]; M.confirmAnswer();
       await new Promise(r => setTimeout(r, 250));
@@ -65,8 +65,8 @@ with sync_playwright() as p:
       out.collapsedNextQ = !!(hint2 && hint2.hidden);   /* 2問目以降は畳まれている */
       return out;
     }""")
-    ok("模試1問目：［？］が出て説明が開いている", r["btnShown"] and r["openFirst"], json.dumps(r))
-    ok("押すと閉じ、もう一度押すと開く", r["closed"] and r["reopened"], json.dumps(r))
+    ok("模試1問目：小さい［？］が出て説明は閉じている（V3.03）", r["btnShown"] and r["openFirst"], json.dumps(r))
+    ok("押すと開き、もう一度押すと閉じる", r["closed"] and r["reopened"], json.dumps(r))
     ok("2問目以降も［？］は残り、説明は畳まれている", r["persistsNextQ"] and r["collapsedNextQ"], json.dumps(r))
     ok("実行時エラーなし", not errs, json.dumps(errs[:3], ensure_ascii=False))
     br.close()

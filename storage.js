@@ -3218,7 +3218,11 @@
         ippan   : result.ippan || null,
         passed  : !!result.passed,
         elapsed_ms: result.elapsed_ms || 0,
-        by_unit : result.by_unit || null      /* ハーフ以上だけ入る */
+        by_unit : result.by_unit || null,     /* ハーフ以上だけ入る */
+        /* V2.98：印（variant）で組んだ模試はそう残す。無料版の「1回ぶん」は
+           【同じ模試・同じ印】の記録を数える。印無し（過去問で組んだ模試）は数えない。 */
+        variant : (result.variant !== undefined && result.variant !== null && String(result.variant) !== '')
+                    ? String(result.variant) : null
       };
       var dup = hist.some(function (x) {
         return x && x.exam_id === rec.exam_id && x.at === rec.at;
@@ -3249,6 +3253,14 @@
       var next = passed ? ((streak || 0) + 1) : 0;
       return setMeta('full_mock_pass_streak', next).then(function () { return next; });
     });
+  }
+
+  /* V3.07：いじわる模試の印。受けたら weak_mock_taken、合格したら weak_mock_passed（どちらも永久・戻さない）。
+     Level 5（王冠）の条件。同期は片方で true なら true（drive.js META_OR_KEYS）。 */
+  function recordWeakMockResult(passed) {
+    var w = { weak_mock_taken: true };
+    if (passed) { w.weak_mock_passed = true; }
+    return setMetaBulk(w).then(function () { return w; });
   }
 
   /* 5段階レベルの表示率。display_pct = Math.max(current_pct, max_pct) */
@@ -4091,6 +4103,7 @@
     EXAM_EASE             : EXAM_EASE,
     getUnlockState        : getUnlockState,
     recordFullMockResult  : recordFullMockResult,
+    recordWeakMockResult  : recordWeakMockResult,   /* V3.07 */
     saveExamResult        : saveExamResult,      /* V2.79 */
     getExamHistory        : getExamHistory,      /* V2.79 */
     countExamTaken        : countExamTaken,      /* V2.79 */

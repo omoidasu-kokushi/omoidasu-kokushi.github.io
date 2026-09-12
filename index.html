@@ -23,7 +23,7 @@
            background:#f2f5f9; text-align:center; }
   #splash.is-gone{ opacity:0; visibility:hidden; pointer-events:none; }
 </style>
-<link rel="stylesheet" href="./styles.css?v=2.96">
+<link rel="stylesheet" href="./styles.css?v=3.08">
 
 <!-- ==========================================================================
      起動自己診断（styles.css や各JSが読めなくても必ず動くよう、
@@ -45,19 +45,19 @@
      （スプラッシュのCSSだけが無く、素の縦積みで左上に出た）。
      ここを直したら sw.js の CORE_ASSETS も同じURLにすること。 */
   var REQUIRED = [
-    { file: "./questions.js?v=2.96",                 label: "問題データ層（103テーマ辞書・初回シード）",
+    { file: "./questions.js?v=3.08",                 label: "問題データ層（103テーマ辞書・初回シード）",
       check: function () { return !!(window.CONCEPT_TAGS_MASTER && window.CONCEPT_TAGS_MASTER.length); } },
-    { file: "./storage.js?v=2.96",                   label: "データ保存層（IndexedDB / TSV取り込み）",
+    { file: "./storage.js?v=3.08",                   label: "データ保存層（IndexedDB / TSV取り込み）",
       check: function () { return !!(window.Storage && window.Storage.APP_BUILD); } },
-    { file: "./scheduler.js?v=2.96",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
+    { file: "./scheduler.js?v=3.08",                 label: "進捗管理・ロジック（忘却/弱点/レベル）",
       check: function () { return !!(window.Scheduler && window.Scheduler.APP_BUILD); } },
     { file: "./20260815_main_part1_V1.38.js", label: "アプリ本体【前半】（起動・出題・解説）",
       check: function () { return !!(window.Main && window.Main.APP_BUILD); } },
     { file: "./20260815_main_part2_V1.45.js", label: "アプリ本体【後半】（分析・検索・設定）",
       check: function () { return !!(window.Half2Impl && window.Half2Impl.openSettings); } },
-    { file: "./drive.js?v=2.96",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
+    { file: "./drive.js?v=3.08",                     label: "ドライブ同期（学習の記録・図・メモの預け先）",
       check: function () { return !!(window.Drive && window.Drive.SCOPE); } },
-    { file: "./license.js?v=2.96",                   label: "ライセンス（買い切りの鍵の照合）",
+    { file: "./license.js?v=3.08",                   label: "ライセンス（買い切りの鍵の照合）",
       check: function () { return !!(window.NurseLicense && window.NurseLicense.FREE_LIMIT); } }
   ];
   function isOk(r) { try { return !!r.check(); } catch (e) { return false; } }
@@ -467,7 +467,7 @@
           ・<a href="./terms.html" target="_blank" rel="noopener">利用規約</a>
           ・<a href="./about.html" target="_blank" rel="noopener">このアプリについて</a>
         </p>
-        <p class="build-stamp">20260911_Omoidasu_V2.96</p>
+        <p class="build-stamp">20260911_Omoidasu_V3.08</p>
       </div>
     </section>
 
@@ -532,11 +532,16 @@
 
           <div class="answer-actions">
             <button type="button" class="btn-confirm" id="btn-confirm" disabled>解答を確定する</button>
-            <!-- V2.17：模試だけの前後移動（本番に即した行き来）。提出まで採点しない -->
+            <!-- V2.17：模試だけの前後移動（本番に即した行き来）。提出まで採点しない
+                 V3.03（利用者裁定）：3段にする。[前へ][次へ]／[解答一覧]／[提出する]。
+                 一覧と提出は別のボタン。提出は全問解答し終わるまで非アクティブ（part1 refreshExamNav）。 -->
             <div class="exam-nav" id="exam-nav" hidden>
-              <button type="button" class="exam-nav-btn" id="btn-exam-prev">◀ 前へ</button>
-              <button type="button" class="exam-nav-btn is-list" id="btn-exam-list">一覧・提出</button>
-              <button type="button" class="exam-nav-btn" id="btn-exam-next">次へ ▶</button>
+              <div class="exam-nav-row">
+                <button type="button" class="exam-nav-btn" id="btn-exam-prev">◀ 前へ</button>
+                <button type="button" class="exam-nav-btn" id="btn-exam-next">次へ ▶</button>
+              </div>
+              <button type="button" class="exam-nav-btn is-list" id="btn-exam-list">解答一覧</button>
+              <button type="button" class="exam-nav-btn is-submit" id="btn-exam-submit" disabled>提出する</button>
             </div>
           </div>
         </div>
@@ -884,6 +889,37 @@
     </section>
 
     <!-- ======================= EXAM (力試し) ======================= -->
+    <!-- V3.04：模試の解答一覧（全画面）。V2.17〜V3.03 はモーダル（#modal-exam-confirm）だった。
+         行＝番号・問題文（ひと回り小さく2行まで）・自分の答え・☑を付けた肢。行タップでその問題へ。
+         id は V2.17 のものを引き継ぐ（exam-confirm-list／-note／-close／-submit）。中身の描画は part2 openExamConfirm。 -->
+    <section id="screen-exam-sheet" class="screen" data-screen="exam_sheet">
+      <div class="screen-scroll">
+        <h2 class="sc-title">解答一覧</h2>
+        <p class="sc-lead" id="exam-confirm-note">行をタップするとその問題に戻れます。提出するまで採点されません。</p>
+        <ol class="exam-confirm-list" id="exam-confirm-list"></ol>
+        <div class="exam-sheet-actions">
+          <button type="button" class="btn-secondary" id="exam-confirm-close">解答に戻る</button>
+          <button type="button" class="btn-primary" id="exam-confirm-submit" disabled>提出する</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- V3.06：模試の復習（全画面のスクロール一覧・利用者裁定「次へボタンなど出さない。一覧でスクロールしていく感じ」）。
+         各問＝通常の解説画面と同じブロック（○×・自分の答え・☑・肢ごとの解説・評価ボタン）。30問ずつのページ。
+         評価は押した瞬間に保留（meta.exam_pending）へ。記録は画面を離れたとき。描画は part2 renderExamReviewPage。 -->
+    <section id="screen-exam-review" class="screen" data-screen="exam_review">
+      <div class="screen-scroll">
+        <h2 class="sc-title">模試の復習</h2>
+        <p class="sc-lead" id="exam-review-lead">評価は既定が入っています（誤答は「難しい」・正解は「普通」・前に解いた肢は前回のまま）。変えたい肢だけ押してください。この画面を離れると記録されます。</p>
+        <div class="exam-review-pager" id="exam-review-pager" hidden></div>
+        <ol class="exam-review-list" id="exam-review-list"></ol>
+        <div class="exam-review-pager is-bottom" id="exam-review-pager2" hidden></div>
+        <div class="exam-sheet-actions">
+          <button type="button" class="btn-primary" id="exam-review-done">評価を記録して終える</button>
+        </div>
+      </div>
+    </section>
+
     <section id="screen-exam" class="screen" data-screen="exam">
       <div class="screen-scroll">
         <h2 class="sc-title">力試しモード</h2>
@@ -892,6 +928,9 @@
              「なぜ今日開いたのか」を画面が説明できないと、
              解禁が偶然に見える。条件そのものも書き換える。 -->
         <p class="exam-ease" id="exam-ease" hidden></p>
+        <!-- V3.01：無料版の1行。鍵が無いときだけ出す（part2 openExamList）。
+             無料版の設計 §3-3：「1回ぶん」と「受けた日」はカードに出す。ここは全体の案内。 -->
+        <p class="exam-free-note" id="exam-free-note" hidden>無料版：<b>プチ模試とハーフ模試を1回ずつ</b>受けられます（体験用の予想問題）。フル模試・いじわる模試と予想問題の続きは製品版です。過去問の必修は全部使えます。</p>
         <div class="exam-list" id="exam-list">
           <button type="button" class="exam-card is-locked" data-exam="mini30">
             <span class="exam-name">30問 プチ模試</span>
@@ -951,7 +990,7 @@
                 placeholder="ここにシリアルを貼り付け（OMOI1. で始まる長い文字列）"></textarea>
               <div class="lic-btns">
                 <button type="button" class="btn-primary" id="lic-apply">シリアルを登録する</button>
-                <button type="button" class="btn-ghost" id="lic-buy">購入ページを開く</button>
+                <button type="button" class="btn-ghost" id="lic-buy">製品版を見る</button>
               </div>
               <p class="set-note" id="lic-msg"></p>
             </div>
@@ -1399,7 +1438,7 @@
             <span class="set-row-body"><b>問い合わせ</b><small>不具合の報告・要望：omoidasu-support@googlegroups.com</small></span>
             <span class="tool-arrow" aria-hidden="true"></span>
           </button>
-          <p class="build-stamp" id="build-stamp-settings">20260911_Omoidasu_V2.96 / cache v2.96.0</p>
+          <p class="build-stamp" id="build-stamp-settings">20260911_Omoidasu_V3.08 / cache v3.08.0</p>
         </section>
       </div>
     </section>
@@ -1758,6 +1797,9 @@
   <div class="modal-card" id="modal-exam-style" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">どちらで受けますか</h3>
     <div class="modal-body">
+      <!-- V2.98：無料版の1回ぶんの模試だけに出す1行（無料版の設計 §3-2）。
+           受けたあとに「1回しか受けられませんでした」と知るのがいちばん悪い体験。 -->
+      <p class="exam-style-once" id="exam-style-once" hidden>この模試は<b>1回ぶん</b>です。落ち着いて受けてください。</p>
       <p class="exam-style-lead">合格の基準はどちらも本番と同じです。変わるのは出る問題だけ。</p>
       <button type="button" class="exam-style" data-exam-style="real">
         <span class="exam-style-name">本番モード</span>
@@ -1805,11 +1847,14 @@
        「買え」ではなく「復習は続けられる」を先に言う。
        止まったのは初見の問題だけで、学習記録は人質に取っていない。 -->
   <div class="modal-card" id="modal-buy" role="dialog" aria-modal="true" hidden>
-    <h3 class="modal-title">無料でお試しいただける範囲を解き終えました</h3>
+    <!-- V3.00（案B）：門は「解いた数」ではなく単元。見出しと1文目を単元の言い方に変えた。
+         守ること：必修は無料のままだと明記する／復習は続くと先に言う。 -->
+    <!-- V3.02：「有料版」→「製品版」（利用者裁定「金儲け感が前面に出てる」）。ボタンも「購入ページ」ではなく「製品版を見る」。 -->
+    <h3 class="modal-title">この範囲の新しい問題は製品版に入っています</h3>
     <div class="modal-body">
-      <p><b id="buy-count">200問</b>を解き終えました。ここから先の新しい問題は、
-        買い切りのシリアルを入れると全部開きます。</p>
-      <p class="buy-keep">これまでに解いた問題の<b>復習は、シリアルが無くてもこのまま続けられます</b>。
+      <p>無料版で使えるのは、<b>過去問の必修（全部）</b>と、体験用の模試です。
+        <b id="buy-units">必修</b>以外の単元の新しい問題は、製品版のシリアルを入れると全部開きます。</p>
+      <p class="buy-keep">必修の学習と、これまでに解いた問題の<b>復習は、シリアルが無くてもこのまま続けられます</b>。
         記録が消えることはありません。</p>
       <ul class="buy-list">
         <li>一度きりの支払い。月額はありません</li>
@@ -1819,22 +1864,23 @@
     </div>
     <div class="modal-actions">
       <button type="button" class="btn-ghost" data-close>あとで</button>
-      <button type="button" class="btn-primary" id="buy-open">購入ページを見る</button>
+      <button type="button" class="btn-primary" id="buy-open">製品版を見る</button>
       <button type="button" class="btn-ghost" id="buy-have">シリアルを持っている</button>
     </div>
   </div>
 
+  <!-- V2.98：無料版の模試（プチ・ハーフ）は1回ぶん。2回目を押したときの案内（無料版の設計 §3-2）。
+       見出し・本文・ボタンは part2 の openFreeExamLimit が状況に合わせて入れる。
+       守ること：できないことを先に言わない／数字は事実だけ／必修は無料のままだと明記する。 -->
+  <div class="modal-card" id="modal-free-exam" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title" id="free-exam-title">この模試は1回ぶんです</h3>
+    <div class="modal-body" id="free-exam-body"></div>
+    <div class="modal-actions modal-stack" id="free-exam-actions"></div>
+  </div>
+
   <!-- 模試ソフト警告 -->
   <!-- V2.17：提出前の最終確認。行タップでその問題へ戻れる。提出して初めて採点する -->
-  <div class="modal-card" id="modal-exam-confirm" role="dialog" aria-modal="true" hidden>
-    <h3 class="modal-title">最終確認</h3>
-    <p class="modal-body" id="exam-confirm-note">行をタップするとその問題に戻れます。提出するまで採点されません。</p>
-    <ul class="exam-confirm-list" id="exam-confirm-list"></ul>
-    <div class="modal-actions modal-stack">
-      <button type="button" class="btn-secondary" id="exam-confirm-close">解答に戻る</button>
-      <button type="button" class="btn-primary" id="exam-confirm-submit">全解答を提出する</button>
-    </div>
-  </div>
+  <!-- V3.03：「最終確認」→「解答一覧」。V3.04：モーダルをやめて画面（#screen-exam-sheet）へ。 -->
 
   <div class="modal-card" id="modal-exam-warn" role="dialog" aria-modal="true" hidden>
     <h3 class="modal-title">今の状態でも挑戦できるよ！</h3>
@@ -1886,16 +1932,22 @@
       <button type="button" class="btn-secondary" id="btn-exam-review">復習を始める</button>
       <button type="button" class="btn-primary" data-close>閉じる</button>
     </div>
+    <!-- V3.01（段4）：購入への線を結果の下に1本。鍵が無いときだけ（part2 showExamBuyLine）。
+         結果を見るのに購入は要求しない。閉じるを妨げない位置に置く。 -->
+    <p class="exam-buy-line" id="exam-buy-line" hidden>予想問題の続きと、フル模試・いじわる模試は製品版に入っています。<button type="button" class="link-btn" id="exam-buy-open">製品版を見る</button></p>
   </div>
 
   <!-- V2.18：模試後の復習。誤答＝解説つき全展開／正答＝畳んで問題文のみ（タップで展開）。
        上部に単元別の得点グラフ（どの単元が足りないかを一目で） -->
-  <div class="modal-card" id="modal-exam-review" role="dialog" aria-modal="true" hidden>
-    <h3 class="modal-title">模試の復習</h3>
-    <div class="exam-review-graph" id="exam-review-graph"></div>
-    <ul class="exam-review-list" id="exam-review-list"></ul>
-    <div class="modal-actions">
-      <button type="button" class="btn-primary" id="exam-review-close">閉じる</button>
+  <!-- V3.06：復習の入口の2択（利用者裁定）。V2.18 の折りたたみ一覧（#modal-exam-review・単元グラフつき）は
+       全画面の #screen-exam-review に置き換えた。単元ごとの正答率は結果画面（60問以上）に残る。 -->
+  <div class="modal-card" id="modal-exam-review-style" role="dialog" aria-modal="true" hidden>
+    <h3 class="modal-title">解説の見せ方</h3>
+    <p class="modal-body">問1から順に、自分の答えと○×つきで並びます。評価は既定が入っていて、変えたい肢だけ押します。</p>
+    <div class="modal-actions modal-stack">
+      <button type="button" class="btn-primary" id="exam-review-style-button">解説を1肢ずつタップして表示（推奨）</button>
+      <button type="button" class="btn-secondary" id="exam-review-style-open">解説を全肢表示</button>
+      <button type="button" class="btn-ghost" data-close>あとで</button>
     </div>
   </div>
 
@@ -2043,12 +2095,14 @@
   </div>
 </div>
 
-<script src="./questions.js?v=2.96"></script>
-<script src="./storage.js?v=2.96"></script>
-<script src="./scheduler.js?v=2.96"></script>
+<script src="./questions.js?v=3.08"></script>
+<!-- V2.99：体験用の予想問題（無料版の球・90問）。無くても本体は動く（起動診断の必須には入れない）。 -->
+<script src="./questions_free_mock.js?v=3.08"></script>
+<script src="./storage.js?v=3.08"></script>
+<script src="./scheduler.js?v=3.08"></script>
 <script src="./20260815_main_part1_V1.38.js"></script>
-<script src="./drive.js?v=2.96"></script>
-<script src="./license.js?v=2.96"></script>
+<script src="./drive.js?v=3.08"></script>
+<script src="./license.js?v=3.08"></script>
 <script src="./20260815_main_part2_V1.45.js"></script>
 </body>
 </html>

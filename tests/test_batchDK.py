@@ -25,10 +25,14 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1500)
+    # V2.99：同梱データ（見本249＋体験用90）の取り込みが終わった合図を待つ。
+    # 途中で再読込すると、2回目の起動が「続きの取り込み」になり、印づけはそのあとに回る。
+    pg.wait_for_function("window.__INIT_DONE === true", timeout=180000)
+    pg.wait_for_timeout(500)
     # 初回起動＝シード取り込み直後は totalQ=0 分岐なので、リロードで2回目起動を再現
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
+    pg.wait_for_function("window.__INIT_DONE === true", timeout=180000)
     pg.wait_for_timeout(1500)
     r = pg.evaluate("""async () => {
       const S = window.Storage;

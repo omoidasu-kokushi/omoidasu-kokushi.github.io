@@ -30,7 +30,7 @@ p1 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part1_V*.js")))[-1
 p2 = os.path.basename(sorted(_g.glob(os.path.join(APP, "*main_part2_V*.js")))[-1])
 js1, js2, html = read(p1), read(p2), read("index.html")
 ok("模試ナビのDOMがある", 'id="exam-nav"' in html and 'id="btn-exam-prev"' in html)
-ok("最終確認モーダルがある", 'id="modal-exam-confirm"' in html and 'id="exam-confirm-submit"' in html)
+ok("解答一覧の画面がある（V3.04：モーダルから画面へ）", 'id="screen-exam-sheet"' in html and 'id="exam-confirm-submit"' in html)
 ok("確定時のカード正誤色は模試では出さない", "if (!isExamMode()) $$('#choice-list .choice-card')" in js1)
 ok("解答はq_idの置き換え式", "st.exam.answers[at] = entry" in js2)
 ok("think_msは初回のみ", "entry.think_ms = st.exam.answers[at].think_ms" in js2)
@@ -107,13 +107,14 @@ with sync_playwright() as p:
       /* 一覧を開く → 未回答が出ている → 行タップで移動 */
       M.hooks.openExamConfirm();
       await new Promise(r2 => setTimeout(r2, 300));
-      const modal = document.getElementById('modal-exam-confirm');
-      out.confirmOpen = !modal.hidden;
+      const sheet = document.getElementById('screen-exam-sheet');
+      out.confirmOpen = sheet.classList.contains('is-active');
       out.rows = document.querySelectorAll('#exam-confirm-list .ec-row').length === len;
       out.hasUnanswered = document.querySelectorAll('#exam-confirm-list .ec-row.is-un').length === len - 1;
       document.querySelectorAll('#exam-confirm-list .ec-row')[4].click();
-      await new Promise(r2 => setTimeout(r2, 300));
-      out.jumpedTo5 = M.state.session.index === 4 && modal.hidden;
+      await new Promise(r2 => setTimeout(r2, 400));
+      out.jumpedTo5 = M.state.session.index === 4 && !sheet.classList.contains('is-active')
+        && document.getElementById('screen-quiz').classList.contains('is-active');
 
       /* V2.18：未回答がある間は提出ボタンが無効（空欄提出をさせない） */
       M.hooks.openExamConfirm();
@@ -121,7 +122,7 @@ with sync_playwright() as p:
       const sub = document.getElementById('exam-confirm-submit');
       out.submitDisabledWhenUnanswered = sub.disabled === true && /未回答/.test(sub.textContent);
       document.getElementById('exam-confirm-close').click();
-      await new Promise(r2 => setTimeout(r2, 200));
+      await new Promise(r2 => setTimeout(r2, 300));
 
       /* 全問を埋める */
       for (let i = 0; i < len; i++) {
@@ -131,9 +132,8 @@ with sync_playwright() as p:
         if (!M.hooks.examSavedFor(qid)) {
           answer();
           await new Promise(r2 => setTimeout(r2, 60));
-          const mc = document.getElementById('modal-exam-confirm');
-          if (!mc.hidden) { document.getElementById('exam-confirm-close').click();
-            await new Promise(r2 => setTimeout(r2, 120)); }
+          if (sheet.classList.contains('is-active')) { document.getElementById('exam-confirm-close').click();
+            await new Promise(r2 => setTimeout(r2, 160)); }
         }
       }
       M.hooks.openExamConfirm();
@@ -144,25 +144,26 @@ with sync_playwright() as p:
       out.resultOpen = !document.getElementById('modal-exam-result').hidden;
       out.hooksCleared = !M.hooks.afterGrade && !M.hooks.examSavedFor;
 
-      /* V2.18：復習（誤答は展開・正答は畳む）＋単元グラフ */
+      /* V2.18：復習（誤答は展開・正答は畳む）＋単元グラフ
+         → V3.06：入口の2択 → 全画面のスクロール一覧（問ごとに○×・肢のブロック・評価ボタン）。観点は同数で置き換え */
       document.getElementById('btn-exam-review').click();
       await new Promise(r2 => setTimeout(r2, 400));
-      const rv = document.getElementById('modal-exam-review');
-      out.reviewOpen = !rv.hidden;
-      const rows2 = document.querySelectorAll('#exam-review-list .er-q');
-      out.reviewRows = rows2.length === len;
+      out.reviewOpen = !document.getElementById('modal-exam-review-style').hidden;
+      document.getElementById('exam-review-style-button').click();
+      await new Promise(r2 => setTimeout(r2, 600));
+      out.reviewRows = document.getElementById('screen-exam-review').classList.contains('is-active')
+        && document.querySelectorAll('#exam-review-list .xr-q').length === len;
       const rightN = window.Half2.st.exam.answers.filter(a => a.answered_right).length;
-      out.closedMatchesRight =
-        document.querySelectorAll('#exam-review-list .er-q.is-closed').length === rightN;
-      out.wrongExpanded =
-        document.querySelectorAll('#exam-review-list .er-q:not(.is-closed)').length === len - rightN;
-      out.graphRows = document.querySelectorAll('#exam-review-graph .erg-row').length >= 1;
-      /* 折りたたみのトグル */
-      const firstHead = document.querySelector('#exam-review-list .er-q .er-head');
-      const firstQ = firstHead.closest('.er-q');
-      const wasClosed = firstQ.classList.contains('is-closed');
-      firstHead.click();
-      out.toggleWorks = firstQ.classList.contains('is-closed') !== wasClosed;
+      out.closedMatchesRight = document.querySelectorAll('#exam-review-list .xr-mark.is-correct').length === rightN;
+      out.wrongExpanded = document.querySelectorAll('#exam-review-list .xr-mark.is-wrong').length === len - rightN;
+      out.graphRows = document.querySelectorAll('#exam-review-list .xr-q .eval-group').length >= len;   /* 問ごとに評価が押せる */
+      /* 解説の開閉（1肢ずつ） */
+      const firstExp = document.querySelector('#exam-review-list details.cx-exp');
+      const wasOpen = firstExp.open;
+      firstExp.querySelector('summary').click();
+      out.toggleWorks = firstExp.open !== wasOpen;
+      document.getElementById('exam-review-done').click();
+      await new Promise(r2 => setTimeout(r2, 1500));
       return out;
     }""")
     for k in ["launched", "navVisible", "prevDisabledAtStart", "movedTo2", "noVerdictOnCards", "popupHidden",

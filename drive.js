@@ -950,7 +950,8 @@
      チュートリアルをやり直させられる、という形で出る。 */
   var META_OR_KEYS = [
     'unlock_mock_30', 'unlock_mock_60', 'unlock_mock_120', 'unlock_mock_weak',
-    'onboarding_done', 'tutorial_finished', 'random_qty_unlocked', 'ui_tour_done'
+    'onboarding_done', 'tutorial_finished', 'random_qty_unlocked', 'ui_tour_done',
+    'weak_mock_taken', 'weak_mock_passed'   /* V3.07：いじわる模試の受験・合格（Level 5 の王冠） */
   ];
 
   /* 集合の足し算。分析スキャン精度の分子。 */

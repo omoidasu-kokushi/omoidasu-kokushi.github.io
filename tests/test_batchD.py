@@ -101,8 +101,10 @@ with sync_playwright() as p:
     ok("Lv1：分母は min(全問題数,60)＝5", "残り 2問 ／ 5問" in r1["note"], r1["note"])
     r3 = level_probe(3, {"total_atoms": 20, "unlearned_atoms": 8})
     ok("Lv3：肢単位で残り8肢", "残り 8肢 ／ 20肢" in r3["note"], r3["note"])
-    r5 = level_probe(5, {"total_atoms": 20, "mastered_atoms": 20})
-    ok("Lv5：達成表記", "達成（20肢）" in r5["note"], r5["note"])
+    r5 = level_probe(5, {"weak_mock_stage": "passed"})
+    ok("Lv5：達成表記（V3.07：いじわる模試の合格）", "達成（いじわる模試に合格）" in r5["note"], r5["note"])
+    r5b = level_probe(5, {"weak_mock_stage": "unlocked"})
+    ok("Lv5：解禁ずみなら「受けて合格する」", "いじわる模試" in r5b["note"] and "合格" in r5b["note"], r5b["note"])
 
     # ---- 全体解説の組版（純関数）
     conv = pg.evaluate(r"""() => window.Main.prepareOverallHtml(

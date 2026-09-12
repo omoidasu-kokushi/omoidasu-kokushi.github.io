@@ -15,7 +15,7 @@
  *   OPTIONAL が落ちても本体のオフライン動作は成立する。
  * ========================================================================== */
 
-const CACHE_NAME = 'v2.96.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
+const CACHE_NAME = 'v3.08.0';   /* V2.12からアプリ版と揃える（v1.99の次を v1.100 にしない） */
 const RUNTIME    = 'runtime-' + CACHE_NAME;
 
 /* 無いとアプリが起動しない資産。1件でも取れなければインストールを失敗させる。 */
@@ -25,12 +25,12 @@ const RUNTIME    = 'runtime-' + CACHE_NAME;
 const CORE_ASSETS = [
   './',
   './index.html',
-  './styles.css?v=2.96',
-  './questions.js?v=2.96',
-  './storage.js?v=2.96',
-  './scheduler.js?v=2.96',
-  './drive.js?v=2.96',
-  './license.js?v=2.96',
+  './styles.css?v=3.08',
+  './questions.js?v=3.08',
+  './storage.js?v=3.08',
+  './scheduler.js?v=3.08',
+  './drive.js?v=3.08',
+  './license.js?v=3.08',
   './20260815_main_part1_V1.38.js',
   './20260815_main_part2_V1.45.js',
   './about.html',
@@ -53,6 +53,9 @@ const CORE_ASSETS = [
    4枚で271KB。厚労省の線画のみで、写真・医用画像は同梱していない。 */
 const OPTIONAL_ASSETS = [
   './vendor/mermaid.min.js',
+  /* V2.99：体験用の予想問題（無料版の球・90問・約300KB）。無くても本体は動くので OPTIONAL。
+     index.html と同じ ?v= を付ける（1文字でも違うとキャッシュに当たらない）。 */
+  './questions_free_mock.js?v=3.08',
   './images/bessatsu/111_am81.png',
   './images/bessatsu/113_am23.png',
   './images/bessatsu/114_am13.png',

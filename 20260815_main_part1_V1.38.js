@@ -820,12 +820,18 @@
     home: '看護師国家試験 対策',
     quiz: '', random: 'ランダムモード',
     dashboard: 'ダッシュボード', search: 'キーワード検索 ＆ テーマ別 弱点分析',
-    starred: 'マイ★お気に入りノート', exam: '力試しモード',
+    starred: 'マイ★お気に入りノート', exam: '力試しモード', exam_sheet: '解答一覧',   /* V3.04 */
+    exam_review: '模試の復習',   /* V3.06 */
     knock: 'テーマ別 弱点ノック', settings: '設定'
   };
 
   function go(screen, options) {
     options = options || {};
+    /* V3.06：画面を離れるときに後半へ知らせる（模試の復習は離れた瞬間に評価を記録する）。
+       戻る・ホーム・別画面、どの経路でもここを通る。 */
+    if (state.screen && state.screen !== screen && typeof hooks.beforeLeave === 'function') {
+      try { hooks.beforeLeave(state.screen, screen); } catch (e) { console.error('[beforeLeave]', e); }
+    }
     if (state.screen && state.screen !== screen && !options.replace) {
       state.screenStack.push(state.screen);
     }
@@ -879,6 +885,9 @@
 
          描画は待たせない。失敗しても戻る操作そのものは通す。 */
       if (prev === 'home' && state.booted) { refreshHome().catch(noop); }
+      /* V3.04：解答一覧（画面）から◀戻るで解答画面へ帰るときは、その問題を描き直す
+         （ヘッダーのパンくずと保存ずみの解答を戻す。未確定の選び直しは捨てる＝examJump と同じ） */
+      if (prev === 'quiz' && isExamMode() && state.current && state.current.question) { renderQuestion(); }
       return r;
     });
   }
@@ -994,10 +1003,11 @@
     if (!row) { return; }
     if (g.paid) { row.hidden = true; return; }
     row.hidden = false;
-    row.setAttribute('data-tone', g.locked ? 'locked' : (g.left <= 30 ? 'near' : 'ok'));
-    setText('#free-gate-text', g.locked
-      ? '無料でお試しいただける ' + g.limit + '問を解き終えました。復習はこのまま続けられます。'
-      : 'お試し中：あと ' + g.left + '問（' + g.used + ' / ' + g.limit + '問）');
+    /* V3.00（案B）：門は単元。数の残りは無いので「あと◯問」は出さない。
+       言うのは「必修は全部使える」と「他は有料版」の2つだけ。警告色にもしない。 */
+    row.setAttribute('data-tone', 'ok');
+    setText('#free-gate-text',
+      '無料版：過去問の必修は全部使えます。他の単元の新しい問題と模試の続きは製品版です。');   /* V3.02：「製品版」 */
   }
 
   function refreshHome() {
@@ -1249,9 +1259,8 @@
         done = total - (s.hard_or_normal_atoms || 0);
         break;
       default:
-        unit = '肢'; total = s.total_atoms || 0;
-        done = s.mastered_atoms || 0;
-        break;
+        /* V3.07：Level 5＝いじわる模試の合格（利用者裁定）。肢の数ではなく段階で言う */
+        return levelFiveNote(s.weak_mock_stage);
     }
 
     if (!total) { return ''; }
@@ -1260,6 +1269,14 @@
        （実際に分からないと言われた）。何のための数字かを先に書く。 */
     return left ? ('次のレベルまで　残り ' + left + unit + ' ／ ' + total + unit)
                 : ('このレベルは達成（' + total + unit + '）');
+  }
+
+  /* Level 5 の2行目（V3.07）。いじわる模試の解禁 → 受験 → 合格、のどこにいるか。 */
+  function levelFiveNote(stage) {
+    if (stage === 'passed')   { return 'このレベルは達成（いじわる模試に合格）'; }
+    if (stage === 'taken')    { return '次のレベルまで　いじわる模試（弱点120問）に合格する'; }
+    if (stage === 'unlocked') { return '次のレベルまで　いじわる模試（弱点120問）を受けて合格する'; }
+    return '次のレベルまで　フル模試に2回続けて合格し、いじわる模試を解禁する';
   }
 
   /* Level 2 のマイルストーンは4段あるが、4つ同時に見せると
@@ -1400,8 +1417,14 @@
 
     /* V1.53：無料枠を使い切ったら、初見の問題だけを止める。
        復習（mode:'review'）は buildQueue の別経路なので、ここを通らない。
-       ＝お金を払わなくても、解いたぶんの復習は最後まで続けられる。 */
+       ＝お金を払わなくても、解いたぶんの復習は最後まで続けられる。
+       V3.00（案B）：門は「解いた数」ではなく単元。鍵が無いときは freeUnits（必修）を渡し、
+       必修・印つきの予想問題・一度触った問題だけを新しい問題として出す。
+       isLocked() は常に false になった（solvedOnly の経路は scheduler に残してあるが通らない）。 */
     if (isLocked() && mode !== 'review') { opts.solvedOnly = true; }
+    if (mode !== 'review' && global.NurseLicense && !licGate(state.homeState).paid) {
+      opts.freeUnits = global.NurseLicense.FREE_UNITS;
+    }
 
     return K.buildQueue(opts).then(function (q) {
       if (!q.questions.length) {
@@ -1618,13 +1641,7 @@
     var nav = $('#exam-nav');
     if (nav) { nav.hidden = !isExamMode(); }
     if (isExamMode()) {
-      var pb = $('#btn-exam-prev');
-      if (pb) { pb.disabled = state.session.index <= 0; }
-      var nb = $('#btn-exam-next');
-      if (nb) {
-        nb.textContent = (state.session.index >= state.session.questions.length - 1)
-          ? '一覧へ ▶' : '次へ ▶';
-      }
+      refreshExamNav();   /* V3.03：前へ／次へ／提出する の有効・無効 */
       if (typeof hooks.examSavedFor === 'function') {
         var sv = hooks.examSavedFor(q.q_id);
         if (sv) { restoreExamAnswer(sv); }
@@ -1802,7 +1819,7 @@
     var html = atoms.map(function (a) {
       var mark = exam
         ? '<button type="button" class="choice-mark" data-kind="ground" aria-pressed="false"' +
-          ' aria-label="根拠を説明できた（消去完了）">☐</button>'
+          ' aria-label="この肢に印を付ける（用途は自由。解答一覧と復習で見返せます）">☐</button>'
         : '<button type="button" class="choice-mark" data-kind="star" aria-pressed="' +
           (a.is_starred ? 'true' : 'false') + '" data-star-level="' + S.starLevelOf(a) +
           '" aria-label="この選択肢に★を付ける（タップで段階が1つ進みます）">' +
@@ -1817,20 +1834,21 @@
 
     /* 模試の根拠チェックは、言われないと気づかれない。
        V2.23：初回は説明を開いた状態で出し、以後も［？］でいつでも読める。
-       初回だけだと、聞き流したり久々に模試をやったときに戻れない（利用者要望）。 */
+       初回だけだと、聞き流したり久々に模試をやったときに戻れない（利用者要望）。
+       V3.03（利用者裁定「こんなデカく出さないでいい。☐列の上に小さいハテナ、押したら説明」）：
+       ［？］は☐列の上の小さい印だけ。**既定は閉じる**（初回も開かない）。押せばいつでも読める。 */
     var old = $('.ground-help');
     if (old) { old.parentNode.removeChild(old); }
     if (exam) {
-      var open = !state.groundHintShown;
+      var open = !state.groundHintShown && false;   /* V3.03：既定は閉じる（変数は残す） */
       state.groundHintShown = true;
       var wrap = doc.createElement('div');
       wrap.className = 'ground-help';
       wrap.innerHTML =
-        '<button type="button" class="ground-help-btn" aria-expanded="' + (open ? 'true' : 'false') + '">' +
-        '？ 右の☐チェックとは</button>' +
-        '<p class="ground-hint"' + (open ? '' : ' hidden') + '>右の <b>☐</b> は' +
-        '「勘ではなく根拠を説明できた」チェックです。' +
-        'チェックした肢だけが、正解時に長期記憶へ昇格します。</p>';
+        '<button type="button" class="ground-help-btn" aria-expanded="' + (open ? 'true' : 'false') + '"' +
+        ' aria-label="右の☐チェックの説明">?</button>' +
+        '<p class="ground-hint"' + (open ? '' : ' hidden') + '>右の <b>☐</b> は自由に使える印です。' +
+        '迷った二択などに付けておくと、解答一覧と復習で見返せます。評価には影響しません。</p>';   /* V3.05 */
       var list = $('#choice-list');
       list.parentNode.insertBefore(wrap, list);
       wrap.querySelector('.ground-help-btn').addEventListener('click', function () {
@@ -2522,9 +2540,9 @@
 
   /* 書き換えがあればそれを本文として出し、元の解説は折りたたんで残す。
      消えたのではなく畳まれているだけ、と分かる形にする。 */
-  function renderAtomBody(a) {
+  function renderAtomBody(a, modeOverride) {   /* V3.06：modeOverride は模試の復習の2択（設定は変えない） */
     var memo = a.user_memo && String(a.user_memo).trim();
-    if (!memo) { return renderAtomExplainByMode(a); }
+    if (!memo) { return renderAtomExplainByMode(a, modeOverride); }
     /* 自分で書いたものは【常に出す】。隠す対象は元の解説だけ。 */
     return '<div class="memo-body">' +
            '<span class="cx-arrow" aria-hidden="true">\u21d2</span>' +
@@ -2537,8 +2555,8 @@
              '</details>');
   }
 
-  function renderAtomExplainByMode(a) {
-    var mode = explainMode();
+  function renderAtomExplainByMode(a, modeOverride) {
+    var mode = EXPLAIN_MODES[modeOverride] ? modeOverride : explainMode();
     var raw = a.explanation && String(a.explanation).trim();
 
     /* V2.77：「自分の言葉で書く」は見出し行へ移した（writeBtnInline）。
@@ -3661,6 +3679,25 @@
     }
   }
 
+  /* --- V3.03：模試ナビの状態（利用者裁定） ---
+     [前へ] は先頭で無効。[次へ] は末尾で無効（末尾の「一覧へ」はやめた。一覧は［解答一覧］から）。
+     [提出する] は**全問解答し終わるまで非アクティブ**。残りの数は後半（hooks.examUnanswered）が数える。
+     押せない理由をボタンに書く：「提出する（あと3問）」。 */
+  function refreshExamNav() {
+    if (!isExamMode()) { return; }
+    var s = state.session;
+    var pb = $('#btn-exam-prev');
+    if (pb) { pb.disabled = s.index <= 0; }
+    var nb = $('#btn-exam-next');
+    if (nb) { nb.disabled = s.index >= s.questions.length - 1; nb.textContent = '次へ ▶'; }
+    var sb = $('#btn-exam-submit');
+    if (sb) {
+      var un = (typeof hooks.examUnanswered === 'function') ? hooks.examUnanswered() : s.questions.length;
+      sb.disabled = un > 0;
+      sb.textContent = un > 0 ? ('提出する（あと' + un + '問）') : '提出する';
+    }
+  }
+
   /* V2.17：模試中だけ、指定の問題へ移動する（未確定の選び直しは捨てる） */
   function examJump(i) {
     if (!isExamMode()) { return; }
@@ -4160,7 +4197,8 @@
      いちばん大事な使い方（毎日の復習）ごと離脱される。 */
   function openBuyDialog() {
     var L = global.NurseLicense;
-    setText('#buy-count', (L ? L.FREE_LIMIT : 200) + '問');
+    /* V3.00：門は単元。案内に出すのは無料で開いている単元の名前。 */
+    setText('#buy-units', (L && L.FREE_UNITS ? L.FREE_UNITS : ['必修']).join('・'));
     openModal('#modal-buy');
     return null;
   }
@@ -4374,12 +4412,17 @@
     /* V2.17：模試ナビ */
     on($('#btn-exam-prev'), 'click', function () { examJump(state.session.index - 1); });
     on($('#btn-exam-next'), 'click', function () {
+      /* V3.03：末尾では押せない（一覧は［解答一覧］から）。押せてしまっても一覧へ */
       if (state.session.index >= state.session.questions.length - 1) {
         if (typeof hooks.openExamConfirm === 'function') { hooks.openExamConfirm(); }
       } else { examJump(state.session.index + 1); }
     });
     on($('#btn-exam-list'), 'click', function () {
       if (typeof hooks.openExamConfirm === 'function') { hooks.openExamConfirm(); }
+    });
+    /* V3.03：提出は一覧と別のボタン。全問解答まで非アクティブ（refreshExamNav）。実行は後半（examSubmit） */
+    on($('#btn-exam-submit'), 'click', function () {
+      if (typeof hooks.examSubmit === 'function') { hooks.examSubmit(); }
     });
 
     /* --- モーダル共通 --- */
@@ -4658,7 +4701,9 @@
      onFinish は「出題を終えた」ときにしか呼ばれないので、
      途中で戻った場合に後半が張った時計やバーが止められず、
      ホームへ戻ってもテーマ別弱点ノックの残り時間が動き続けていた。 */
-  var hooks = { afterGrade: null, afterCommit: null, onFinish: null, onAbort: null };
+  var hooks = { afterGrade: null, afterCommit: null, onFinish: null, onAbort: null,
+                examUnanswered: null, examSubmit: null,    /* V3.03：模試ナビが後半に聞く */
+                beforeLeave: null };                      /* V3.06：画面を離れるとき */
 
   var Half2 = {
     /* --- その場ガイド（初回だけ・1つずつ） ---
@@ -4867,6 +4912,7 @@
     setEval       : setEval,
     nextQuestion  : nextQuestion,
     examJump      : examJump,
+    refreshExamNav: refreshExamNav,       /* V3.03 */
     toggleCurrentQuestionStar: toggleCurrentQuestionStar,
     toggleAtomStarById       : toggleAtomStarById,
 

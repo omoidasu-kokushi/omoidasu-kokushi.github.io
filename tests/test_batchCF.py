@@ -49,7 +49,9 @@ def boot(pg, wait_version=True):
 COVER = """async () => {
   const M = new Set(window.CONCEPT_TAGS_MASTER.map(x => x.tag));
   const S = window.Storage;
-  const qs = await S.getAllQuestions();
+  /* V2.99：体験用の予想問題（pool mock・90問）も同梱されるようになった。
+     ここで見たいのは「同梱シード（本体）のタグ」なので、mock は数えない。 */
+  const qs = (await S.getAllQuestions()).filter(q => (q.pool || 'main') !== 'mock');
   let total = 0, hit = 0; const themes = new Set();
   for (const q of qs) for (const a of await S.getAtomsByQuestion(q.q_id))
     for (const t of (a.tags || [])) { total++; if (M.has(t)) { hit++; themes.add(t); } }

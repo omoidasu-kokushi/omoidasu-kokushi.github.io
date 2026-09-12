@@ -168,7 +168,7 @@ with sync_playwright() as p:
     while _time.time() - _t0 < 60:
         if pg.evaluate("async () => window.Storage.countQuestions()") >= 249: break
         pg.wait_for_timeout(100)
-    pg.wait_for_timeout(600)   # seed_imported / seed_version の書き込みまで待つ
+    pg.wait_for_function("window.__INIT_DONE === true", timeout=60000)   # 同梱データ（見本＋体験用）の取り込みまで待つ（V2.99）
     pg.evaluate("""async () => { await window.Storage.setMetaBulk({ onboarding_done: true,
       tips_seen: ['unit_hero','qty','next','scan','level','settings_btn','theme','back','home_tip',
                   'qstar','tagpill','star','locked','memo','detail','summary',
@@ -177,6 +177,23 @@ with sync_playwright() as p:
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
     pg.wait_for_timeout(1200)
     pg.evaluate("() => { window.Main.closeModals(); }")
+
+    # V2.99：体験用の予想問題90問が同梱されるようになった（起動時に自動で入る）。
+    # この試験は「印つきの球が無い端末」から始めたいので、同梱ぶんを外して本体（見本249問）だけにする。
+    # 印は立てたままにする（再読込で戻ってこないように）。
+    pg.wait_for_function("window.__INIT_DONE === true", timeout=60000)
+    pg.evaluate("""async () => { const S = window.Storage;
+      await S.resetAll();
+      await S.importText(window.SEED_QUESTIONS_TSV);
+      await S.setMetaBulk({ seed_imported: true, seed_version: window.SEED_VERSION,
+        free_mock_imported: true, free_mock_version: window.FREE_MOCK_VERSION || null, onboarding_done: true,
+        tips_seen: ['unit_hero','qty','next','scan','level','settings_btn','theme','back','home_tip',
+                    'qstar','tagpill','star','locked','memo','detail','summary',
+                    'q_star','img_toggle','numeric_input','pomodoro','stem_expand','ground','exam'] });
+      await window.Scheduler.refreshAll({ recomputeWeakness: true }); await window.Main.refreshHome(); }""")
+    pg.evaluate("() => { window.Main.closeModals(); }")
+    nb = pg.evaluate("async () => [await window.Storage.countQuestions(), await window.Storage.countQuestionsByVariant('free_a')]")
+    ok("下ごしらえ：印つきの球が無い端末（本体249問だけ）", nb == [249, 0], nb)
 
     paid0 = pg.evaluate("() => window.NurseLicense.isPaid()")
     ok("鍵が無い＝無料の状態から始める", paid0 is False, paid0)
@@ -190,7 +207,7 @@ with sync_playwright() as p:
     ok("印つきが無ければ、無料でもプチ模試は30問組める（従来どおり）",
        r0["n"] == 30 and r0["variant"] is None, json.dumps(r0, ensure_ascii=False)[:300])
     ok("そのとき「足りない」の断りは出さない（0問なら事故ではなく、いまの公開版そのもの）",
-       "体験用の予想問題" not in (r0["toast"] or ""), r0["toast"])
+       "しか無い" not in (r0["toast"] or "") and "しか組めない" not in (r0["toast"] or ""), r0["toast"])
 
     # --- ② 合成データを取り込む：free_a 30／free_b 60／main 12／free_c 5 ---
     pg.evaluate("t => { window.__T = t; }", PAYLOAD)
@@ -262,7 +279,8 @@ with sync_playwright() as p:
        rb["n"] == 60 and rb["by"] == {"mock:free_b": 60} and rb["variant"] == "free_b",
        json.dumps({k: rb[k] for k in ("n", "by", "variant")}, ensure_ascii=False))
     ok("プチとハーフで同じ問題が出ない", not (set(ra["ids"]) & set(rb["ids"])))
-    ok("印で組んだときは「足りない」の断りを出さない", "体験用の予想問題" not in (ra["toast"] or "") + (rb["toast"] or ""),
+    ok("印で組んだときは「足りない」の断りを出さない",
+       "しか無い" not in (ra["toast"] or "") + (rb["toast"] or "") and "しか組めない" not in (ra["toast"] or "") + (rb["toast"] or ""),
        (ra["toast"], rb["toast"]))
     rw = pg.evaluate(LAUNCH, {"id": "mock_weak", "size": 30, "style": "real"})
     ok("いじわる模試は印で絞らない（対応表に無い）", rw["variant"] is None and rw["n"] > 0, (rw["variant"], rw["n"]))

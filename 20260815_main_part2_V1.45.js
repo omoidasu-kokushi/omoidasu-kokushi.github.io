@@ -2327,12 +2327,33 @@ var QR_MATRIX = [
 
   var EXAM_SIZE = { mock_30: 30, mock_60: 60, mock_120: 120, mock_weak: 120 };
 
+  /* --- 無料版のカード表示に要る情報（V3.01・段2） ---
+     鍵が無いときだけ返す（購入済みは null）。
+       mock_30／mock_60 … freeExamGate（球があるか・受けたか・受けた日）
+       mock_120／mock_weak … 有料版だけ（無料版の設計：フル・いじわるは有料版）
+     解禁の判定（MOCK_DEFS）には触らない。見せ方と押したときの行き先だけ。 */
+  function freeCardsInfo(unlocks) {
+    var L = global.NurseLicense;
+    if (!L || typeof L.isPaid !== 'function' || L.isPaid()) { return Promise.resolve(null); }
+    return Promise.all([freeExamGate('mock_30', unlocks), freeExamGate('mock_60', unlocks)])
+      .then(function (g) {
+        return { mock_30: g[0], mock_60: g[1], paidOnly: { mock_120: true, mock_weak: true } };
+      });
+  }
+
   function openExamList() {
-    return Promise.all([K.refreshUnlocks(), S.countQuestions()]).then(function (r) {
-      var unlocks = r[0].unlocks, totalQ = r[1];
+    return K.refreshUnlocks().then(function (r0) {
+      return Promise.all([r0, S.countQuestions(), freeCardsInfo(r0.unlocks)]);
+    }).then(function (r) {
+      var unlocks = r[0].unlocks, totalQ = r[1], freeInfo = r[2];
       var st = r[0].stats || {};
       var byId = {};
       unlocks.forEach(function (u) { byId[u.id] = u; });
+      rememberFreeCards(freeInfo);
+
+      /* V3.01：無料版の1行（画面の上）。購入済みは出さない。 */
+      var fnote = $('#exam-free-note');
+      if (fnote) { fnote.hidden = !freeInfo; }
 
       /* --- 直前期の緩和（V1.95） ---
          効いているときだけ、**理由と、いま実際に必要な割合**を出す。
@@ -2377,12 +2398,32 @@ var QR_MATRIX = [
             + (u.eased ? '（直前期のため緩和中）' : '');
         }
         var state2 = card.querySelector('.exam-state');
-        if (state2) {
-          state2.textContent = u.unlocked ? '解禁ずみ'
+        var baseState = u.unlocked ? '解禁ずみ'
             : (totalQ < u.required_questions
                 ? '問題数 ' + totalQ + ' / ' + u.required_questions + ' 問'
                 : '解放 ' + u.pct + '%');
+        /* --- 無料版のカード（V3.01・段2・無料版の設計 §3-3） ---
+             ・プチ／ハーフ：球があれば「1回ぶん」。受け終わったら「受けた日：9/11」。
+               受け終わったカードも押せる（押すと V2.98 の案内＝［結果を見る］がある）。押せなくしない
+             ・フル／いじわる：「有料版で受けられます」。押すと購入の案内（解禁の見た目は変えない） */
+        card.removeAttribute('data-free');
+        if (freeInfo) {
+          var fg = freeInfo[id];
+          if (fg && fg.variant) {
+            if (fg.blocked) {
+              var lastAt = fg.taken[0] && fg.taken[0].at;
+              baseState = '受けた日：' + (lastAt ? fmtShortDate(lastAt) : '—') + '（結果を見る）';
+              card.setAttribute('data-free', 'taken');
+            } else {
+              baseState = baseState + '・1回ぶん';
+              card.setAttribute('data-free', 'once');
+            }
+          } else if (freeInfo.paidOnly && freeInfo.paidOnly[id]) {
+            baseState = '製品版で受けられます';   /* V3.02：画面の文字は「製品版」（有料版と言わない） */
+            card.setAttribute('data-free', 'paid-only');
+          }
         }
+        if (state2) { state2.textContent = baseState; }
       });
       return M.go('exam');
     }).then(function (r) { global.setTimeout(function () { tip('exam'); }, 500); return r; });
@@ -2527,8 +2568,168 @@ var QR_MATRIX = [
 
   function askExamStyle(examId) {
     st.exam.pendingStyleId = examId;
+    /* V2.98：無料版の1回ぶんの模試には、受ける前に1行そう言う（無料版の設計 §3-2）。
+       受けたあとに「1回しか受けられませんでした」と知るのがいちばん悪い体験。
+       先に言えば、それは制限ではなく「本番のつもりで受けてください」という案内になる。 */
+    var once = $('#exam-style-once');
+    if (once) { once.hidden = !st.exam.pendingFreeOnce; }
     openModal('#modal-exam-style');
     return null;
+  }
+
+  /* --- 無料版の模試は1回ぶん（V2.98・無料版の設計 §3・案B 裁定 2026-09-11） ---
+     鍵が無いとき、プチ（free_a）とハーフ（free_b）は**それぞれ1回**。
+     回数は exam_history から導く（別の項目で持たない・§1-3）。数えるのは
+     【同じ模試・同じ印】の記録だけ。印つきで受けた記録が無ければ1回目。
+       ・印の球が無い端末（いまの公開版）は従来どおり何度でも受けられる。
+         球が無いのに「1回ぶん」で止めると、体験用の予想問題を1問も見ていない人を止めることになる
+       ・印無しの古い記録（過去問で組んだ模試）は数えない。同じ理由
+       ・購入済み（鍵あり）は数えない
+     戻り値：{ variant, taken: 受けた記録（新しい順）, blocked, first, other: もう片方の模試の状態 } */
+  function freeExamGate(examId, states) {
+    var variant = freeExamVariant(examId);
+    var none = { variant: null, taken: [], blocked: false, first: false, other: null };
+    if (!variant) { return Promise.resolve(none); }
+    var size = EXAM_SIZE[examId] || 30;
+    return S.countQuestionsByVariant(variant).then(function (n) {
+      if (n < size) { return none; }                      /* 球が無い＝従来どおり */
+      var otherId = (examId === 'mock_30') ? 'mock_60' : 'mock_30';
+      var otherVariant = FREE_EXAM_VARIANT[otherId];
+      return Promise.all([
+        S.getExamHistory(examId),
+        S.getExamHistory(otherId),
+        S.countQuestionsByVariant(otherVariant)
+      ]).then(function (r) {
+        var taken = r[0].filter(function (x) { return x && x.variant === variant; });
+        var otherTaken = r[1].filter(function (x) { return x && x.variant === otherVariant; });
+        var otherState = (states || []).filter(function (x) { return x.id === otherId; })[0];
+        return {
+          variant: variant,
+          taken: taken,
+          blocked: taken.length > 0,
+          first: taken.length === 0,
+          other: {
+            id: otherId, variant: otherVariant,
+            taken: otherTaken.length > 0,
+            hasBalls: r[2] >= (EXAM_SIZE[otherId] || 30),
+            unlocked: !!(otherState && otherState.unlocked)
+          }
+        };
+      });
+    });
+  }
+
+  /* 2回目を押したときの文言（無料版の設計 §3-2）。3つを守る：
+       1. できないことを先に言わない。まず結果を認め、次に続きを示す
+       2. 数字で示す。ただし**事実だけ**。有料版の予想問題の数はまだ確定していないので出さない
+          （出せる数ができたらここに足す）
+       3. 必修は無料のままだと明記する。「必修を人質に取っていない」ことが信用になる
+     カウントダウン（「あと1回！」）は出さない。結果を見るのに購入を要求しない。 */
+  function openFreeExamLimit(examId, gate) {
+    var label = examLabel(examId);
+    var size = EXAM_SIZE[examId] || 30;
+    var last = gate.taken[0] || null;
+    var when = last && last.at ? fmtShortDate(last.at) : '';
+    var other = gate.other || {};
+    var otherLabel = examLabel(other.id);
+    var otherSize = EXAM_SIZE[other.id] || 30;
+    var otherOpen = !other.taken && other.hasBalls;       /* もう片方がまだ受けられるか（球あり・未受験） */
+
+    var title, body = [], actions = [];
+    var lastLine = (last
+      ? '<p>' + size + '問はもう解きました' + (when ? '（受けた日：' + esc(when) + '）' : '') +
+        '。結果は［結果を見る］からいつでも見返せます。</p>'
+      : '');
+    if (otherOpen) {
+      title = label + 'は1回ぶんの予想問題が入っています';
+      body.push(lastLine);
+      body.push('<p>' + esc(otherLabel) + '（' + otherSize + '問）は' +
+                (other.unlocked ? 'まだ受けられます。' : '解禁されると受けられます。') + '</p>');
+      body.push('<p class="buy-keep">予想問題の続きと、フル模試・いじわる模試は製品版に入っています。' +
+                '<b>過去問の必修は、買わなくてもこのまま使えます。</b></p>');
+      if (other.unlocked) {
+        actions.push({ act: 'other', label: esc(otherLabel) + 'を受ける', cls: 'btn-primary' });
+      }
+      actions.push({ act: 'result', label: '結果を見る', cls: 'btn-secondary' });
+      actions.push({ act: 'buy', label: '予想問題をぜんぶ使う（製品版を見る）', cls: 'btn-ghost' });
+    } else {
+      title = '予想問題の続きは製品版に入っています';
+      body.push('<p>プチ30問とハーフ60問はここまでです' +
+                (when ? '（' + esc(label) + 'を受けた日：' + esc(when) + '）' : '') + '。</p>');
+      body.push('<p>製品版には予想問題の続きと、フル模試（120問）・いじわる模試（弱点120問）が入っています。</p>');
+      body.push('<p class="buy-keep"><b>過去問の必修は、買わなくてもこのまま使えます。</b></p>');
+      actions.push({ act: 'buy', label: '製品版を見る', cls: 'btn-primary' });
+      actions.push({ act: 'result', label: '結果を見る', cls: 'btn-secondary' });
+      actions.push({ act: 'home', label: '必修の学習に戻る', cls: 'btn-ghost' });
+    }
+    st.exam.freeLimit = { examId: examId, last: last, otherId: other.id || null };
+    setText('#free-exam-title', title);
+    setHtml('#free-exam-body', body.join(''));
+    setHtml('#free-exam-actions', actions.map(function (a) {
+      return '<button type="button" class="' + a.cls + '" data-fx="' + a.act + '">' + a.label + '</button>';
+    }).join('') + '<button type="button" class="btn-ghost" data-close>閉じる</button>');
+    openModal('#modal-free-exam');
+    return null;
+  }
+
+  function fmtShortDate(ms) {
+    var d = new Date(ms);
+    return (d.getMonth() + 1) + '/' + d.getDate();
+  }
+
+  /* --- 結果画面の下の購入への線（V3.01・段4・無料版の設計 §3-3） ---
+     「いちばん『続きが欲しい』と思っている瞬間」に1本だけ置く。鍵が無いときだけ。
+     結果を見るのに購入は要求しない（線は結果の下にあり、閉じるを妨げない）。 */
+  function showExamBuyLine() {
+    var line = $('#exam-buy-line');
+    if (!line) { return; }
+    var L = global.NurseLicense;
+    var free = !!(L && typeof L.isPaid === 'function' && !L.isPaid());
+    line.hidden = !free;
+  }
+
+  /* 力試し画面のカードに使った無料版の情報を控える（押したときの行き先が見えるように）。 */
+  function rememberFreeCards(info) { st.exam.freeCards = info || null; }
+
+  /* 残っている結果（exam_history の1件）を、採点のときと同じ枡で見せる。
+     「復習を始める」と「画像でシェア」は隠す：問題と解答はもう手元に無い
+     （履歴には点数と単元別の正答率だけが残る）。 */
+  function showPastExamResult(rec) {
+    if (!rec) { toast('見返せる結果がありません'); return null; }
+    var r = rec;
+    var cells = [
+      pcell('総合', r.correct + ' / ' + r.total, r.passed),
+      (r.hisshu && r.hisshu.total) ? pcell('必修', r.hisshu.pct + '%', r.hisshu.pass) : '',
+      (r.ippan && r.ippan.total) ? pcell('一般換算', r.ippan.score + '点', r.ippan.pass) : '',
+      pcell('所要', Math.round((r.elapsed_ms || 0) / 60000) + '分', true)
+    ].join('');
+    var unitHtml = '';
+    if (r.by_unit && r.by_unit.length) {
+      unitHtml =
+        '<div class="score-cell exam-by-unit" style="grid-column:1/-1">' +
+        '<b>単元ごとの正答率</b><ul class="exam-unit-list">' +
+        r.by_unit.map(function (u) {
+          var pct = Math.round((u.correct / u.total) * 100);
+          var tone = pct >= 80 ? 'ok' : (pct >= 60 ? 'mid' : 'low');
+          return '<li data-tone="' + tone + '"><span class="eu-name">' + esc(u.unit) + '</span>' +
+                 '<span class="eu-bar"><i style="width:' + pct + '%"></i></span>' +
+                 '<span class="eu-num">' + u.correct + '/' + u.total + '<b>' + pct + '%</b></span></li>';
+        }).join('') + '</ul></div>';
+    }
+    setText('#exam-result-title', examLabel(r.exam_id) + 'の結果（' + fmtShortDate(r.at || Date.now()) + '）' +
+            (r.passed ? '　合格ライン超え' : ''));
+    setHtml('#exam-score', cells + unitHtml);
+    var share = $('#btn-exam-share'), review = $('#btn-exam-review');
+    if (share) { share.hidden = true; }
+    if (review) { review.hidden = true; }
+    showExamBuyLine();
+    openModal('#modal-exam-result');
+    return r;
+
+    function pcell(label, val, pass) {
+      return '<div class="score-cell ' + (pass ? 'is-pass' : 'is-fail') + '">' +
+             '<b>' + esc(val) + '</b><small>' + esc(label) + '</small></div>';
+    }
   }
 
   function startExam(examId, style) {
@@ -2537,7 +2738,12 @@ var QR_MATRIX = [
     return S.getUnlockState().then(function (states) {
       var s2 = states.filter(function (x) { return x.id === examId; })[0];
       if (!s2 || !s2.unlocked) { toast('この模試はまだ解禁されていません'); return null; }
-      return K.shouldWarnBeforeExam(examId);
+      /* V2.98：無料版の1回ぶん。解禁の確認のあと、定着率の警告より先に見る。 */
+      return freeExamGate(examId, states).then(function (gate) {
+        st.exam.pendingFreeOnce = !!gate.first;
+        if (gate.blocked) { openFreeExamLimit(examId, gate); return null; }
+        return K.shouldWarnBeforeExam(examId);
+      });
     }).then(function (warn) {
       if (!warn) { return null; }
       if (warn.warn) {
@@ -2573,6 +2779,13 @@ var QR_MATRIX = [
       : { mode: 'exam', count: size, applyGuard: false, shuffle: true, includeMock: true };
     var extra = examStyleOpts(style, examId);
     Object.keys(extra).forEach(function (k) { opts[k] = extra[k]; });
+    /* V3.00（案B）：鍵が無いときは模試の球も無料の範囲（必修・印つきの予想問題・一度触った問題）に絞る。
+       印で組む道（下）では印つきしか残らないので効かない。効くのは印の球が無い端末の従来の組み方と、
+       フル・いじわる模試。 */
+    var Lx = global.NurseLicense;
+    if (Lx && typeof Lx.isPaid === 'function' && !Lx.isPaid() && Lx.FREE_UNITS) {
+      opts.freeUnits = Lx.FREE_UNITS;
+    }
 
     /* --- 無料版の模試は印（variant）で球を固定する（V2.96） ---
        無料版はプチ模試とハーフ模試を1回ずつ受けられ、中身は体験用の予想問題
@@ -2619,7 +2832,8 @@ var QR_MATRIX = [
       if (style === 'final' && q.questions.length < size) {
         toast('S・Aランクだけでは ' + size + '問に届かないので、他のランクも混ぜます', 4200);
         return K.buildQueue({ mode: 'exam', count: size, applyGuard: false,
-                              shuffle: true, preferKnown: true, includeMock: true })
+                              shuffle: true, preferKnown: true, includeMock: true,
+                              freeUnits: opts.freeUnits })   /* V3.00：門はここも通す */
           .then(function (q2) { return finishLaunch(examId, q2, style); });
       }
       return finishLaunch(examId, q, style);
@@ -2684,12 +2898,17 @@ var QR_MATRIX = [
           M.state.session.answeredCount++;
         }
         if (M.state.session.index >= M.state.session.questions.length - 1) {
+          /* 末尾の解答を確定したら解答一覧へ（未回答の確認と提出はそこで） */
+          if (typeof M.refreshExamNav === 'function') { M.refreshExamNav(); }   /* V3.03 */
           openExamConfirm();
         } else {
           M.stepForward();
         }
         return false;   /* 解説フェーズを描画しない */
       };
+      /* V3.03：模試ナビの［提出する］の状態（全問解答まで非アクティブ）と、押したときの実行 */
+      M.hooks.examUnanswered = function () { return examUnansweredCount(); };
+      M.hooks.examSubmit = function () { return submitExamFromNav(); };
       M.hooks.onFinish = function (sess) {
         if (sess.mode !== 'exam') { return false; }
         /* V2.17：末尾到達でも自動採点しない。必ず最終確認を通す */
@@ -2738,71 +2957,188 @@ var QR_MATRIX = [
      `M.endSession()` は【呼ばない】：ここは endSession から呼ばれる側なので、
      呼び返すと入れ子になる（概念ノックの `abortKnock` と同じ理由）。
      採点はしない。受験の途中で抜けた以上、点数は出しようがない。 */
-  /* V2.18：模試後の復習（利用者要望：採点だけで終わらせない）。
-     誤答＝解説つき全展開／正答＝畳んで問題文のみ（タップで展開）。
-     上部に単元別の得点グラフを出し、どの単元が足りないかを一目にする。
-     解説HTMLは必ず sanitizeExplanationHtml を通す（§22-1）。 */
+  /* ======================================================================
+   * 模試の復習（V3.06・利用者裁定 2026-09-12）
+   *
+   * 「いきなり1つ1つの解説ではなく、他のモードの解説画面と同じ感じにして。
+   *   じゃないと不正解時の自分で選んだ選択肢じゃなくて悩んだもう1つが正解だった悔しさが出ない」
+   * 「復習画面では次へボタンなど出さない。一覧でスクロールしていく感じ。重くなるなら30問ずつに分けて」
+   *
+   *   入口の2択：解説を1肢ずつタップして表示（推奨）／解説を全肢表示 → 通常の解説の見せ方
+   *              （explain_mode の button／open）をこの画面だけに当てる。設定は変えない
+   *   1問＝○×・問題文・「あなたの答え ②／正解 ③」・肢ごとのブロック（通常の .cx をそのまま：
+   *        番号・本文・あなたの答え・☑・⇒正誤・解説・評価ボタン4つ）・全体解説（畳む）
+   *   評価は既定（保留）が点いている。押した瞬間に保留へ書き戻す（updateExamPending）。次へは無い
+   *   記録は画面を離れたとき（◀戻る／ホーム／［評価を記録して終える］）。hooks.beforeLeave（part1 go）で拾う
+   *   30問ずつのページ。プチ=1／ハーフ=2／フル・いじわる=4
+   *   V2.18 の折りたたみ一覧（単元グラフつき）はこれに置き換えた。単元ごとの正答率は結果画面（60問以上）に残る
+   * ====================================================================== */
+  var REVIEW_PAGE = 30;
+
   function openExamReview() {
     var ex = st.exam;
     if (!ex || !ex.questions || !ex.questions.length) { toast('復習できる模試の結果がありません'); return; }
-    var by = {};
-    (ex.answers || []).forEach(function (a) { by[a.q_id] = a; });
-    var clean = (typeof M.sanitizeExplanationHtml === 'function')
-      ? M.sanitizeExplanationHtml : function (h) { return esc(String(h || '')); };
-
-    /* --- 単元別グラフ --- */
-    var units = {};
-    ex.questions.forEach(function (q) {
-      var a = by[q.q_id];
-      var u = q.unit || '（単元なし）';
-      units[u] = units[u] || { total: 0, right: 0 };
-      units[u].total++;
-      if (a && a.answered_right) { units[u].right++; }
-    });
-    setHtml('#exam-review-graph', Object.keys(units).map(function (u) {
-      var d = units[u];
-      var pct = Math.round(100 * d.right / d.total);
-      var lv = pct >= 80 ? 'lv-good' : pct >= 50 ? 'lv-mid' : 'lv-bad';
-      return '<div class="erg-row"><span class="erg-label">' + esc(u) + '</span>' +
-             '<span class="erg-bar"><i class="bar-fill ' + lv + '" style="width:' + pct + '%"></i></span>' +
-             '<span class="erg-num">' + d.right + '/' + d.total + '</span></div>';
-    }).join(''));
-
-    /* --- 問題リスト --- */
-    setHtml('#exam-review-list', ex.questions.map(function (q, i) {
-      var a = by[q.q_id];
-      var right = !!(a && a.answered_right);
-      var pickedNums = a ? a.atoms.filter(function (x) { return x.picked; })
-        .map(function (x) { return x.original_num; }) : [];
-      var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
-      var choices = atoms.map(function (at) {
-        var isAns = !!at.is_correct;
-        var youPicked = pickedNums.indexOf(at.original_num) >= 0;
-        return '<div class="er-choice' + (isAns ? ' is-answer' : '') + '">' +
-               '<span class="er-cnum">' + circled(at.original_num) + '</span>' +
-               '<span class="er-ctext">' + esc(at.text || '') + '</span>' +
-               (youPicked && !isAns ? '<span class="er-badge is-you">あなた</span>' : '') +
-               (isAns ? '<span class="er-badge is-ans">正解</span>' : '') +
-               '</div>' +
-               ((at.explanation && String(at.explanation).trim())
-                 ? '<div class="er-exp">' + clean(at.explanation) + '</div>' : '');
-      }).join('');
-      var overall = (q.overall_explanation && String(q.overall_explanation).trim())
-        ? '<div class="er-exp"><b>全体解説</b><br>' + clean(q.overall_explanation) + '</div>' : '';
-      return '<li class="er-q' + (right ? ' is-closed' : '') + '">' +
-             '<button type="button" class="er-head">' +
-             '<span class="er-mark ' + (right ? 'is-right' : 'is-wrong') + '">' + (right ? '○' : '×') + '</span>' +
-             '<span class="er-stem">' + (i + 1) + '. ' + esc(q.stem || '') + '</span>' +
-             '<span class="er-toggle">▾</span></button>' +
-             '<div class="er-body">' + choices + overall + '</div></li>';
-    }).join(''));
-
     closeModals();
-    openModal('#modal-exam-review');
+    openModal('#modal-exam-review-style');
   }
 
+  function startExamReview(mode) {
+    var ex = st.exam;
+    if (!ex || !ex.questions || !ex.questions.length) { toast('復習できる模試の結果がありません'); return Promise.resolve(null); }
+    return S.getMeta('exam_pending', null).then(function (pend) {
+      /* 保留が無い（もう記録ずみ・古い模試）なら、既定を作り直して見せるだけにはしない：
+         記録ずみのものをもう一度記録すると二重になる。押しても保留に無ければ書かない（下）。 */
+      ex.review = { mode: (mode === 'open') ? 'open' : 'button', page: 0,
+                    pending: (pend && Array.isArray(pend.items)) ? pend : null };
+      M.hooks.beforeLeave = function (from, to) {
+        if (from !== 'exam_review') { return; }
+        M.hooks.beforeLeave = null;
+        finishExamReview(false);
+      };
+      closeModals();
+      return M.go('exam_review').then(function () { renderExamReviewPage(0); return ex.review; });
+    });
+  }
+
+  function pendingItemFor(qid) {
+    var rv = st.exam && st.exam.review;
+    if (!rv || !rv.pending) { return null; }
+    for (var i = 0; i < rv.pending.items.length; i++) { if (rv.pending.items[i].q_id === qid) { return rv.pending.items[i]; } }
+    return null;
+  }
+
+  function renderExamReviewPage(page) {
+    var ex = st.exam, rv = ex.review;
+    var total = ex.questions.length;
+    var pages = Math.max(1, Math.ceil(total / REVIEW_PAGE));
+    page = Math.max(0, Math.min(pages - 1, page || 0));
+    rv.page = page;
+    var by = {};
+    (ex.answers || []).forEach(function (a) { by[a.q_id] = a; });
+    var clean = (typeof M.sanitizeExplanationHtml === 'function') ? M.sanitizeExplanationHtml : function (h) { return esc(String(h || '')); };
+    var now = Date.now();
+    var from = page * REVIEW_PAGE, to = Math.min(total, from + REVIEW_PAGE);
+
+    var html = '';
+    for (var i = from; i < to; i++) {
+      var q = ex.questions[i];
+      var a = by[q.q_id];
+      var it = pendingItemFor(q.q_id);
+      var atoms = (q.atoms || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
+      var picked = a ? a.atoms.filter(function (x) { return x.picked; }).map(function (x) { return x.original_num; }) : [];
+      var marks = {};
+      if (a) { a.atoms.forEach(function (x) { if (x.ground_on) { marks[x.atom_id] = true; } }); }
+      var right = !!(a && a.answered_right);
+      var ansNums = picked.map(circled).join('') || '—';
+      var corNums = atoms.filter(function (x) { return x.is_correct; }).map(function (x) { return circled(x.original_num); }).join('');
+      var evalOf = {};
+      if (it) { it.atoms.forEach(function (x) { evalOf[x.atom_id] = x.eval; }); }
+
+      var blocks = atoms.map(function (at) {
+        var wasPicked = picked.indexOf(at.original_num) >= 0;
+        var handledRight = (wasPicked === !!at.is_correct);
+        var chosen = evalOf[at.atom_id] || null;
+        var dec = K.commitDecision(at, handledRight, 'exam', now);
+        var masterOk = K.isMasterUnlocked(at);
+        var evalsHtml = '';
+        if (!it) {
+          evalsHtml = '<p class="eval-count">この模試の評価は記録ずみです</p>';
+        } else if (!dec.commit) {
+          evalsHtml = '<div class="eval-locked"><span class="el-main">この選択肢は仕上がっています</span>' +
+                      '<span class="el-sub">まだ期日ではないので、この回は記録しません</span></div>';
+        } else {
+          var demoteNote = dec.demote
+            ? '<p class="eval-demote-note">期日前でしたが間違えたため、既定は<b>「難しい」</b>。うっかりなら「普通」に押し直せます</p>' : '';
+          evalsHtml = demoteNote + '<div class="eval-group" role="group" aria-label="選択肢' + at.original_num + 'の評価">' +
+            [{ k: 'hard', b: '難', s: 'しい' }, { k: 'normal', b: '普', s: '通' }, { k: 'easy', b: '易', s: 'しい' }, { k: 'master', b: 'マ', s: 'スター' }]
+            .map(function (e) {
+              var dis = (e.k === 'master' && !masterOk) || (dec.demote && (e.k === 'easy' || e.k === 'master'));
+              return '<button type="button" class="eval-btn eval-' + e.k + (e.k === chosen ? ' is-active' : '') + '"' +
+                     ' data-eval="' + e.k + '"' + (dis ? ' disabled' : '') + '>' +
+                     '<span class="eval-label"><b>' + e.b + '</b><small>' + e.s + '</small></span></button>';
+            }).join('') + '</div>';
+        }
+        return '<article class="cx ' + (at.is_correct ? 'is-correct' : 'is-wrong') + (wasPicked ? ' is-picked' : '') +
+               '" data-atom-id="' + esc(at.atom_id) + '" data-num="' + at.original_num + '">' +
+               '<div class="cx-line">' +
+               '<span class="cx-num">' + circled(at.original_num) + '</span>' +
+               '<span class="cx-text">' + esc(at.text || '') + '</span>' +
+               (wasPicked ? '<span class="cx-pick">あなたの答え</span>' : '') +
+               (marks[at.atom_id] ? '<span class="cx-mark" title="模試で付けた印">☑</span>' : '') +
+               '</div>' +
+               '<div class="cx-exp explanation-body">' + M.renderAtomBody(at, rv.mode) + '</div>' +
+               evalsHtml + '</article>';
+      }).join('');
+
+      var overall = (q.overall_explanation && String(q.overall_explanation).trim())
+        ? '<details class="xr-overall"><summary>全体解説</summary><div class="explanation-body">' + clean(q.overall_explanation) + '</div></details>' : '';
+
+      html += '<li class="xr-q" data-qid="' + esc(q.q_id) + '" data-index="' + i + '">' +
+              '<div class="xr-head">' +
+              '<span class="xr-mark ' + (right ? 'is-correct' : 'is-wrong') + '" aria-label="' + (right ? '正解' : '不正解') + '">' + (right ? '○' : '×') + '</span>' +
+              '<span class="xr-no">問' + (i + 1) + '</span>' +
+              '<p class="xr-stem">' + esc(q.stem || '') + '</p></div>' +
+              '<p class="xr-sum">あなたの答え <b>' + esc(ansNums) + '</b>　／　正解 <b>' + esc(corNums) + '</b>' +
+              (q.unit ? '　<span>' + esc(q.unit) + '</span>' : '') + '</p>' +
+              '<div class="rv-choices">' + blocks + '</div>' + overall + '</li>';
+    }
+    setHtml('#exam-review-list', html);
+
+    /* ページ（30問ずつ） */
+    var pagerHtml = '';
+    if (pages > 1) {
+      for (var p = 0; p < pages; p++) {
+        var a0 = p * REVIEW_PAGE + 1, b0 = Math.min(total, (p + 1) * REVIEW_PAGE);
+        pagerHtml += '<button type="button" class="' + (p === page ? 'is-active' : '') + '" data-page="' + p + '">' + a0 + '〜' + b0 + '問</button>';
+      }
+    }
+    ['#exam-review-pager', '#exam-review-pager2'].forEach(function (sel) {
+      var el = $(sel);
+      if (!el) { return; }
+      el.innerHTML = pagerHtml;
+      el.hidden = pages <= 1;
+    });
+    if (global.scrollTo) { global.scrollTo(0, 0); }
+  }
+
+  /* 評価ボタン：押した瞬間に保留へ（次へは無い）。保留に無い肢（記録ずみ）は何もしない。 */
+  function onExamReviewEval(btn) {
+    var art = btn.closest('.cx'), li = btn.closest('.xr-q');
+    if (!art || !li) { return; }
+    var atomId = art.getAttribute('data-atom-id'), qid = li.getAttribute('data-qid');
+    var ev = btn.getAttribute('data-eval');
+    var it = pendingItemFor(qid);
+    if (!it) { return; }
+    var hit = null;
+    it.atoms.forEach(function (x) { if (x.atom_id === atomId) { hit = x; } });
+    if (!hit) { return; }
+    hit.eval = ev;
+    art.querySelectorAll('.eval-btn').forEach(function (b) { b.classList.toggle('is-active', b === btn); });
+    var patch = {}; patch[atomId] = ev;
+    updateExamPending(qid, patch).catch(function (e) { console.error('[exam_pending]', e); });
+  }
+
+  /* 記録して終える。goHome=true なら［評価を記録して終える］。false なら画面を離れた側から（戻る・ホーム）。 */
+  function finishExamReview(goHome) {
+    var ex = st.exam;
+    if (ex && ex.review) { ex.review.done = true; }
+    M.hooks.beforeLeave = null;
+    return flushExamPending().then(function (r) {
+      if (r.atoms) { toast('模試の評価を記録しました（' + r.atoms + '肢）', 3600); }
+      return K.refreshAll({ recomputeWeakness: false }).then(function () { return M.refreshHome(); }).then(function () { return r; });
+    }).then(function (r) {
+      if (goHome) { return M.go('home', { replace: true }).then(function () { return r; }); }
+      return r;
+    }).catch(function (e) { console.error('[exam_review]', e); toast('評価の記録に失敗しました：' + (e && e.message ? e.message : e), 5000); });
+  }
+
+  /* V2.18 の openExamReview（折りたたみ一覧＋単元グラフ）はここにあった。V3.06 で上の画面に置き換えて消した。 */
+
   /* V2.17：提出前の最終確認。全問一覧（自分の答え・根拠チェック数・未回答）を出し、
-     行タップでその問題へ戻す。「全解答を提出する」で初めて gradeExam が走る。 */
+     行タップでその問題へ戻す。「全解答を提出する」で初めて gradeExam が走る。
+     V3.04（利用者裁定）：モーダルではなく**画面**（#screen-exam-sheet）。行に問題文を出す
+     （解答画面よりひと回り小さく・2行まで）。「問1がどんな問題でどう悩んだのか」が一覧で分かるように、
+     ☑を付けた肢も番号で出す（☑は用途自由の印・V3.05）。 */
   function openExamConfirm() {
     var ex = st.exam;
     if (!ex) { return; }
@@ -2815,26 +3151,31 @@ var QR_MATRIX = [
       if (a) {
         var nums = (a.atoms || []).filter(function (x) { return x.picked; })
           .map(function (x) { return circled(x.original_num); }).join('');
-        var g = (a.atoms || []).filter(function (x) { return x.ground_on; }).length;
-        ans = (nums || (a.numeric_input !== null && a.numeric_input !== undefined
-                        ? String(a.numeric_input) : '—'))
-              + (g ? '　☑×' + g : '');
+        var marks = (a.atoms || []).filter(function (x) { return x.ground_on; })
+          .map(function (x) { return circled(x.original_num); }).join('');
+        ans = '答え <b>' + esc(nums || (a.numeric_input !== null && a.numeric_input !== undefined
+                        ? String(a.numeric_input) : '—')) + '</b>'
+              + (marks ? '　☑ ' + esc(marks) : '');
       } else { un++; ans = '未回答'; }
       return '<li class="ec-row' + (a ? '' : ' is-un') + '" data-index="' + i + '">' +
              '<span class="ec-no">' + (i + 1) + '</span>' +
-             '<span class="ec-ans">' + esc(ans) + '</span>' +
+             '<div class="ec-main">' +
+             '<p class="ec-stem">' + esc(q.stem || '') + '</p>' +
+             '<p class="ec-ans">' + ans + '</p></div>' +
              '<span class="ec-go">▸</span></li>';
     }).join(''));
     setText('#exam-confirm-note', (un > 0 ? ('未回答が ' + un + ' 問あります。') : '')
       + '行をタップするとその問題に戻れます。提出するまで採点されません。');
     ex.unanswered = un;
-    /* V2.18：空欄のまま提出はさせない（利用者裁定）。全問回答で初めて押せる */
+    /* V2.18：空欄のまま提出はさせない（利用者裁定）。全問回答で初めて押せる
+       V3.03：文言を解答画面の［提出する］と揃える（「提出する（あと◯問）」） */
     var sub = $('#exam-confirm-submit');
     if (sub) {
       sub.disabled = un > 0;
-      sub.textContent = un > 0 ? ('未回答 ' + un + ' 問') : '全解答を提出する';
+      sub.textContent = un > 0 ? ('提出する（未回答 ' + un + ' 問）') : '提出する';
     }
-    openModal('#modal-exam-confirm');
+    /* V3.04：画面へ。quiz は積まない（戻りは必ず解答画面の同じ問題へ） */
+    return M.go('exam_sheet', { replace: false });
   }
 
   function abortExam() {
@@ -2843,31 +3184,136 @@ var QR_MATRIX = [
     M.hooks.onAbort = null;
     M.hooks.examSavedFor = null;      /* V2.17 */
     M.hooks.openExamConfirm = null;   /* V2.17 */
+    M.hooks.examUnanswered = null;    /* V3.03 */
+    M.hooks.examSubmit = null;        /* V3.03 */
     if (st.exam) { st.exam.answers = []; st.exam.aborted = true; }
   }
 
-  /* 採点：肢ごとに履歴連動 自動昇格／安全降格を適用する（第11章③）。
-     ・正解 ＋ 根拠ON → [易]30日 or [マ]180日
-     ・不正解 または 根拠OFF → 一律 [難]20分へ安全降格 */
-  function gradeExam(answers) {
-    var seq = Promise.resolve();
-    var patterns = { A: 0, B: 0, C: 0 };
+  /* --- V3.03：一覧と提出を分ける（利用者裁定） ---
+     未回答の数は st.exam.answers から数える（一覧を開かなくても分かるように）。
+     解答画面の［提出する］は、一覧を経ずに出せる。押した先で1度だけ確認する
+     （提出は取り消せない。一覧の［提出する］は一覧そのものが確認なので聞かない）。 */
+  function examUnansweredCount() {
+    var ex = st.exam;
+    if (!ex || !ex.questions) { return 0; }
+    var by = {};
+    (ex.answers || []).forEach(function (a) { by[a.q_id] = true; });
+    var un = 0;
+    ex.questions.forEach(function (q) { if (!by[q.q_id]) { un++; } });
+    return un;
+  }
 
+  function submitExamFromNav() {
+    var ex = st.exam;
+    if (!ex) { return Promise.resolve(false); }
+    var un = examUnansweredCount();
+    if (un > 0) { toast('未回答が ' + un + ' 問あります。全問に答えると提出できます', 3200); return Promise.resolve(false); }
+    return M.confirmAction({
+      title: '全解答を提出しますか',
+      body: ex.questions.length + '問すべてに答えました。提出すると採点され、解答は変えられません。',
+      ok: '提出する'
+    }).then(function (yes) {
+      if (!yes) { return false; }
+      gradeExam(ex.answers);
+      return true;
+    });
+  }
+
+  /* --- 模試の評価（V3.05・利用者裁定 2026-09-12） ---
+     V1.x〜V3.04 は第11章③「正解＋根拠ON→易／マ、それ以外→難」を提出時に適用していた。
+     利用者「チェックマークが長期記憶への昇格とかはしないでいい。用途自由の印。
+             間違えた問題の選択肢は全て難しい・正解なら全て普通。評価ボタンはいつも通り置き、
+             異議があれば変えてもらう。既出の問題で正解なら既定の評価を変えない」
+     → 既定は他のモードと同じ recommendEvaluations（第4章③）：
+          初見・正解 → 全肢 普／初見・不正解 → 全肢 難／既出・正解 → 前回の評価のまま／
+          既出・不正解 → 誤答肢と正解肢だけ難（無関係な肢は前回のまま）
+     → 提出時には**記録しない**。既定を「保留」（meta.exam_pending）に置き、復習の［次へ］で
+        （変えていれば変えたとおりに）確定する（V3.06）。復習しないで閉じた・途中でやめた・アプリを閉じた
+        ときは既定のまま記録する（flushExamPending。次の起動でも拾う）。二重には記録しない。
+     肢の状態は模試を組んだときの写し（q.atoms）で見る。模試中は変わらないので、提出時にそのまま使える。 */
+  function buildExamPending(answers) {
+    var ex = st.exam;
+    var byQ = {};
+    (ex.questions || []).forEach(function (q) { byQ[q.q_id] = q; });
+    var items = [];
     answers.forEach(function (a) {
-      a.atoms.forEach(function (at) {
-        seq = seq.then(function () {
-          var handledRight = (at.picked === at.is_correct);
-          return K.applyExamResult(at.atom_id, {
-            correct: handledRight,
-            ground_on: at.ground_on
-          }, { sessionId: st.exam.sessionId, thinkMs: a.think_ms }).then(function (r) {
-            patterns[r.pattern] = (patterns[r.pattern] || 0) + 1;
+      var q = byQ[a.q_id];
+      var atoms = ((q && q.atoms) || []).slice().sort(function (x, y) { return x.original_num - y.original_num; });
+      var picked = (a.atoms || []).filter(function (x) { return x.picked; }).map(function (x) { return x.original_num; });
+      var rec = K.recommendEvaluations(atoms, picked).recommendations;
+      var marks = {};
+      (a.atoms || []).forEach(function (x) { marks[x.atom_id] = !!x.ground_on; });
+      items.push({
+        q_id: a.q_id, think_ms: a.think_ms, answered_right: !!a.answered_right,
+        picked: picked,
+        atoms: (a.atoms || []).map(function (x) {
+          return { atom_id: x.atom_id, original_num: x.original_num,
+                   eval: (rec[x.atom_id] && rec[x.atom_id].eval) || 'normal',
+                   is_correct: (x.picked === x.is_correct), ground_on: !!marks[x.atom_id] };
+        })
+      });
+    });
+    return { session_id: (M.state.session && M.state.session.sessionId) || null, exam_id: ex.id, at: Date.now(), items: items };
+  }
+
+  /* 保留の評価を記録する。qids を渡せばその問題だけ、渡さなければ全部。
+     記録の経路は他のモードと同じ applyEvaluation（門番も同じ：期日前の正解は記録しない・期日前の誤答は難）。
+     模試は今までどおり日次の数・分析の分母・トピックガードには入れない（applyQuestionEvaluations を通さない）。 */
+  function flushExamPending(qids) {
+    return S.getMeta('exam_pending', null).then(function (pend) {
+      if (!pend || !Array.isArray(pend.items) || !pend.items.length) { return { questions: 0, atoms: 0 }; }
+      var want = qids ? {} : null;
+      (qids || []).forEach(function (id) { want[id] = true; });
+      var todo = pend.items.filter(function (it) { return !want || want[it.q_id]; });
+      var rest = pend.items.filter(function (it) { return want && !want[it.q_id]; });
+      var boundary = (M.state.meta && isNum(M.state.meta.day_boundary_hour)) ? M.state.meta.day_boundary_hour : 4;
+      var seq = Promise.resolve(), nAtoms = 0;
+      todo.forEach(function (it) {
+        (it.atoms || []).forEach(function (at) {
+          seq = seq.then(function () {
+            return K.applyEvaluation(at.atom_id, at.eval, {
+              mode: 'exam', isCorrect: at.is_correct, sessionId: pend.session_id,
+              boundaryHour: boundary, thinkMs: it.think_ms, groundOn: !!at.ground_on
+            }).then(function () { nAtoms++; });
           });
         });
       });
+      return seq.then(function () {
+        var next = rest.length ? { session_id: pend.session_id, exam_id: pend.exam_id, at: pend.at, items: rest } : null;
+        return S.setMeta('exam_pending', next);
+      }).then(function () { return { questions: todo.length, atoms: nAtoms }; });
     });
+  }
 
-    return seq.then(function () {
+  /* 復習画面で変えた評価を保留に書き戻す（V3.06 が使う）。 */
+  function updateExamPending(qid, evals) {
+    return S.getMeta('exam_pending', null).then(function (pend) {
+      if (!pend || !Array.isArray(pend.items)) { return null; }
+      pend.items.forEach(function (it) {
+        if (it.q_id !== qid) { return; }
+        (it.atoms || []).forEach(function (at) { if (evals[at.atom_id]) { at.eval = evals[at.atom_id]; } });
+      });
+      return S.setMeta('exam_pending', pend);
+    });
+  }
+
+  /* 起動時：前回の模試の保留が残っていたら（結果を見ずに閉じた等）、既定のまま記録する。 */
+  function flushExamPendingOnBoot() {
+    return flushExamPending().then(function (r) {
+      if (r.questions) { toast('前回の模試の評価を記録しました（' + r.questions + '問）', 4200); }
+      return r;
+    }).catch(function (e) { console.error('[exam_pending]', e); return { questions: 0, atoms: 0 }; });
+  }
+
+  function gradeExam(answers) {
+    var pending = buildExamPending(answers);
+    var evals = { hard: 0, normal: 0, easy: 0, master: 0 };
+    pending.items.forEach(function (it) {
+      it.atoms.forEach(function (at) { evals[at.eval] = (evals[at.eval] || 0) + 1; });
+    });
+    st.exam.pending = pending;
+
+    return S.setMeta('exam_pending', pending).then(function () {
       /* 必修は正答率80%以上、一般・状況設定は250点満点換算で180点以上 */
       var hisshu = answers.filter(function (a) { return /必修/.test(a.unit || ''); });
       var ippan = answers.filter(function (a) { return !/必修/.test(a.unit || ''); });
@@ -2911,14 +3357,19 @@ var QR_MATRIX = [
         hisshu: { total: hisshu.length, correct: hOk, pct: hPct, pass: hPass },
         ippan: { total: ippan.length, correct: iOk, score: iScore, pass: iPass },
         passed: passed,
-        patterns: patterns,
+        evals: evals,                         /* V3.05：既定の評価の内訳（保留。復習で変えられる） */
         by_unit: byUnit,                      /* V2.79：ハーフ以上だけ */
-        elapsed_ms: Date.now() - st.exam.startedAt
+        elapsed_ms: Date.now() - st.exam.startedAt,
+        /* V2.98：印で組んだ模試（無料版の1回ぶん）はそう記録する。
+           回数の判定はこの印つきの記録だけを数える（印無しの記録は数えない）。 */
+        variant: st.exam.variant || null
       };
 
       var record = (st.exam.id === 'mock_120')
         ? S.recordFullMockResult(passed)
-        : Promise.resolve(null);
+        : (st.exam.id === 'mock_weak')
+          ? S.recordWeakMockResult(passed)       /* V3.07：Level 5（王冠）の印 */
+          : Promise.resolve(null);
 
       /* V2.79：結果を日付つきで残す。これまではモーダルを閉じたら消えていた。
          保存に失敗しても採点結果は必ず見せる（見せないほうが害が大きい）。 */
@@ -2940,6 +3391,8 @@ var QR_MATRIX = [
     M.hooks.onAbort = null;
     M.hooks.examSavedFor = null;      /* V2.17 */
     M.hooks.openExamConfirm = null;   /* V2.17 */
+    M.hooks.examUnanswered = null;    /* V3.03 */
+    M.hooks.examSubmit = null;        /* V3.03 */
     M.endSession();
 
     var r = result;
@@ -2952,6 +3405,12 @@ var QR_MATRIX = [
 
     /* シェア画像はモーダルを閉じたあとでも作れるよう、結果を控える（V1.67） */
     st.exam.lastResult = r;
+
+    /* V2.98：過去の結果を見せたとき（showPastExamResult）に隠したボタンを戻す */
+    var shareBtn = $('#btn-exam-share'), reviewBtn = $('#btn-exam-review');
+    if (shareBtn) { shareBtn.hidden = false; }
+    if (reviewBtn) { reviewBtn.hidden = false; }
+    showExamBuyLine();
 
     setText('#exam-result-title', r.passed ? '合格ラインを超えました 🎉' : '採点結果');
 
@@ -2977,10 +3436,16 @@ var QR_MATRIX = [
         '</ul></div>';
     }
 
+    /* V3.05：昇格／降格の行をやめ、既定の評価の内訳（保留）を出す。旧記録（patterns）も壊さず読む */
+    var ev = r.evals || null;
+    var evLine = ev
+      ? '<small>評価の既定：難しい ' + (ev.hard || 0) + '肢 ／ 普通 ' + (ev.normal || 0) + '肢' +
+        ((ev.easy || ev.master) ? ' ／ 易しい以上 ' + ((ev.easy || 0) + (ev.master || 0)) + '肢' : '') +
+        '　（復習で変えられます）</small>'
+      : (r.patterns ? '<small>自動昇格：易 ' + (r.patterns.A || 0) + '肢 ／ マスター ' + (r.patterns.B || 0) + '肢' +
+        '　安全降格：難 ' + (r.patterns.C || 0) + '肢</small>' : '');
     setHtml('#exam-score', cells + unitHtml +
-      '<div class="score-cell" style="grid-column:1/-1">' +
-      '<small>自動昇格：易 ' + (r.patterns.A || 0) + '肢 ／ マスター ' + (r.patterns.B || 0) + '肢' +
-      '　安全降格：難 ' + (r.patterns.C || 0) + '肢</small></div>');
+      (evLine ? '<div class="score-cell" style="grid-column:1/-1">' + evLine + '</div>' : ''));
 
     return K.refreshAll({ recomputeWeakness: false })
       .then(function () { return M.refreshHome(); })
@@ -3510,7 +3975,9 @@ var QR_MATRIX = [
   }
 
   /* --- 同梱の見本問題（V1.81） ---
-     `init()` は「問題数0 かつ seed_imported が未設定」で見本問題を入れる。
+     `init()` は「問題数0 かつ seed_imported が未設定」で見本問題を入れる
+     （V2.97 からは「seed_imported が未設定」だけで決める。問題数は見ない。
+       途中で止まった取り込みの続きを入れるため。印の意味は変わらない）。
      ところが `resetAll()` は meta ストアごと消すので **seed_imported も一緒に消える**。
      その結果、全初期化したあとページを読み込み直すと**見本問題が戻ってくる**。
 
@@ -3523,7 +3990,9 @@ var QR_MATRIX = [
      いったん消したあとで見本が要るようになったら、
      設定の［同梱の見本問題を入れ直す］から明示的に入れる。 */
   function markSeedConsumed() {
-    return S.setMeta('seed_imported', true).catch(noop);
+    /* V2.99：体験用の予想問題の印も一緒に立てる。全初期化のあと読み込み直しても、
+       見本（249問）も体験用（90問）も戻らない（V1.81 と同じ理由：消したのは利用者の意思）。 */
+    return S.setMetaBulk({ seed_imported: true, free_mock_imported: true }).catch(noop);
   }
 
   function restoreSeedQuestions() {
@@ -3539,11 +4008,23 @@ var QR_MATRIX = [
     }).then(function (yes) {
       if (!yes) { return null; }
       return S.importText(global.SEED_QUESTIONS_TSV).then(function (rep) {
-        return markSeedConsumed()
-          .then(function () { return S.setMeta('seed_version', global.SEED_VERSION || null); })
-          .then(function () {
-          toast('見本問題を入れ直しました：新規 ' + rep.imported + ' 問 ／ 更新 ' + rep.updated + ' 問', 4600);
-          return rep;
+        /* V2.99：体験用の予想問題（2本目の同梱データ）も一緒に入れ直す。
+           「同梱の見本問題」＝配布物に入っている問題ぜんぶ、と読めるようにする。 */
+        var fm = global.FREE_MOCK_QUESTIONS_JSON
+          ? S.importText(global.FREE_MOCK_QUESTIONS_JSON).catch(function () { return null; })
+          : Promise.resolve(null);
+        return fm.then(function (rep2) {
+          if (rep2) {
+            rep.imported = (rep.imported || 0) + (rep2.imported || 0);
+            rep.updated  = (rep.updated  || 0) + (rep2.updated  || 0);
+          }
+          return markSeedConsumed()
+            .then(function () { return S.setMeta('seed_version', global.SEED_VERSION || null); })
+            .then(function () { return S.setMeta('free_mock_version', global.FREE_MOCK_VERSION || null); })
+            .then(function () {
+              toast('見本問題を入れ直しました：新規 ' + rep.imported + ' 問 ／ 更新 ' + rep.updated + ' 問', 4600);
+              return rep;
+            });
         });
       }).then(function (rep) {
         return K.refreshAll({ recomputeWeakness: true }).then(function () { return rep; });
@@ -4811,17 +5292,12 @@ var QR_MATRIX = [
       if (paid)  { paid.hidden = false; }
       if (bar)   { bar.hidden = true; }
     } else {
-      setText('#lic-state', g.locked ? 'お試し（上限に到達）' : 'お試し中');
-      setText('#lic-note', g.locked
-        ? '新しい問題は止まっています。復習はこのまま続けられます。'
-        : 'あと ' + g.left + '問（' + g.used + ' / ' + g.limit + '問）');
+      /* V3.00（案B）：門は単元。数の残りと進み具合の帯は出さない（数える意味が無い）。 */
+      setText('#lic-state', '無料版');
+      setText('#lic-note', '過去問の必修は全部使えます。他の単元の新しい問題と模試の続きは製品版です。');   /* V3.02 */
       if (input) { input.hidden = false; }
       if (paid)  { paid.hidden = true; }
-      if (bar) {
-        bar.hidden = false;
-        var f = $('#lic-bar-fill');
-        if (f) { f.style.width = Math.min(100, Math.round(g.used / g.limit * 100)) + '%'; }
-      }
+      if (bar)   { bar.hidden = true; }
     }
     setText('#lic-msg', '');
   }
@@ -5898,8 +6374,8 @@ var QR_MATRIX = [
                 text:'自作の問題データはここから取り込めます。書き出したバックアップも同じ欄に貼れます。',
                 place:'below' },
     ground:   { step:'模試のコツ',   sel:'#choice-list .choice-mark',
-                text:'右の☐は「勘ではなく根拠を説明できた」チェック。' +
-                     'チェックした肢だけが、正解時に長期記憶へ昇格します。' }
+                text:'右の☐は自由に使える印。迷った二択などに付けておくと、' +
+                     '解答一覧と復習で見返せます。評価には影響しません。' }   /* V3.05 */
   };
 
   var tipState = { seen: null, showing: null, queueLock: false };
@@ -6361,6 +6837,14 @@ var QR_MATRIX = [
     hideCoachMark: hideCoachMark,        notify: notify,
     finishOnboarding: finishOnboarding,  launchExam: launchExam,
     freeExamVariant: freeExamVariant,    FREE_EXAM_VARIANT: FREE_EXAM_VARIANT,   /* V2.96 */
+    freeExamGate: freeExamGate,          openFreeExamLimit: openFreeExamLimit,   /* V2.98 */
+    showPastExamResult: showPastExamResult,                                     /* V2.98 */
+    refreshLicense: refreshLicense,                                             /* V3.00：テストから設定欄の文言を見る */
+    freeCardsInfo: freeCardsInfo,        showExamBuyLine: showExamBuyLine,       /* V3.01 */
+    flushExamPending: flushExamPending,  updateExamPending: updateExamPending,   /* V3.05 */
+    buildExamPending: buildExamPending,
+    startExamReview: startExamReview,    renderExamReviewPage: renderExamReviewPage,   /* V3.06 */
+    finishExamReview: finishExamReview,
     state: st
   };
 
@@ -6545,15 +7029,25 @@ var QR_MATRIX = [
     /* --- 力試し模試 --- */
     on($('#exam-list'), 'click', function (ev) {
       var c = ev.target.closest('.exam-card');
-      if (c) { startExam(c.dataset.examId); }
+      if (!c) { return; }
+      /* V3.01：無料版でフル・いじわるは有料版。押したら購入の案内へ（解禁の判定には触らない）。 */
+      if (c.getAttribute('data-free') === 'paid-only') { M.openBuyDialog(); return; }
+      startExam(c.dataset.examId);
     });
-    /* V2.17：最終確認モーダル */
-    on($('#exam-confirm-close'), 'click', function () { closeModals(); });
+    /* V3.01（段4）：結果画面の下の購入への線。文面は BUY_URL 1箇所（§7-B）。 */
+    on($('#exam-buy-open'), 'click', function () { global.open(M.BUY_URL, '_blank', 'noopener'); });
+    /* V2.17：最終確認モーダル → V3.04：解答一覧の画面。戻るときは解答画面を描き直す（同じ問題へ） */
+    function backToExam(index) {
+      if (!st.exam || !M.state.session || M.state.session.mode !== 'exam') { return M.go('home', { replace: true }); }
+      return M.go('quiz', { replace: true }).then(function () {
+        M.examJump(isNum(index) ? index : M.state.session.index);
+      });
+    }
+    on($('#exam-confirm-close'), 'click', function () { backToExam(); });
     on($('#exam-confirm-list'), 'click', function (ev) {
       var row = ev.target.closest('.ec-row');
       if (!row) { return; }
-      closeModals();
-      M.examJump(parseInt(row.getAttribute('data-index'), 10));
+      backToExam(parseInt(row.getAttribute('data-index'), 10));
     });
     on($('#exam-confirm-submit'), 'click', function () {
       if (!st.exam) { return; }
@@ -6562,15 +7056,30 @@ var QR_MATRIX = [
       closeModals();
       gradeExam(st.exam.answers);
     });
-    /* V2.18：模試後の復習 */
+    /* V2.18：模試後の復習 → V3.06：入口の2択 → 全画面のスクロール一覧 */
     on($('#btn-exam-review'), 'click', function () { openExamReview(); });
-    on($('#exam-review-close'), 'click', function () { closeModals(); });
+    on($('#exam-review-style-button'), 'click', function () { startExamReview('button'); });
+    on($('#exam-review-style-open'), 'click', function () { startExamReview('open'); });
     on($('#exam-review-list'), 'click', function (ev) {
-      var head = ev.target.closest('.er-head');
-      if (!head) { return; }
-      var q = head.closest('.er-q');
-      if (q) { q.classList.toggle('is-closed'); }
+      var b = ev.target.closest('.eval-btn');
+      if (b && !b.disabled) { onExamReviewEval(b); }
     });
+    ['#exam-review-pager', '#exam-review-pager2'].forEach(function (sel) {
+      on($(sel), 'click', function (ev) {
+        var b = ev.target.closest('button[data-page]');
+        if (b) { renderExamReviewPage(parseInt(b.getAttribute('data-page'), 10)); }
+      });
+    });
+    on($('#exam-review-done'), 'click', function () { finishExamReview(true); });
+    /* V3.05：結果を閉じたら（復習しない）保留の評価を既定のまま記録する。
+       閉じるボタンは data-close（共通の closeModals）なので、ここで先に記録を走らせる。 */
+    on($('#modal-exam-result [data-close]'), 'click', function () {
+      flushExamPending().then(function (r) {
+        if (r.atoms) { return K.refreshAll({ recomputeWeakness: false }).then(function () { return M.refreshHome(); }); }
+        return null;
+      }).catch(function (e) { console.error('[exam_pending]', e); });
+    });
+    /* V2.18 の #exam-review-close／.er-head の配線は V3.06 で消した（画面に置き換え） */
     on($('#warn-study'), 'click', function () { closeModals(); openRandomSelect(); });
     on($('#btn-exam-share'), 'click', function () { shareExamResult(); });
     on($('#warn-go'), 'click', function () {
@@ -6591,6 +7100,19 @@ var QR_MATRIX = [
       closeModals();
       if (!id) { return; }
       launchExam(id, EXAM_SIZE[id] || 30, style);
+    });
+
+    /* --- 無料版の模試の2回目（V2.98） --- */
+    on($('#modal-free-exam'), 'click', function (ev) {
+      var b = ev.target.closest('[data-fx]');
+      if (!b) { return; }
+      var act = b.getAttribute('data-fx');
+      var fl = st.exam.freeLimit || {};
+      if (act === 'buy') { global.open(M.BUY_URL, '_blank', 'noopener'); return; }
+      closeModals();
+      if (act === 'other' && fl.otherId) { startExam(fl.otherId); return; }
+      if (act === 'result') { showPastExamResult(fl.last); return; }
+      if (act === 'home') { M.go('home'); return; }
     });
 
     /* --- 概念ノック --- */
@@ -6933,32 +7455,87 @@ var QR_MATRIX = [
          自動判定を全問へ適用する。以後の新規取り込み分は取り込み成功時に
          追いかける（下のrunImport側）。嫌なら設定「一問一答の出しかた」の
          「常に4択で出す」でOFF、または「全部外す」で戻せる。
-         起動を待たせないよう非同期・失敗しても起動は通す。 */
-      if (totalQ && !meta.auto_split_done) {
-        S.autoMarkSplittable().then(function (d) {
-          return S.setMeta('auto_split_done', true).then(function () { return d; });
-        }).catch(noop);
+         起動を待たせないよう非同期・失敗しても起動は通す。
+         V2.97：同梱シードの続きを入れる起動（下・印が無い）では走らせない。
+         全問の読み→書き戻しが取り込みと同時に走ると、取り込みが書いた直後の
+         レコードを古い写しで上書きしうる。印が立った次の起動で走れば足りる。 */
+      /* V2.99：同梱データ（見本・体験用）の取り込みがこの起動で走るなら、その**あと**に回す
+         （同じ起動の中で、取り込みが終わってから走らせる。次の起動まで待たせない）。 */
+      var pendingImport = (!meta.seed_imported && !!global.SEED_QUESTIONS_TSV) ||
+                          (!meta.free_mock_imported && !!global.FREE_MOCK_QUESTIONS_JSON);
+      if (totalQ && !meta.auto_split_done && !pendingImport) {
+        autoSplitIfNeeded();
       }
 
-      /* IndexedDB が完全に空なら、同梱シードを1度だけ取り込む。
-         データ0件では「問1」が存在せず、初回起動が空白で終わってしまう。 */
-      if (!totalQ) {
-        if (!global.SEED_QUESTIONS_TSV || meta.seed_imported) { return null; }
+      /* 同梱シードを1度だけ取り込む。
+         データ0件では「問1」が存在せず、初回起動が空白で終わってしまう。
+
+         --- V2.97：条件を「問題数0」から「入れ終えた印（seed_imported）が無い」へ ---
+         取り込みは __APP_READY のあとも走っている（200件ずつの書き込み。249問がそろうのは
+         READY から約1秒後）。その間に閉じる・再読込すると、200問だけ入った状態で
+         seed_imported が立たないまま止まる。V2.96 までは「問題数0のときだけ入れる」だったので、
+         次の起動では totalQ が 200 で条件を外れ、V2.08 の onlyExisting 更新（既存200問の上書き）
+         しか走らず、**残り49問は二度と入らなかった**（実測：updated 200／skipped_missing 49、
+         seed_version だけ 3.03 が入る）。
+         印で決めれば、途中で止まった端末は次の起動で続きが入る（既存の200問は更新・
+         学習の記録と★・メモは persistImportPayload が引き継ぐ）。
+         印は取り込みが**終わってから**立てる（順序を変えない）。
+         V1.81（全初期化は seed_imported を残す＝見本は戻らない）とも整合する：
+         印が立っている端末は問題数が0でも入れない。 */
+      if (!meta.seed_imported && global.SEED_QUESTIONS_TSV) {
         return S.importText(global.SEED_QUESTIONS_TSV)
           .then(function (rep) {
             return S.setMeta('seed_imported', true)
               .then(function () { return S.setMeta('seed_version', global.SEED_VERSION || null); })
               .then(function () { return rep; });
           })
+          /* V2.99：体験用の予想問題も同じ起動で続けて入れる（初回起動）。 */
+          .then(function () { return importFreeMockIfNeeded(meta, { quiet: true }); })
+          .then(function () { return autoSplitIfNeeded(); })
           .then(function () { return K.refreshAll({ recomputeWeakness: false }); })
           .then(function () { return M.refreshHome(); })
-          .then(function () { return route(logs, meta); });
+          /* 同梱データの取り込みが終わった合図（V2.99・テストが待つ）。route() は welcome で
+             利用者の操作を待つので、その**前**に立てる。 */
+          .then(function () { global.__INIT_DONE = true; return route(logs, meta); });
       }
-      /* --- 同梱データの版が上がっていたら、既存の見本問題だけ上書き更新（V2.08） ---
+      /* 印が立っているのに問題数0 ＝ 全初期化のあと（V1.81）。見本は戻さない。
+         配布物に見本が無いときもここ。体験用の予想問題も同じ（印は全初期化で両方立てる）。 */
+      if (!totalQ) { global.__INIT_DONE = true; return null; }
+
+      /* --- 体験用の予想問題（無料版の球・V2.99） ---
+         2本目の同梱データ（questions_free_mock.js）。印 free_mock_imported が無ければ1度だけ入れる。
+         同梱シード（questions.js）に足さなかったのは、シードの更新が onlyExisting（V2.08）で
+         **既存の端末に新しい問題が届かない**ため。別の印で入れれば、既存の端末にも次の起動で入る
+         （V2.97 の「印で入れる」と同じ型。途中で止まっても次の起動で続きが入る）。
+         購入済みの人にも入る：予想問題の一部として模試の球になる（印は無視される・V2.96）。
+         版（FREE_MOCK_VERSION）が上がっていたら、既存の90問だけ上書き更新（シードと同じ）。 */
+      return importFreeMockIfNeeded(meta, {}).then(function (fmRep) {
+        var touched = !!(fmRep && (fmRep.imported || fmRep.updated));
+        var finish = function () {
+          var pre = pendingImport ? autoSplitIfNeeded() : Promise.resolve(null);
+          /* V3.05：前回の模試の保留（結果を見ずに閉じた等）を既定のまま記録する。数が動くので先に。 */
+          pre = pre.then(function () { return flushExamPendingOnBoot(); })
+                   .then(function (fr) { if (fr && fr.atoms) { touched = true; } return null; });
+          return pre.then(function () {
+            if (!touched) { global.__INIT_DONE = true; return route(logs, meta); }
+            return K.refreshAll({ recomputeWeakness: true })
+              .then(function () { return M.refreshHome(); })
+              .then(function () { global.__INIT_DONE = true; return route(logs, meta); });
+          });
+        };
+        return seedVersionUpdate(meta, finish);
+      });
+    }).then(function (r) {
+      renderHomeTips().catch(noop);
+      return r;
+    }).catch(function (e) { console.error('[part2 init]', e); global.__INIT_DONE = true; });
+
+    /* --- 同梱データの版が上がっていたら、既存の見本問題だけ上書き更新（V2.08） ---
          見本は「問題数0のとき1回だけ」入る設計なので、配布物のシードを直しても
          既存の端末には届かない（V2.07 のマスタタグ追記が、更新後も旧タグのままだった）。
          onlyExisting で「いま無い問題は入れない」。消した見本は戻さない（§22-4）。
          学習の記録・★・メモ・図は取り込みが引き継ぐ（persistImportPayload）。 */
+    function seedVersionUpdate(meta, finish) {
       if (global.SEED_QUESTIONS_TSV && global.SEED_VERSION &&
           meta.seed_version !== global.SEED_VERSION) {
         return S.importText(global.SEED_QUESTIONS_TSV, { onlyExisting: true })
@@ -6973,13 +7550,57 @@ var QR_MATRIX = [
             return null;
           })
           .catch(function (e) { console.error('[seed_version]', e); })
-          .then(function () { return route(logs, meta); });
+          .then(function () { return finish(); });
       }
-      return route(logs, meta);
-    }).then(function (r) {
-      renderHomeTips().catch(noop);
-      return r;
-    }).catch(function (e) { console.error('[part2 init]', e); });
+      return finish();
+    }
+
+    /* 一問一答の分割印を全問へ1回だけ付ける（V2.43）。V2.99 で関数に切り出した：
+       同梱データの取り込みがある起動では、取り込みが**終わってから**呼ぶ（同時に走らせない）。
+       失敗しても起動は通す。 */
+    function autoSplitIfNeeded() {
+      return S.loadMeta().then(function (m2) {
+        if (m2.auto_split_done) { return null; }
+        return S.countQuestions().then(function (n) {
+          if (!n) { return null; }
+          return S.autoMarkSplittable().then(function (d) {
+            return S.setMeta('auto_split_done', true).then(function () { return d; });
+          });
+        });
+      }).catch(noop);
+    }
+
+    /* 体験用の予想問題を入れる（V2.99）。戻り値は取り込みレポート（何もしなければ null）。
+       失敗しても起動は通す（売り物の都合で学習が止まるのが、いちばんまずい壊れ方）。 */
+    function importFreeMockIfNeeded(meta, opts) {
+      var FM = global.FREE_MOCK_QUESTIONS_JSON, FMV = global.FREE_MOCK_VERSION || null;
+      if (!FM) { return Promise.resolve(null); }
+      var quiet = !!(opts && opts.quiet);
+      if (!meta.free_mock_imported) {
+        return S.importText(FM).then(function (rep) {
+          /* 印は取り込みが終わってから立てる（V2.97 と同じ。途中で止まれば次の起動で続きが入る） */
+          return S.setMeta('free_mock_imported', true)
+            .then(function () { return S.setMeta('free_mock_version', FMV); })
+            .then(function () {
+              var n = (rep.imported || 0) + (rep.updated || 0);
+              /* 黙って入れない（§19）。初回起動（quiet）は見本と一緒なので言わない。
+                 既存の端末では「問題数が増えた理由」を1回だけ言う。 */
+              if (!quiet && n) {
+                toast('体験用の予想問題 ' + n + '問を入れました。力試しモードのプチ模試・ハーフ模試で出ます', 5200);
+              }
+              return rep;
+            });
+        }).catch(function (e) { console.error('[free_mock]', e); return null; });
+      }
+      if (FMV && meta.free_mock_version !== FMV) {
+        return S.importText(FM, { onlyExisting: true })
+          .then(function (rep) {
+            return S.setMeta('free_mock_version', FMV).then(function () { return rep; });
+          })
+          .catch(function (e) { console.error('[free_mock_version]', e); return null; });
+      }
+      return Promise.resolve(null);
+    }
 
     function route(logs, meta) {
       if (meta.onboarding_done || meta.tutorial_finished) { return null; }

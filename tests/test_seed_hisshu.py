@@ -137,9 +137,9 @@ if os.path.exists(oldp):
 html = io.open(os.path.join(base, "index.html"), encoding="utf-8").read()
 sw = io.open(os.path.join(base, "sw.js"), encoding="utf-8").read()
 mv = re.search(r"const CACHE_NAME = 'v([\d.]+)'", sw)
-ok("CACHE_NAME を上げた", mv and mv.group(1) == "2.96.0", mv.group(1) if mv else None)
-ok("?v= を揃えた", "?v=2.96" in html and "?v=2.95" not in html)
-ok("build-stamp を上げた", "20260911_Omoidasu_V2.96" in html)
+ok("CACHE_NAME を上げた", mv and mv.group(1) == "3.08.0", mv.group(1) if mv else None)
+ok("?v= を揃えた", "?v=3.08" in html and "?v=3.07" not in html)
+ok("build-stamp を上げた", "20260911_Omoidasu_V3.08" in html)
 
 # --- 実際に取り込めるか ---
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -176,8 +176,9 @@ if sync_playwright:
         ok("取り込みの警告が1件も出ない（列ズレの再発を見張る）",
            not rep.get("warnings"),
            json.dumps((rep.get("warnings") or [])[:2], ensure_ascii=False))
+        # V2.99：体験用の予想問題90問（pool mock）も同梱される。ここで見るのはシード（本体）だけ。
         dbsrc = pg.evaluate("""async () => {
-            const qs = await window.Storage.getAllQuestions();
+            const qs = (await window.Storage.getAllQuestions()).filter(q => (q.pool || 'main') !== 'mock');
             return { n: qs.length, withSrc: qs.filter(q => q.source).length,
                      spl: qs.filter(q => q.is_splittable).length,
                      img: qs.filter(q => q.image_url).length,
@@ -203,8 +204,9 @@ if sync_playwright:
             qs.forEach(q => { const k = q.pool || 'main'; c[k] = (c[k] || 0) + 1; });
             return c;
         }""")
-        ok("全問が pool=main（模試用が混ざっていない）",
-           pools.get("main") == 249 and not pools.get("mock"),
+        # V2.99：mock は同梱の体験用90問（別ファイル）。シード249問は全部 main であればよい。
+        ok("シードは全問が pool=main（模試用が混ざっていない）",
+           pools.get("main") == 249 and (pools.get("mock") or 0) in (0, 90),
            json.dumps(pools, ensure_ascii=False))
         ok("取り込み中にJSエラーが出ていない", not errs, errs[:2])
         br.close()

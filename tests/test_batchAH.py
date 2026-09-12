@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""V1.53 検証：買い切りライセンス（無料枠200問・鍵の照合・同期での引き継ぎ）"""
+"""V1.53 検証：買い切りライセンス（無料枠200問・鍵の照合・同期での引き継ぎ）
+
+V3.00（案B・2026-09-11）：門を「解いた数（200問）」から「単元（必修）」へ変えた。
+無料枠の数の観点は、同じ数だけ単元の観点へ置き換えた（観点は減らしていない）。
+solvedOnly（scheduler の経路）は残っているのでそのまま見る。
+"""
 import json, os, sys, subprocess, io, glob
 from playwright.sync_api import sync_playwright
 
@@ -72,7 +77,7 @@ def runtime_checks():
           return { good: g.ok, goodName: (g.payload || {}).n,
                    bad: b.ok, badWhy: b.reason,
                    junk: junk.ok, junkWhy: junk.reason,
-                   wrapped: wrapped.ok, limit: L.FREE_LIMIT };
+                   wrapped: wrapped.ok, limit: L.FREE_LIMIT, units: L.FREE_UNITS };
         }""", [GOOD, BAD])
         ok("正しい鍵は通る", r["good"] is True, json.dumps(r))
         ok("鍵の中の購入者名が読める（問い合わせの照合用）",
@@ -82,7 +87,8 @@ def runtime_checks():
         ok("でたらめな文字列は「形が違う」と分かる", r["junkWhy"] == "format", json.dumps(r))
         ok("折り返して貼っても通る（メールから写すと必ず折り返す）",
            r["wrapped"] is True, json.dumps(r))
-        ok("無料枠は200問", r["limit"] == 200, json.dumps(r))
+        # V3.00：門は単元。FREE_LIMIT は定数として残るだけ（門に使わない）
+        ok("無料の範囲は単元「必修」（FREE_UNITS）", r["units"] == ["必修"], json.dumps(r))
 
         # ---------- 無料枠の判定 ----------
         r = pg.evaluate("""async () => {
@@ -90,12 +96,13 @@ def runtime_checks():
           await L.deactivate();
           return { at0: L.gate(0), at199: L.gate(199), at200: L.gate(200), at999: L.gate(999) };
         }""")
+        # V3.00（案B）：門は数ではない。何問解いても locked にならず、残り数という概念も無い
         ok("最初は止まらない", r["at0"]["locked"] is False, json.dumps(r["at0"]))
-        ok("199問では止まらない", r["at199"]["locked"] is False, json.dumps(r["at199"]))
-        ok("200問で止まる", r["at200"]["locked"] is True, json.dumps(r["at200"]))
-        ok("残り数が正しい", r["at199"]["left"] == 1, json.dumps(r["at199"]))
-        ok("上限を超えても残りは負にならない",
-           r["at999"]["left"] == 0, json.dumps(r["at999"]))
+        ok("199問でも止まらない", r["at199"]["locked"] is False, json.dumps(r["at199"]))
+        ok("200問でも止まらない（門は数ではなく単元・V3.00）", r["at200"]["locked"] is False, json.dumps(r["at200"]))
+        ok("残り数は無い（left は null）", r["at199"]["left"] is None and r["at199"]["limit"] is None, json.dumps(r["at199"]))
+        ok("解いた数は記録として返る（used）・無料の単元が入る",
+           r["at999"]["used"] == 999 and r["at999"]["units"] == ["必修"], json.dumps(r["at999"]))
 
         # ---------- 鍵を入れると全部開く ----------
         r = pg.evaluate("""async (good) => {
