@@ -3106,7 +3106,18 @@ var QR_MATRIX = [
     return clearExamResume().then(function () { return gradeExam(answers); });
   }
 
-  /* --- 残り時間（教室の時計） --- */
+  /* --- 時間の見せ方（V3.15・利用者裁定） -------------------------------------
+   * 「残り時間のカウントダウンはしないで。現在時刻をみて、終了○○時○○分 とだけ固定表記しておいて。
+   *   中断・再開した際はその分差し引いて新たに終了時間を表記させて」
+   *
+   * V3.10 は「残り 39:58」を1秒ごとに書き換えていた。動く数字は視界の端でも動きを拾うので、
+   * 問題を読んでいるあいだ中ずっと気が散る。教室の時計と同じで、**終わる時刻は動かない**。
+   *
+   * 中断・再開は `deadline = 再開した時刻 + 残り時間` なので（V3.11）、
+   * 終了時刻は**再開した分だけ自然に繰り下がる**。ここで引き算をやり直す必要は無い。
+   *
+   * 時計そのもの（1秒ごとの tick）は止めない。5分前の知らせと0分での自動提出に要る。
+   * 書き換えるのは**終了時刻が変わったときだけ**（同じ文字を毎秒入れ直さない）。 */
   function fmtRemain(ms) {
     var s = Math.max(0, Math.ceil(ms / 1000));
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
@@ -3114,12 +3125,28 @@ var QR_MATRIX = [
     return (h ? h + ':' : '') + mm + ':' + ss;
   }
 
+  /* 終了の時刻（その端末の時計で 13:45）。秒は出さない（動いて見える） */
+  function fmtEndClock(ms) {
+    var d = new Date(ms);
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  function renderPaperEnd() {
+    var ex = st.exam, el = $('#paper-timer');
+    if (!ex || !el) { return; }
+    if (ex.shownDeadline !== ex.deadline) {
+      el.textContent = '終了 ' + fmtEndClock(ex.deadline);
+      ex.shownDeadline = ex.deadline;
+    }
+  }
+
   function tickPaper() {
     var ex = st.exam;
     if (!ex || ex.submitted) { return; }
     var left = ex.deadline - Date.now();
+    renderPaperEnd();
     var el = $('#paper-timer');
-    if (el) { el.textContent = '残り ' + fmtRemain(left); el.classList.toggle('is-warn', left <= EXAM_WARN_MS); }
+    if (el) { el.classList.toggle('is-warn', left <= EXAM_WARN_MS); }
     if (!ex.warned && left <= EXAM_WARN_MS) { ex.warned = true; toast('残り5分です', 3600); }
     if (left <= 0) { submitPaper({ timeUp: true }); }
   }
@@ -4131,6 +4158,20 @@ var QR_MATRIX = [
             return esc(k) + ' ' + rep.variants[k] + ' 問';
           }).join(' ／ ') + '</small>');
         }
+      }
+      /* V3.14：肢の並び。予想問題は並べ替えた数を、そのうえで残った偏りを出す。
+         黙って並べ替えない（何をしたかが分からないと、次に同じ事故が起きても気づけない）。 */
+      if (rep.reordered) {
+        lines.push('<b>予想問題の選択肢を並べ替えました ' + rep.reordered + ' 問</b>');
+        lines.push('<small>AIが作った問題は正解が先頭に寄ります（体験用90問の実測：肢1が81〜94%）。' +
+                   '取り込みのときに問題ごとに決まった並びへ替えています。過去問は出典どおりなので替えません。</small>');
+      }
+      if (rep.answer_pos_total >= 20 && rep.answer_pos_max_pct >= 40) {
+        lines.push('<b>⚠ 正解の位置が偏っています（いちばん多い肢が ' + rep.answer_pos_max_pct + '%）</b>');
+        lines.push('<small>内訳：' + Object.keys(rep.answer_pos || {}).sort().map(function (k) {
+          return '肢' + esc(k) + ' ' + rep.answer_pos[k] + '問';
+        }).join(' ／ ') + '（1つ選べの ' + rep.answer_pos_total + '問）。' +
+                   '本試験は4肢でおよそ25%ずつです。過去問でこれが出たら元データの事故を疑ってください。</small>');
       }
       /* 分類ガード（V1.71）。中項目名が1字違うだけでツリーが分裂する。
          模試用と同じく「気づけるのは手遅れになってから」の類なので必ず出す。 */
@@ -7181,6 +7222,7 @@ var QR_MATRIX = [
     /* V3.10：問題用紙（テストと通し検証から） */
     renderExamPaper: renderExamPaper, collectPaperAnswers: collectPaperAnswers,
     openExamSubmit: openExamSubmit, submitPaper: submitPaper, tickPaper: tickPaper,
+    fmtEndClock: fmtEndClock, renderPaperEnd: renderPaperEnd,   /* V3.15 */
     /* V3.11：中断と再開 */
     /* V3.12：印だけの一覧 */
     markedQuestions: markedQuestions, refreshMarkCount: refreshMarkCount, openExamMarks: openExamMarks,
@@ -7402,6 +7444,11 @@ var QR_MATRIX = [
       if (row) { jumpToPaperQuestion(parseInt(row.getAttribute('data-index'), 10)); }
     });
     on($('#exam-submit-go'), 'click', function () { submitPaper(); });
+    /* V3.16（利用者裁定「見直す押したら問1にスクロールアップして」）：
+       ［提出する］は最下部にしか無いので、押した時点で必ず最後の問のところにいる。
+       覆いを畳むだけだと、見直しは**最後の問から上へ**という不自然な向きになる。
+       頭から見直せるように問1まで戻す。覆いは data-close が畳むので、ここは戻すだけ。 */
+    on($('#exam-submit-back'), 'click', function () { jumpToPaperQuestion(0); });
     /* V3.11：数値の入力も控える */
     on($('#paper-list'), 'input', function (ev) {
       if (ev.target && ev.target.classList && ev.target.classList.contains('pq-num-input')) { savePaperState(); }

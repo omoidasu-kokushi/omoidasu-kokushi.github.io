@@ -115,6 +115,9 @@ const FREE_MOCK_QUESTIONS_JSON = [
   ']}'
 ].join("\n");
 /* 体験用の予想問題の版。中身を変えたら上げる（既存端末は onlyExisting で上書き更新）。 */
-const FREE_MOCK_VERSION = "1.00";
+/* V1.01（2026-09-12・アプリ V3.14）：中身は1問も変えていない。版だけ上げる。
+   取り込みのときに予想問題の肢を並べ替えるようになった（正解が肢1に 81〜94% 寄っていた）。
+   版が上がると既存の端末でも90問だけ上書き更新され（onlyExisting）、学習記録を保ったまま並びが直る。 */
+const FREE_MOCK_VERSION = "1.01";
 if (typeof window !== "undefined") { window.FREE_MOCK_QUESTIONS_JSON = FREE_MOCK_QUESTIONS_JSON; }
 if (typeof window !== "undefined") { window.FREE_MOCK_VERSION = FREE_MOCK_VERSION; }

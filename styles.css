@@ -4934,9 +4934,11 @@ button.set-row:active{ transform:translateY(1px); box-shadow:0 0 0 rgba(0,0,0,0)
 .mk-nums{ flex:1 1 auto; min-width:0; color:var(--accent); font-weight:800; }
 .mk-go{ flex:0 0 auto; color:var(--text-mute); }
 .mark-empty{ margin:10px 0; color:var(--text-sub); font-size:var(--fs-sm); }
-.paper-timer.is-warn{ color:var(--c-hard); }
+.paper-timer.is-warn{ color:var(--c-hard); }   /* V3.15：残り5分を切ったときだけ赤（数字は動かない） */
 .paper-list{ margin:0; padding:0; list-style:none; }
-.pq{ margin:0 0 22px; padding:0 0 18px; border-bottom:2px solid var(--border); }
+/* V3.16：問へ飛んだとき（［見直す］＝問1へ／印の一覧の行タップ）、固定ヘッダーと帯の下に潜らない。
+   ヘッダー（--hdr-h）＋問題用紙の帯ぶん。復習の .xr-q と同じ考え（V3.09）。 */
+.pq{ margin:0 0 22px; padding:0 0 18px; border-bottom:2px solid var(--border); scroll-margin-top:104px; }
 .pq-head{ display:flex; align-items:baseline; gap:10px; margin-bottom:6px; }
 .pq-no{ font-family:var(--font-num); font-size:var(--fs-lg); font-weight:800; }
 .pq-instr{ font-size:var(--fs-xs); font-weight:700; color:var(--text-sub); }

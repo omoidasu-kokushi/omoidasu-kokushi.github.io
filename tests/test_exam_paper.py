@@ -18,6 +18,7 @@
   ・［見直す］で戻れる（提出されない）。［これで提出］で採点。未回答は不正解（answered_right=false）で復習に「未回答」と出る
   ・☑は ground_on として記録に残る。反応時間は取れない（think_ms=null。欄はある）
   ・残り時間：開始直後は制限時間そのもの。5分を切ると1回だけ通知＋赤。0で自動提出（gradeExam）
+    （V3.15：帯の表示は「終了 13:45」の固定表記になった。表示そのものは test_exam_endtime）
   ・◀戻る／ホームは確認を出す（V3.11 で文言は「模試を中断しますか」＝解答は残る。中断と再開そのものは test_exam_resume）。
     畳むと aborted・時計停止でホームへ。やめなければ残る
   ・⚙設定へ寄り道して戻っても問題用紙と解答が残っている
@@ -110,7 +111,8 @@ with sync_playwright() as p:
       out.title = q('hdr-path').textContent;
       /* 残り時間：開始直後は 40:00 前後 */
       out.timer0 = q('paper-timer').textContent;
-      out.limit = ex.limitMs === 40 * 60000 && /残り (40:00|39:5\\d)/.test(out.timer0);
+      out.limit = ex.limitMs === 40 * 60000 && Math.abs((ex.deadline - Date.now()) - 40 * 60000) < 5000
+        && /^終了 \\d\\d:\\d\\d$/.test(out.timer0);   /* V3.15：表示は終了時刻 */
       /* 肢のタップ＝解答。もう一度で外れる。別の肢で置き換え */
       const li1 = document.querySelector('#paper-list .pq[data-index="0"]');
       const q1 = ex.questions[0];
@@ -156,7 +158,8 @@ with sync_playwright() as p:
       ex.deadline = Date.now() + 4 * 60000;
       H.tickPaper();
       out.warnText = toastText() + ' | ' + q('paper-timer').textContent + ' | ' + ex.warned;
-      out.warn = /残り5分/.test(toastText()) && ex.warned === true && q('paper-timer').classList.contains('is-warn') && /残り [34]:\\d\\d/.test(q('paper-timer').textContent);
+      out.warn = /残り5分/.test(toastText()) && ex.warned === true && q('paper-timer').classList.contains('is-warn')
+        && /^終了 \\d\\d:\\d\\d$/.test(q('paper-timer').textContent);   /* V3.15：赤くなるが数字は動かない */
       q('toast').hidden = true;
       H.tickPaper();
       out.warnOnce = toastText() === '' && ex.warned === true;
@@ -205,7 +208,7 @@ with sync_playwright() as p:
       return out; }""")
     ok("模試を始めると問題用紙。全問並び、ナビも一覧も無い。題は「力試し模試」", r["paper"] and r["title"] == "力試し模試", json.dumps(r, ensure_ascii=False))
     ok("［提出する］は最下部にあり、最初から押せる", r["submitLast"])
-    ok("残り時間は 40:00 から（30問＝本番の配分）", r["limit"], r["timer0"])
+    ok("制限時間は40分（30問＝本番の配分）・帯は終了時刻", r["limit"], r["timer0"])
     ok("肢のタップ＝解答。もう一度で外れる", r["pick"] and r["unpick"])
     ok("1つ選ぶ問でも何個でも塗れる（数で止めない）", r["manyPicks"] and r["repick"], r["need1"])
     ok("☐→☑が付く。正誤は一切出ない", r["mark"] and r["noVerdict"])

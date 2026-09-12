@@ -124,7 +124,10 @@ with sync_playwright() as p:
       const leftMin = (ex2.deadline - Date.now()) / 60000;
       out.clockKept = leftMin > 11 && leftMin <= 12.1;
       out.timerText = q('paper-timer').textContent;
-      out.timerRuns = !!ex2.timer && /残り 1[12]:\\d\\d/.test(out.timerText);
+      /* V3.15：帯は「終了 13:45」の固定表記。時計が生きていること＋終了時刻が deadline と一致することで見る */
+      const pad2 = (n) => ('0' + n).slice(-2);
+      const dd = new Date(ex2.deadline);
+      out.timerRuns = !!ex2.timer && out.timerText === '終了 ' + pad2(dd.getHours()) + ':' + pad2(dd.getMinutes());
       /* 続きから提出 → 控えが消える */
       q('paper-submit').click(); await wait(200);
       q('exam-submit-go').click();
@@ -187,7 +190,7 @@ with sync_playwright() as p:
     ok("◀戻る／ホームは「中断」（解答は消えない）", r["askIsPause"] and r["keptOnLeave"])
     ok("力試しモードに帯が出る（模試名・残り時間・解答ずみ）", r["barShown"])
     ok("帯から続きから：塗り・☑・解答が戻る", r["resumed"])
-    ok("残り時間も中断したところから（時計が動き出す）", r["clockKept"] and r["timerRuns"], r.get("timerText"))
+    ok("残り時間も中断したところから（終了時刻が繰り下がる）", r["clockKept"] and r["timerRuns"], r.get("timerText"))
     ok("続きから提出できる。控えは消える", r["clearedOnSubmit"] and r["answersKept"])
     ok("模試カードを押すと2択が出る", r["askTwo"] and r["savedAgain"], json.dumps({k: r.get(k) for k in ["askTwo", "savedAgain"]}, ensure_ascii=False))
     ok("［最初から］は普通の開始と同じ道（受け方の2択も通る）", r["styleAsked"])

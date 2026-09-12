@@ -1954,10 +1954,99 @@
     });
   }
 
+  /* --- V3.14：AI予想問題の肢の並びを均す（利用者の実測 2026-09-12） -------------
+   *
+   * 利用者「ほとんど選択肢１を選んだけど45点/60点もとれてしまった。偏りがエグい」
+   *
+   * 同梱データを数えた（1つ選べの問だけ）：
+   *   同梱シード249問（過去問 pool main）  肢1 16.9% ／ 肢2 25.7% ／ 肢3 34.5% ／ 肢4 22.5%
+   *   体験用 free_a 30問（AI作問 pool mock） **肢1 81.5%**
+   *   体験用 free_b 60問（AI作問 pool mock） **肢1 94.4%**
+   * ハーフ模試（free_b・54問が1つ選べ）で①だけ塗ると51問正解する。実測の45/60と合う。
+   * 作問側に「正解をどこに置くか」を指示していなかったので、AIは素直に先頭へ置いた。
+   *
+   * 【なぜアプリ側で直すか】
+   *   作問側の指示を直しても、**すでに配った球は直らない**。そして肢の並びは
+   *   「どう出すか」であって「何を出すか」ではない。AI予想問題には正しい並びが無いので、
+   *   並べ替えて困る人がいない。アプリが持つべき責任。
+   *
+   * 【過去問（pool main）は並べ替えない】
+   *   出典が「第111回 午前問1」なら、その①は本物の①。並べ替えると出典と食い違う。
+   *   実測のとおり偏ってもいない（本試験そのものが肢3にやや寄る性質）。
+   *
+   * 【atom_id は動かさない】
+   *   atom_id は記録（progress_log）と同期（§20）の鍵。動かすと学習記録が迷子になる。
+   *   動かすのは **表示と採点の番号（original_num）だけ**。
+   *   `toAtomRecord` は original_num を上書きし、進捗は prev から引き継ぐので、
+   *   版を上げて取り込み直せば、解いた記録を保ったまま並びだけ直る。
+   *
+   * 【並びは q_id から決まる（乱数ではない）】
+   *   毎回ちがう並びにすると、取り込み直すたびに番号が変わり、
+   *   復習の「正解 ③」が前回と食い違う。同じデータなら何度取り込んでも同じ並びにする。
+   *
+   * 【解説の中の丸数字は書き換えない】
+   *   体験用90問を数えた：肢の解説に丸数字は **0件**。全体解説にあるのは2問だけで、
+   *   どちらも「①支持基底面を広く取る、②重心を低く」のような**箇条書きの印**で、
+   *   肢番号の参照ではなかった。書き換えるほうが壊す。
+   *   （肢の解説から他の肢を番号で参照しないこと、は §18 のデータ契約に足す） */
+  function seededOrder(key, n) {
+    var h = 2166136261;                       /* FNV-1a で q_id を種にする */
+    var s = String(key || ''), i;
+    for (i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; }
+    var out = [], j, k, t;
+    for (j = 0; j < n; j++) { out.push(j + 1); }
+    for (j = n - 1; j > 0; j--) {             /* Fisher-Yates（xorshift32） */
+      h ^= (h << 13); h >>>= 0;
+      h ^= (h >>> 17);
+      h ^= (h << 5);  h >>>= 0;
+      k = h % (j + 1);
+      t = out[j]; out[j] = out[k]; out[k] = t;
+    }
+    return out;
+  }
+
+  function reorderMockAtoms(payload, report) {
+    payload.forEach(function (item) {
+      if (!item || item.ok === false || !item.question) { return; }
+      if (item.question.pool !== 'mock') { return; }
+      var atoms = item.atoms || [];
+      if (atoms.length < 2) { return; }
+      var order = seededOrder(item.question.q_id, atoms.length);
+      atoms.forEach(function (a, i) { a.original_num = order[i]; });
+      report.reordered = (report.reordered || 0) + 1;
+    });
+  }
+
+  /* 取り込んだ問題の「正解の位置」を数える（1つ選べの問だけ）。
+     並べ替えたあとに数えるので、これは**画面に出る並び**の偏り。
+     過去問（並べ替えない側）が偏っていたら、それは元データの事故なので気づけるようにする。 */
+  function countAnswerPositions(payload, report) {
+    var pos = {}, n = 0;
+    payload.forEach(function (item) {
+      if (!item || item.ok === false || !item.question) { return; }
+      var atoms = (item.atoms || []).slice().sort(function (a, b) {
+        return (a.original_num || 0) - (b.original_num || 0);
+      });
+      var cor = [];
+      atoms.forEach(function (a, i) { if (a.is_correct) { cor.push(i + 1); } });
+      if (cor.length !== 1) { return; }        /* 「2つ選べ」は位置を数えない */
+      n++;
+      pos[cor[0]] = (pos[cor[0]] || 0) + 1;
+    });
+    if (!n) { return; }
+    report.answer_pos = pos;
+    report.answer_pos_total = n;
+    var top = 0;
+    Object.keys(pos).forEach(function (k) { if (pos[k] > top) { top = pos[k]; } });
+    report.answer_pos_max_pct = Math.round((top / n) * 100);
+  }
+
   /* パースが通った分だけを 200件ずつのトランザクションで書き込む。
      1件ごとに既存レコードを読んでから put するため、
      再インポートでも学習進捗と★は失われない（追加ではなく更新）。 */
   function persistImportPayload(payload, report, ctx, options) {
+    reorderMockAtoms(payload, report);      /* V3.14：予想問題の肢を並べ替える（書き込む前に） */
+    countAnswerPositions(payload, report);  /* V3.14：並べ替えたあとの偏りを数えて見せる */
     var CHUNK = 200;
     var chunks = [];
     var i;
