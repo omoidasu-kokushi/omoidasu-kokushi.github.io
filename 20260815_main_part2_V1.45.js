@@ -1627,22 +1627,35 @@
     var q = item.question;
     var marks = {};
     (item.marks || []).forEach(function (id) { marks[id] = 1; });
-    var head = '<div class="pn-head"><span class="pn-why">' + item.why + '</span>' +
-               '<span class="pn-code">' + (q.num_code || '') + '</span>' +
-               '<span class="pn-path">' + [q.unit, q.major, q.medium].filter(Boolean).join(' ＞ ') + '</span></div>';
-    var stem = '<div class="pn-stem">' + (q.stem || '') + '</div>';
+    /* --- V3.21：紙に出すときも、取り込んだ文字列を素で入れない ---
+       DESIGN_DECISIONS 22-1（V1.84）は「取り込んだHTMLはそのまま画面へ入れない。
+       <img onerror> が実行され、外部通信も出ていた」と決めた。
+       ところが**この関数だけ直っていなかった**。V1.84 は下の user_memo だけを
+       エスケープして、**取り込んだ側（問題文・肢の本文・肢の解説）は素のまま**だった。
+       実測（2026-09-15）：`#print-sheet` に <img onerror> が4つ入り、**4つとも実行された**
+       （stem・atom.text・atom.explanation・num_code）。印刷シートは別窓ではなく
+       **アプリ自身の文書**へ入るので、アプリの出所で動く。
+       ・文字として出すもの（分類・問題文・肢の本文）→ esc
+       ・書式を残したいもの（肢の解説。<b> が効いている）→ sanitizeExplanationHtml（許可リスト・img は不可）
+       ・全体解説は元からタグを落としている（下の replace）。**紙面の量が変わるので触らない**（V1.74） */
+    var clean = (typeof M.sanitizeExplanationHtml === 'function')
+      ? M.sanitizeExplanationHtml : function (h) { return esc(String(h || '')); };
+    var head = '<div class="pn-head"><span class="pn-why">' + esc(item.why || '') + '</span>' +
+               '<span class="pn-code">' + esc(q.num_code || '') + '</span>' +
+               '<span class="pn-path">' + esc([q.unit, q.major, q.medium].filter(Boolean).join(' ＞ ')) + '</span></div>';
+    var stem = '<div class="pn-stem">' + esc(q.stem || '') + '</div>';
     var list = (q.atoms || []).map(function (a) {
       var mark = a.is_correct ? '●' : '○';
       var star = marks[a.atom_id] ? '<span class="pn-mark">▲</span>' : '';
       return '<li class="pn-atom' + (a.is_correct ? ' is-correct' : '') + '">' +
              '<span class="pn-num">' + mark + '</span>' + star +
-             '<span class="pn-text">' + (a.text || '') + '</span></li>';
+             '<span class="pn-text">' + esc(a.text || '') + '</span></li>';
     }).join('');
     var body = '';
     if (opts.explain !== 'none') {
       var exp = (q.atoms || []).filter(function (a) { return a.explanation; })
         .map(function (a) {
-          return '<li><b>' + (a.is_correct ? '○' : '×') + '</b> ' + a.explanation + '</li>';
+          return '<li><b>' + (a.is_correct ? '○' : '×') + '</b> ' + clean(a.explanation) + '</li>';
         }).join('');
       body = '<div class="pn-exp' + (opts.explain === 'back' ? ' pn-back' : '') + '">' +
              (q.overall_explanation ? '<p>' + q.overall_explanation.replace(/<[^>]+>/g, ' ') + '</p>' : '') +

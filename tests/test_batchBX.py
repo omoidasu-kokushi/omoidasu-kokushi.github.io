@@ -22,7 +22,7 @@
 代わりに力試し画面へ静かな入口を残す。緩和中とは同時に出ない
 （試験日が無ければ緩和も起きないので、同じ1行を使い回す）。
 """
-import io, json, os, re, sys, glob as _g
+import io, json, os, re, sys, time, glob as _g
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -68,7 +68,16 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1400)
+    # 2026-09-15：固定1400msだと、機械が重いときに**同梱2本の取り込みがまだ終わっていない**。
+    # 取り込みの終わりに走る処理が覆いを開き直すので、`#modal-exam-ask` が
+    # 開いた直後に隠される（run_all で2回続けて落ちた。単独では緑）。
+    # 合図（__INIT_DONE）を待つ。この規則は引き継ぎ §8 に前から書いてあった。
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     # --- 聞く／聞かない ---
     r = pg.evaluate("""async () => {
@@ -79,7 +88,16 @@ with sync_playwright() as p:
       await S.setMeta('exam_ask_done', false);
       await S.setMeta('exam_date', null);
       const first = await H.maybeAskExamDate();
-      const opened = !document.getElementById('modal-exam-ask').hidden;
+      /* 2026-09-15：`opened` を即座に読むと、機械が重いときに false を拾うことがあった
+         （run_all 160本の中で1回・単独では4回とも緑）。openModal は hidden を同期で倒すが、
+         `first` が返るまでに挟まる await のあいだに、別の覆いが開くと
+         `#modal-layer > .modal-card` が全部 hidden へ戻される。
+         出るまで待つ（最長3秒）。※「印が開いた瞬間に立つ」ことの是非は別件（裁定待ち）。 */
+      let opened = false;
+      for (let i = 0; i < 60; i++) {
+        if (!document.getElementById('modal-exam-ask').hidden) { opened = true; break; }
+        await new Promise(r => setTimeout(r, 50));
+      }
       const opts = document.querySelectorAll('#exam-ask-year option').length;
       M.closeModals();
       /* 2回目は出ない（印が立っている） */

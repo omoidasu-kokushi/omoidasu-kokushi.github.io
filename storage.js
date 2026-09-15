@@ -2583,6 +2583,20 @@
          「成人看護学 ＞ 8. 呼吸機能障害 ＞ C. 検査を受ける患者の看護」の
          バッジに、循環も消化も内分泌も全部足された数が出る。
          名前だけの表も残す（古い呼び出しが落ちないように）。 */
+      /* --- V3.19：模試待ち（pool:'mock'・まだ一度も出会っていない問題）は数えない ---
+         DESIGN_DECISIONS 7-0（V1.56）は「全アトムを数える場所5つ（解禁・レベル・分析・
+         ツリーの未学習バッジ・プランナー）から模試待ちを引く」と決めていたが、
+         ここ（ツリーとランダム画面のバッジの元）だけ引き忘れていた。
+         V2.99 で体験用90問が全端末に同梱されてから、単元別学習のツリーに
+         **消えない未学習378肢（90問）**が出ていた（通し検証 journey_all ⑦ で発見・2026-09-15）。
+         規則は scheduler.js の splitMockPool と同じ（問題単位・1肢でも答えていれば普通の問題）。
+         **片方だけ直さないこと**（test_tree_mock_badge が両方を見張る）。 */
+      var mockQ = {}, touchedQ = {};
+      list.forEach(function (a) {
+        if ((a.pool || 'main') === 'mock') { mockQ[a.q_id] = 1; }
+        if (a.answer_count > 0) { touchedQ[a.q_id] = 1; }
+      });
+      var mockLocked = function (a) { return !!mockQ[a.q_id] && !touchedQ[a.q_id]; };
       var bump = function (acc, a) {
         acc.unit[a.unit]         = (acc.unit[a.unit] || 0) + 1;
         acc.major[a.major]       = (acc.major[a.major] || 0) + 1;
@@ -2595,6 +2609,7 @@
         acc.total++;
       };
       list.forEach(function (a) {
+        if (mockLocked(a)) { return; }          /* V3.19：模試で出会うまでは数えない */
         if (a.answer_count > 0) {
           if (a.last_eval === 'hard') { bump(hard, a); }
         } else {
@@ -3040,8 +3055,20 @@
   function refreshConceptCatalog() {
     var master = conceptMaster();
     return getAllAtoms().then(function (atoms) {
+      /* --- V3.20：肢数からも模試待ちを引く（利用者裁定 2026-09-15） ---
+         実測：103行中57行が模試待ちを含み、**29タグは中身が模試待ちだけ**だった。
+         アナライザーに「#がん化学療法・放射線看護 4肢」と出るのに、
+         押して始まる概念ノックは0問（ノック側は正しく除いている）。
+         V3.19 で直した「押しても減らない未学習バッジ」と同じ形の催促。
+         数える場所は同じ規則に揃える（DESIGN_DECISIONS 7-0）。 */
+      var mockQ = {}, touchedQ = {};
+      atoms.forEach(function (a) {
+        if ((a.pool || 'main') === 'mock') { mockQ[a.q_id] = 1; }
+        if (a.answer_count > 0) { touchedQ[a.q_id] = 1; }
+      });
       var counts = {};
       atoms.forEach(function (a) {
+        if (mockQ[a.q_id] && !touchedQ[a.q_id]) { return; }   /* V3.20：模試待ちは数えない */
         (a.tags || []).forEach(function (t) { counts[t] = (counts[t] || 0) + 1; });
       });
       return getAll(STORE.CONCEPT).then(function (existing) {
@@ -3439,11 +3466,26 @@
         if (!atomsByQ[a.q_id]) { atomsByQ[a.q_id] = []; }
         atomsByQ[a.q_id].push(a);
       });
+      /* --- V3.20：模試待ちは検索にも出さない（利用者裁定 2026-09-15） ---
+         DESIGN_DECISIONS 7-0 は「模試待ちは**模試以外のどこにも出ない**」と決めている。
+         検索がそこから漏れていた。実測：「看護」で64件中43件、「の」で90件全部が模試待ち。
+         問題文と抜粋が見え、［この結果を今すぐ解く］でそのまま解けた。
+         無料版では体験用90問がプチ30＋ハーフ60の中身そのものなので、
+         **検索で先に解けると模試が成立しない**。
+         模試で1肢でも答えた問題は普通の問題なので、以降は検索に出る。
+         規則は scheduler.splitMockPool と同じ（問題単位）。**片方だけ直さないこと**。 */
+      var mockQ = {}, touchedQ = {};
+      atoms.forEach(function (a) {
+        if ((a.pool || 'main') === 'mock') { mockQ[a.q_id] = 1; }
+        if (a.answer_count > 0) { touchedQ[a.q_id] = 1; }
+      });
+      var mockLockedQ = function (id) { return !!mockQ[id] && !touchedQ[id]; };
 
       var hits = [];
       var summary = { S: 0, A: 0, B: 0, C: 0 };
 
       questions.forEach(function (q) {
+        if (mockLockedQ(q.q_id)) { return; }   /* V3.20：模試で出会うまでは検索に出さない */
         var list = (atomsByQ[q.q_id] || []).sort(function (a, b) { return a.original_num - b.original_num; });
         var fields = [];
 

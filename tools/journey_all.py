@@ -53,6 +53,25 @@
 
   渡すのは「仕上げが終わって取り込める形になったもの」。
     分類_令和5年版/out/20260908_配布_V1.00.json   （916問・照合パッチ適用済み）
+
+【V1.03】Level 5 の定義が変わった（V3.07・利用者裁定 2026-09-12）ので合わせた。
+
+  旧：全アトムのマスター化 ＝ Level 5。②で解き切ったあと「Level 5 に到達する」を見ていた。
+  新：**いじわる模試に合格したら Level 5**（印 weak_mock_passed）。解き切っただけでは Level 4 止まりが正しい。
+  そのため②の判定を「Level 4 に到達する」に変え、Level 5 は⑧（いじわる模試を最後まで）のあとで見る
+  （journey_all_modes.py ⑧・⑩）。マスターの割合は参考として出すだけにした（§23-⑥ は裁定ずみ）。
+
+【V1.04】模試待ちを分母に入れない（2026-09-15）。
+
+  V1.03 で走らせたら3件落ちた。②「未解答アトムが0」が 378、⑦「未学習バッジの合計が0」が 1134、
+  ⑩「マスターテーマ」が null。
+  ・378 は体験用の予想問題90問（pool mock・V2.99 同梱）の肢。模試で出会うまで学習には出ないので、
+    解き切っても残る。**アプリの Level 3 は splitMockPool で引いている**のに、道具の SNAP が引いていなかった
+    → SNAP を同じ規則にした（道具の側の誤り）
+  ・1134 は 378 × 3階層。こちらは**アプリの側の誤り**（storage.countBadgesByScope が引き忘れ）→ V3.19 で直した。
+    tests/test_tree_mock_badge.py が固定
+  ・null は computeLevel() に theme という項目が無いため（正しくは visual_theme）→ ⑩を直した（道具の側の誤り）
+  道具が3件落として、うち1件が本物の不具合だった。**落ちたら「道具が古い」と決めつけず、1件ずつ切り分ける。**
 """
 import argparse, json, os, sys, time
 
@@ -119,8 +138,17 @@ async () => {
   const un = await K.refreshUnlocks();
   const u = {}; (un.unlocks||[]).forEach(x => u[x.id] = !!x.unlocked);
   const atoms = await S.getAllAtoms();
-  let unlearned=0, hard=0, normal=0, easy=0, master=0;
+  /* V1.04：模試待ち（pool mock・まだ模試で出会っていない問題）は分母に入れない。
+     アプリの Level 3・解禁・分析・バッジと同じ規則（scheduler.splitMockPool／DESIGN_DECISIONS 7-0）。
+     V1.03 までは全アトムを数えていて、体験用90問（378肢）が「未解答378」として残り、
+     解き切っても Level 3 の判定が落ちていた（2026-09-15 実測）。 */
+  const mockQ = {}, touchedQ = {};
+  atoms.forEach(a => { if ((a.pool || 'main') === 'mock') mockQ[a.q_id] = 1;
+                       if (a.answer_count > 0) touchedQ[a.q_id] = 1; });
+  let unlearned=0, hard=0, normal=0, easy=0, master=0, mock_locked=0, atoms_main=0;
   atoms.forEach(a => {
+    if (mockQ[a.q_id] && !touchedQ[a.q_id]) { mock_locked++; return; }
+    atoms_main++;
     const e = a.last_eval || null;
     if (!e) unlearned++;
     else if (e === 'hard') hard++;
@@ -131,8 +159,8 @@ async () => {
   return { date:new Date().toISOString().slice(0,10), due:h.due_count,
     level:lv.level, pct:lv.display_pct, raw_pct:raw.current_pct,
     by_level:raw.pct_by_level, done:raw.done_by_level, unlocks:u,
-    atoms:atoms.length, unlearned, hard, normal, easy, master,
-    theme:h.visual_theme || (lv.theme||null), scan:(await K.getScanAccuracy()).pct };
+    atoms:atoms.length, atoms_main, mock_locked, unlearned, hard, normal, easy, master,
+    theme:h.visual_theme || (lv.visual_theme||null), scan:(await K.getScanAccuracy()).pct };
 }
 """
 
@@ -143,7 +171,7 @@ def main():
     ap.add_argument("--max-rounds", type=int, default=200)
     ap.add_argument("--cap", type=int, default=400, help="1周でさばく問題数")
     ap.add_argument("--accuracy", type=float, default=1.0,
-                    help="正解率。Level 5（全アトムのマスター化）は定義上100%%でしか到達しない")
+                    help="正解率（②の解き切りで使う。Level 5 はいじわる模試の合格で決まる・V3.07）")
     # V1.01：2分の壁をまたぐための3つ。既定では今までと同じ動きをする。
     ap.add_argument("--profile", default=None,
                     help="ブラウザのプロファイルを置く場所。IndexedDB ごと残る")
@@ -245,7 +273,7 @@ def main():
                 say("  %3d周 %s Lv%d %s%% 未解答%d 難%d 普%d 易%d マ%d 復習待ち%d" % (
                     rd, s["date"], s["level"], s["pct"], s["unlearned"], s["hard"],
                     s["normal"], s["easy"], s["master"], s["due"]))
-                if s["master"] == s["atoms"]:
+                if s["master"] == s["atoms_main"]:
                     say("  → 全アトムがマスターになった（%d周）" % rd); break
                 if prev == (s["unlearned"], s["hard"], s["normal"], s["easy"], s["master"], s["due"]):
                     say("  → 状態が動かなくなった（%d周で打ち切り）" % rd); break
@@ -257,24 +285,15 @@ def main():
         C("未解答アトムが0になる（Level 3）", s["unlearned"] == 0, s["unlearned"])
         C("難・普が0になる（Level 4）", s["hard"] == 0 and s["normal"] == 0,
           "難%d 普%d" % (s["hard"], s["normal"]))
-        # 2026-09-07：この2つは**不具合ではなく §23-⑥ の判断待ち**。
-        # 「マスター」は30日以上のステップに到達しないと押せない仕様なので、
-        # 時計を進めないこの通しでは原理的に0のまま。実測：0/1816・0%。
-        # 直すか（マスターの解禁条件を緩めるか）は利用者の裁定事項。
-        # 警報として毎回赤く出ると、本物の退行が埋もれる。**保留として出す**。
-        # V1.02：この文言は「原理的に0」と書いていたが、**0だったのは
-        # 取り込みが全滅していたからで、仕様のせいではなかった**。
-        # 916問を正しく入れた実測では 5,550/5,558（99%）まで届く。
-        # §23-⑥「Level 5 は実質到達不能か」は、この数字で見直す必要がある。
-        _mr = 100.0 * s["master"] / max(1, s["atoms"])
-        say("  保留  全アトムがマスターになる（Level 5）   << %d/%d（%.1f%%）"
-            "   ※§23-⑥ 判断待ち。残りは30日以上のステップに届いていない肢。"
-            "V1.01まで『原理的に0』と書いていたが、0だったのは取り込みの取り違えが原因"
-            % (s["master"], s["atoms"], _mr))
-        C("Level 5 に到達する", s["level"] >= 5, "Lv%d" % s["level"])
-        say("  保留  表示100%%になる   << %s%%   ※同上。達成前に100%%と出さない"
-            "（V1.83：Math.round(99.6)=100 で『満タンなのに進まない』が起きたため99で止める）"
-            % s["pct"])
+        # V1.03：Level 5 は「いじわる模試の合格」（V3.07）。解き切っただけでは Level 4 が正しい。
+        # マスターの割合は参考（§23-⑥ は裁定ずみ）。V1.02 の実測は 5,550/5,558（99%）。
+        _mr = 100.0 * s["master"] / max(1, s["atoms_main"])
+        say("  参考  マスターになった肢   << %d/%d（%.1f%%・模試待ち%d肢は分母に入れない）   ※Level 5 の条件ではなくなった（V3.07）"
+            % (s["master"], s["atoms_main"], _mr, s["mock_locked"]))
+        C("Level 4 に到達する（Level 5 はいじわる模試の合格で決まる・⑧のあとで見る）",
+          s["level"] >= 4, "Lv%d" % s["level"])
+        C("解き切っただけでは 100% と出さない（Level 5 は未達）", s["level"] >= 5 or int(s["pct"]) < 100,
+          "%s%%" % s["pct"])
         C("ここまでJSエラーが出ない", not errs, json.dumps(errs[:3], ensure_ascii=False))
 
         json.dump({"snapshot": s}, open(os.path.join(APP, "tmp_allmaster.json"), "w"), ensure_ascii=False)

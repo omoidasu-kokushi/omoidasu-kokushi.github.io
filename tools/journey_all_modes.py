@@ -4,6 +4,12 @@
 ここで見たいのは**球が無いとき**の振る舞い。
 未解答も弱点も0になると、各モードは「候補を全部除外したキュー」を相手にすることになる。
 そこで黙って0問になるのか、断って戻るのか、固まるのかは、誰も通っていない。
+
+【V1.03】Level 5 の定義変更（V3.07・いじわる模試に合格したら Level 5）に合わせた。
+  ⑧はいじわる模試を正答率90%で受け（必修80%以上・一般180点以上の合格基準を超える）、
+  受けた印 weak_mock_taken と合格の印 weak_mock_passed が立つことを見る。
+  ⑩は⑧が120問で完走していれば「Level 5・100%・マスターテーマ」を本判定にし、
+  短縮（JALL_EXAM_N）や節の飛ばしのときは保留のまま出す。
 """
 import json
 from journey_lib import close_modals, tour_skip, answer_and_next, advance_days
@@ -16,6 +22,7 @@ from journey_lib import close_modals, tour_skip, answer_and_next, advance_days
 # 環境変数 JALL_FROM / JALL_TO で節を選べるようにして、分割して通す。
 import os as _os
 _FROM = int(_os.environ.get("JALL_FROM", "3"))
+WEAK_PASSED = None   # V1.03：⑧でいじわる模試に合格したか（None＝⑧を通していない）
 _TO   = int(_os.environ.get("JALL_TO", "99"))
 
 
@@ -194,7 +201,9 @@ def check_modes(pg, say, C, errs):
         C("いじわる模試が起動する", ok)
         if ok:
             from journey_lib import fill_exam_paper
-            n = fill_exam_paper(pg, accuracy=0.75, ground_ratio=1.0)
+            # V1.03：合格基準（必修80%以上・一般180/250点以上）を超える正答率で受ける。
+            # Level 5 はいじわる模試の合格で決まる（V3.07）ので、ここで合格を作る。
+            n = fill_exam_paper(pg, accuracy=0.9, ground_ratio=1.0)
             done = n["answered"]
             pg.wait_for_timeout(2000)
             shown = js("""() => { const m=document.querySelector('#modal-exam-result');
@@ -203,6 +212,12 @@ def check_modes(pg, say, C, errs):
             if _EXAM_N >= 120:
                 C("いじわる模試が最後まで通り結果が出る", done >= _EXAM_N and shown["shown"],
                   "解いた%d問 %s" % (done, json.dumps(shown, ensure_ascii=False)))
+                marks = js("""async () => ({ taken: !!(await window.Storage.getMeta('weak_mock_taken', false)),
+                                            passed: !!(await window.Storage.getMeta('weak_mock_passed', false)) })""")
+                say("  印: " + json.dumps(marks, ensure_ascii=False))
+                C("いじわる模試を受けた印（weak_mock_taken）が付く", marks["taken"], json.dumps(marks))
+                C("正答率90%で合格の印（weak_mock_passed）が付く", marks["passed"], json.dumps(marks))
+                globals()["WEAK_PASSED"] = bool(marks["passed"])
             else:
                 say("  保留  いじわる模試が最後まで通り結果が出る   << 解いた%d問"
                     "   ※JALL_EXAM_N=%d に短縮したので結果画面までは見ていない"
@@ -252,15 +267,21 @@ def check_modes(pg, say, C, errs):
         say("\n===== ⑩ レベル・テーマ =====")
         lv = js("async () => { const l = await window.Scheduler.computeLevel();"
                 " const r = await window.Scheduler.computeLevelRaw();"
-                " return { level:l.level, pct:l.display_pct, theme:l.theme, raw:r.current_pct,"
+                " return { level:l.level, pct:l.display_pct, theme:l.visual_theme, raw:r.current_pct,"
                 " by:r.pct_by_level, done:r.done_by_level }; }")
         say("  " + json.dumps(lv, ensure_ascii=False))
-        # §23-⑥ 判断待ち。マスターは30日以上のステップ到達が要り、
-        # この通しは時計を進めないので0のまま。保留として理由つきで出す。
-        say("  保留  Level 5・100%になっている   << " + json.dumps(lv, ensure_ascii=False)
-            + "   ※§23-⑥ 判断待ち（マスター0では100%にならない）")
-        C("マスターテーマになっている", (lv["theme"] or "").find("master") >= 0 or lv["level"] >= 5,
-          lv["theme"])
+        # V1.03：Level 5 ＝ いじわる模試の合格（V3.07）。⑧で合格を作っていれば本判定、そうでなければ保留。
+        # V1.04：テーマは computeLevel().visual_theme（'challenge'/'growth'/'master'）。`theme` という項目は無く、
+        #        V1.03 は null を読んで「マスターテーマになっていない」と空振りしていた（2026-09-15 実測）。
+        if WEAK_PASSED:
+            C("いじわる模試に合格したので Level 5・100%", lv["level"] >= 5 and int(lv["pct"]) >= 100,
+              json.dumps(lv, ensure_ascii=False))
+            C("マスターテーマになっている", (lv["theme"] or "").find("master") >= 0, lv["theme"])
+        else:
+            say("  保留  Level 5・100%・マスターテーマ   << " + json.dumps(lv, ensure_ascii=False)
+                + "   ※⑧を120問で通していない（JALL_EXAM_N で短縮したか、節を飛ばした）ので合格の印が無い")
+            C("Level 5 でないなら 100% と出さない", lv["level"] >= 5 or int(lv["pct"]) < 100,
+              json.dumps(lv, ensure_ascii=False))
 
         # ---------------------------------------------------------------- ⑨バックアップ・容量
     if _run(11):

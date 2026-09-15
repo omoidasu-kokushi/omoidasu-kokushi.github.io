@@ -75,9 +75,13 @@ with sync_playwright() as p:
       await new Promise(r => setTimeout(r, 350));
       out.onSettings = M.state.screen === 'settings';
       document.getElementById('btn-home').click();
-      await new Promise(r => setTimeout(r, 250));
+      /* 2026-09-15：固定250msでは、確認（模試を中断しますか）が出るのが遅れたときに押せず、
+         「畳まれない」と誤判定していた（run_all 155本の中で1回・単独でも8回に1回）。
+         出るまで待つ（最長6秒）。畳まれるのも待ってから見る。 */
+      out.confirmShown = await until(() => !document.getElementById('modal-confirm').hidden);
       const cg = document.getElementById('confirm-go');
-      if (!document.getElementById('modal-confirm').hidden && cg) { cg.click(); }
+      if (out.confirmShown && cg) { cg.click(); }
+      await until(() => !M.state.session.mode);
       await new Promise(r => setTimeout(r, 350));
 
       /* 畳まれていること */
@@ -115,6 +119,7 @@ with sync_playwright() as p:
     }""")
     ok("模試が始まる", r["launched"], json.dumps(r))
     ok("設定へ寄り道できる", r["onSettings"], json.dumps(r))
+    ok("ホームで「模試を中断しますか」の確認が出る", r["confirmShown"], json.dumps(r))
     ok("寄り道後のホームでもセッションが畳まれる", r["sessionFolded"], json.dumps(r))
     ok("模試のhooksが全部消える", r["hooksCleared"], json.dumps(r))
     ok("その後のランダム学習が始まる", r["randomStarted"], json.dumps(r))
