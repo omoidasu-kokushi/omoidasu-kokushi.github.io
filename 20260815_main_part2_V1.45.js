@@ -6941,6 +6941,32 @@ var QR_MATRIX = [
         void sess;
         return true;   /* 既定の終了処理を止め、ツアー側で制御する */
       };
+      /* --- V3.22：途中でやめたら、張ったものを自分で外す ---
+         DESIGN_DECISIONS 22-2（V1.85）は「モードを畳むとき hooks は各モードが
+         自分で外す。endSession() は消さない。張ったら必ず onAbort で全部外す」と決めた。
+         **ツアーだけ onAbort を張っていなかった**（V1.85 は模試を直して、ここを見ていない）。
+
+         実測（2026-09-15）：チュートリアルを1問でやめてホームへ戻ると
+         `st.onboard.active` が true のまま・afterCommit と onFinish も残る。
+         そのあと普通にランダム学習を始めると、**2問目を答えた瞬間にセッションが消えた**。
+         残った afterCommit が数え続け、3問目で `M.endSession(); finishOnboarding();` を
+         実行するため。利用者から見ると「ランダムを始めたのに2問で勝手に終わってホームに戻る」。
+
+         `active` を false にするだけでは足りない（次に本当のツアーを始めたとき
+         古いフックが二重に走る）。**印と関数の両方を落とす。**
+         ここは畳むだけにする。中断したことを利用者へ知らせたり、
+         進み具合を書き換えたりしない（`tutorial_answered` は残して
+         「前回の続きから」を効かせる・§8-4）。
+         3問そろって終わるときも endSession を通るのでここが走るが、
+         直後に finishOnboarding() が同じものを落とすだけなので影響しない。 */
+      M.hooks.onAbort = function (mode) {
+        st.onboard.active = false;
+        M.hooks.afterCommit = null;
+        M.hooks.onFinish = null;
+        M.hooks.onAbort = null;
+        hideCoachMark();
+        void mode;
+      };
 
       /* Sランク必修から代表問題を並べる */
       return K.buildQueue({ mode: 'new', count: 12, applyGuard: false, preferFrequent: true })
