@@ -44,7 +44,8 @@ def build(dirname, out_name, title, extra_rows=()):
     ]
     for name, desc in list(extra_rows) + rows:
         out.append("| `%s` | %s |" % (name, desc.replace("|", "／")))
-    io.open(os.path.join(d, out_name), "w", encoding="utf-8").write(
+    # newline="\n"：Windows でも LF で書く（指定しないと CRLF になり、全行が差分に出る）
+    io.open(os.path.join(d, out_name), "w", encoding="utf-8", newline="\n").write(
         "\n".join(out) + "\n")
     print("%s/%s  %d件" % (dirname, out_name, len(rows) + len(extra_rows)))
 
