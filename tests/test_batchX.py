@@ -51,9 +51,14 @@ ok("起動に失敗しても覆いを外す", "try { hideSplash();" in p1s)
 ok("スプラッシュから呼ぶ同期がある", "driveSyncFromSplash" in p1s and "driveSyncFromSplash" in p2s)
 ok("動きを減らす設定に配慮している", "prefers-reduced-motion" in css)
 
+# 3回目は mock の偽トークンを残したままリロードするので、アプリは本物の
+# www.googleapis.com へ同期を投げる。外へ出られない環境では ERR_TUNNEL で済むが、
+# 出られる環境（2026-10 に移った Windows の手元PC）では Google が 401 を返し、
+# その console には URL が載らない。だから行き先（location）でも判定する。
 def _external(t):
     return ("ERR_TUNNEL_CONNECTION_FAILED" in t or "accounts.google.com" in t
-            or "gsi/client" in t or "ERR_NAME_NOT_RESOLVED" in t)
+            or "gsi/client" in t or "ERR_NAME_NOT_RESOLVED" in t
+            or "googleapis.com" in t)
 
 MOCK = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_drive.js"),
             encoding="utf-8").read()
@@ -65,7 +70,8 @@ with sync_playwright() as p:
     errs = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.on("console", lambda m: errs.append("console:" + m.text)
-          if m.type == "error" and not _external(m.text) else None)
+          if m.type == "error"
+          and not _external(m.text + " " + str((m.location or {}).get("url", ""))) else None)
 
     # ---------- 初回：一度も同期を使っていない人 ----------
     pg.goto(URL, wait_until="commit")
