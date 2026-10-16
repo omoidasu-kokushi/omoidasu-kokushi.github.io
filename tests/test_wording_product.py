@@ -11,7 +11,7 @@
 【ここで固定すること】
   ・画面に出る文字に「有料版」「購入ページ」が無い（コメントは対象外。過去の経緯はコメントに残す）
   ・ホームの1行・設定のライセンス欄・力試しのカード・購入の案内・結果画面の線・2回目の案内の全部が「製品版」
-  ・about.html：「200問まで無料」が無い／「必修は無料で全部」「製品版は準備中です（10月30日予定）」がある
+  ・about.html：「200問まで無料」が無い／「必修は無料で全部」「製品版は準備中です（11月30日予定）」がある
   ・購入への線は増えていない（3か所のまま。BUY_URL は1箇所）
 """
 import os, sys, io, re
@@ -40,7 +40,7 @@ ok("part2：カード・2回目の案内・設定欄が「製品版」", "有料
 ok("scheduler：門で止まったときの理由も「製品版」", "有料版" not in sc and "この範囲の新しい問題は製品版に入っています" in sc)
 ok("about.html：「200問まで無料」が消えている（V3.00 案Bと合っている）", "200問" not in ab)
 ok("about.html：必修は無料で全部・他は製品版", "過去問の必修は、無料で全部使えます" in ab and "製品版に入っています" in ab)
-ok("about.html：製品版は準備中（10月30日予定）", "製品版は準備中です（10月30日予定）" in ab)
+ok("about.html：製品版は準備中（11月30日予定）", "製品版は準備中です（11月30日予定）" in ab)
 ok("about.html：復習は続く・記録は消えない、を残している", "復習はそのまま続けられます" in ab and "消えたり" in ab)
 ok("購入への線は増えていない（結果画面1・カード1・2回目の案内1）", rd("index.html").count('id="exam-buy-line"') == 1
    and rd("20260815_main_part2_V1.45.js").count("act: 'buy'") == 2 and "BUY_URL = 'https://omoidasu-kokushi.github.io/about.html#buy'" in rd("20260815_main_part1_V1.38.js"))
@@ -109,7 +109,7 @@ with sync_playwright() as p:
     pg.goto(URL.replace("index.html", "about.html") + "#buy", wait_until="load")
     pg.wait_for_timeout(300)
     at = pg.evaluate("() => document.body.innerText")
-    ok("about.html#buy：製品版は準備中（10月30日予定）・200問の文言なし", "製品版は準備中です（10月30日予定）" in at and "200問" not in at and "有料版" not in at)
+    ok("about.html#buy：製品版は準備中（11月30日予定）・200問の文言なし", "製品版は準備中です（11月30日予定）" in at and "200問" not in at and "有料版" not in at)
 
     ok("JSエラーが出ていない", not errs, errs[:2])
     br.close()
