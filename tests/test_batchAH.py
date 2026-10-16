@@ -6,7 +6,7 @@ V3.00（案B・2026-09-11）：門を「解いた数（200問）」から「単�
 無料枠の数の観点は、同じ数だけ単元の観点へ置き換えた（観点は減らしていない）。
 solvedOnly（scheduler の経路）は残っているのでそのまま見る。
 """
-import json, os, sys, subprocess, io, glob
+import json, os, sys, subprocess, io, glob, time
 from playwright.sync_api import sync_playwright
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -61,7 +61,13 @@ def runtime_checks():
               if m.type == "error" and not _external(m.text) else None)
         pg.goto(URL, wait_until="load")
         pg.wait_for_function("window.__APP_READY === true", timeout=20000)
-        pg.wait_for_timeout(1500)
+        # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1500)）
+        _t0 = time.time()
+        while time.time() - _t0 < 60:
+            if pg.evaluate("() => window.__INIT_DONE === true"):
+                break
+            pg.wait_for_timeout(200)
+        pg.wait_for_timeout(300)
         try: pg.click("#welcome-start", timeout=2500)
         except Exception: pass
         pg.wait_for_timeout(600)

@@ -17,7 +17,7 @@
   塗る／塗り直す／別の問へ行っても残る・提出まで正誤を出さない・未回答でも提出できる・
   採点後にフックが外れる・そのあとの復習（V3.06〜V3.13）
 """
-import io, json, os, sys
+import io, json, os, sys, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -60,7 +60,13 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1200)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     r = pg.evaluate("""async () => {
       const M = window.Main, S = window.Storage, K = window.Scheduler, HI = window.Half2Impl;

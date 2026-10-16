@@ -27,7 +27,7 @@ V2.71：
   ⑥ 休憩を選んだら出題は始まらない
   ⑦ ポモドーロで区切れて終わったときだけ、内訳に休憩ボタンが出る
 """
-import json, os, re, sys
+import json, os, re, sys, time
 from playwright.sync_api import sync_playwright
 
 R = []
@@ -61,7 +61,13 @@ with sync_playwright() as p:
     pg.evaluate("async () => { await window.Storage.setMeta('onboarding_done', true); }")
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(1200)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("() => window.Main.closeModals()")
 
     # ① ポモドーロOFF

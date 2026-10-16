@@ -17,7 +17,7 @@
 起動できている場合（`file://` の助言など）は、閉じたら本当に消してよい。
 そこは「動いてはいる」ので、印を残すと過剰な警告になる。
 """
-import io, json, os, re, sys
+import io, json, os, re, sys, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -107,7 +107,13 @@ with sync_playwright() as p:
     pg2 = ctx2.new_page()
     pg2.goto(URL, wait_until="load")
     pg2.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg2.wait_for_timeout(3000)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg2.wait_for_timeout(3000)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg2.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg2.wait_for_timeout(200)
+    pg2.wait_for_timeout(300)
     fine = pg2.evaluate("""() => ({
       panel: !!document.getElementById('boot-diagnostics'),
       badge: !!document.getElementById('boot-diagnostics-badge') })""")

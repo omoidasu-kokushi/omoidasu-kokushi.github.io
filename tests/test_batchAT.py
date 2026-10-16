@@ -11,7 +11,7 @@ V1.69 で実測した崩れ（200%で評価ボタンの「マスター」が2行
 ポモドーロチップも縦切れ）が再発しないことを、CDP Page.setFontSizes で
 100% / 150% / 200% を再現して確認する。
 """
-import io, json, os, re, sys
+import io, json, os, re, sys, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -85,7 +85,13 @@ def probe(p, scale):
     cdp.send("Page.setFontSizes", {"fontSizes": {"standard": scale, "fixed": scale}})
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    pg.wait_for_timeout(1500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     try:
         pg.click("#welcome-start", timeout=4000)
     except Exception:

@@ -6,7 +6,7 @@
   ・期限内なら聞かずに同期すること
   ・押した先で操作が塞がれないこと
 """
-import json, os, sys, subprocess, glob, re
+import json, os, sys, subprocess, glob, re, time
 from playwright.sync_api import sync_playwright
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -123,7 +123,13 @@ with sync_playwright() as p:
     }""")
     pg.reload(wait_until="commit")
     pg.wait_for_function("window.__APP_READY === true", timeout=20000)
-    pg.wait_for_timeout(600)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(600)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     r = pg.evaluate("""() => {
       const a = document.getElementById('splash-ask');
       const s = document.getElementById('splash');

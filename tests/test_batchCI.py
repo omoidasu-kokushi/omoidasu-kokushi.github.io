@@ -19,7 +19,7 @@
  - チップを押してもON/OFFは変わらず、トグルを押すと変わる
  - 375px・390px でヘッダーの右端が画面内に収まる
 """
-import json
+import json, time
 import os
 import sys
 
@@ -56,7 +56,13 @@ with sync_playwright() as pw:
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto(APP_URL, wait_until="load")
         pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-        pg.wait_for_timeout(1200)
+        # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+        _t0 = time.time()
+        while time.time() - _t0 < 60:
+            if pg.evaluate("() => window.__INIT_DONE === true"):
+                break
+            pg.wait_for_timeout(200)
+        pg.wait_for_timeout(300)
         # チュートリアルと、その場ガイドを黙らせてからランダムを1問開く
         pg.evaluate("""async () => {
           const S = window.Storage;

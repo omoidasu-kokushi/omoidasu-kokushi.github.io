@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """V1.63 検証：ヘッダーのタイマーが崩れないこと ＆ 片手で押せる当たり判定"""
-import json, os, sys, io
+import json, os, sys, io, time
 from playwright.sync_api import sync_playwright
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -93,7 +93,13 @@ def runtime_checks():
                   if m.type == "error" and not _external(m.text) else None)
             pg.goto(URL, wait_until="load")
             pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-            pg.wait_for_timeout(900)
+            # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(900)）
+            _t0 = time.time()
+            while time.time() - _t0 < 60:
+                if pg.evaluate("() => window.__INIT_DONE === true"):
+                    break
+                pg.wait_for_timeout(200)
+            pg.wait_for_timeout(300)
             try: pg.click("#welcome-start", timeout=2500)
             except Exception: pass
             pg.wait_for_timeout(400)
@@ -148,7 +154,13 @@ def runtime_checks():
         pg.on("pageerror", lambda e: errs.append(str(e)))
         pg.goto(URL, wait_until="load")
         pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-        pg.wait_for_timeout(900)
+        # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(900)）
+        _t0 = time.time()
+        while time.time() - _t0 < 60:
+            if pg.evaluate("() => window.__INIT_DONE === true"):
+                break
+            pg.wait_for_timeout(200)
+        pg.wait_for_timeout(300)
         try: pg.click("#welcome-start", timeout=2500)
         except Exception: pass
         pg.wait_for_timeout(400)

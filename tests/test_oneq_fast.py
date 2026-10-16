@@ -30,7 +30,7 @@
 
 ここで固定するのは30個ほど。**【】に干渉しないこと**を特に強く見る。
 """
-import os, sys, io, json
+import os, sys, io, json, time
 from playwright.sync_api import sync_playwright
 
 R = []
@@ -91,7 +91,13 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(1000)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1000)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     if not os.path.exists(BK):
         ok("（おためしデータが無いので実機の確認は省略）", True, BK)
@@ -100,7 +106,13 @@ with sync_playwright() as p:
         pg.evaluate("async () => { await window.Storage.restoreBackup(JSON.parse(window.__B), 'merge'); }")
         pg.reload(wait_until="load")
         pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-        pg.wait_for_timeout(1400)
+        # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1400)）
+        _t0 = time.time()
+        while time.time() - _t0 < 60:
+            if pg.evaluate("() => window.__INIT_DONE === true"):
+                break
+            pg.wait_for_timeout(200)
+        pg.wait_for_timeout(300)
         pg.evaluate("() => { const s=document.getElementById('splash'); if(s) s.classList.add('is-gone');"
                     " if (window.Main && window.Main.closeModals) window.Main.closeModals(); }")
         pg.evaluate("() => { const b=document.querySelector('#card-review')"

@@ -133,7 +133,13 @@ with sync_playwright() as p:
     # 2回目の起動では入れ直さない（印あり・版一致）
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(2500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(2500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     c2 = pg.evaluate(COUNTS)
     ok("2回目の起動では二重に入らない", c2["total"] == 339 and c2["mock"] == 90, c2)
 
@@ -145,7 +151,13 @@ with sync_playwright() as p:
     ok("全初期化で 0問・印は両方立つ", r3["n"] == 0 and r3["seed"] and r3["fm"], r3)
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(3000)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(3000)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     ok("再読込しても見本も体験用も戻らない", pg.evaluate("async () => window.Storage.countQuestions()") == 0)
     pg.evaluate("() => { window.Main.closeModals(); window.Half2Impl.restoreSeedQuestions(); }")
     pg.wait_for_timeout(600)

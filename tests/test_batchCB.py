@@ -20,7 +20,7 @@
 それはこの画面に必ず読み込まれている。`select_count` は参照しない。
 正解が0の壊れたデータでも、最低1つは選べるようにして詰ませない。
 """
-import io, json, os, re, sys, glob as _g
+import io, json, os, re, sys, glob as _g, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -71,7 +71,13 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1400)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1400)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     n = pg.evaluate("""() => {
       const M = window.Main;

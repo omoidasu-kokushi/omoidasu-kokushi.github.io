@@ -13,7 +13,7 @@
 消したのは利用者の意思なので**消えたままにする**。いったん消したあとで
 見本が要るようになったら、設定から明示的に入れ直す。
 """
-import io, json, os, sys, glob as _g
+import io, json, os, sys, glob as _g, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -49,7 +49,13 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    pg.wait_for_timeout(1800)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1800)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     try:
         pg.click("#welcome-start", timeout=4000)
     except Exception:
@@ -72,7 +78,13 @@ with sync_playwright() as p:
     # ページを読み込み直しても戻ってこない
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    pg.wait_for_timeout(3500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(3500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     n1 = pg.evaluate("window.Storage.countQuestions()")
     ok("読み込み直しても見本問題が戻ってこない（旧版はここで453に戻る）", n1 == 0, str(n1))
 

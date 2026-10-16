@@ -30,7 +30,13 @@ with sync_playwright() as p:
     pg.evaluate("async () => { await window.Storage.setMeta('onboarding_done', true); }")
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(1500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("() => window.Main.closeModals()")
 
     # 割り込みの仕組みが外から見えるか

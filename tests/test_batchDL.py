@@ -18,7 +18,7 @@ V2.70（利用者裁定）で、そのセグメント自体も無くした。
   ・旧ロックの不在       → そのまま
   ・50問で開始できる     → そのまま
 """
-import io, os, sys, glob, json
+import io, os, sys, glob, json, time
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
 R = []
@@ -48,11 +48,23 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1200)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("async () => { await window.Storage.setMetaBulk({ onboarding_done: true }); }")
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1000)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1000)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("() => window.Main.closeModals()")
     r = pg.evaluate("""async () => {
       const H = window.Half2, M = window.Main, S = window.Storage;

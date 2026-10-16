@@ -35,7 +35,7 @@
   ・印つきが無い／足りないときは従来の組み方に落ちる（size を守る）
   ・取り込みレポートに variants の内訳が出る
 """
-import os, sys, io, json
+import os, sys, io, json, time
 from playwright.sync_api import sync_playwright
 
 R = []
@@ -175,7 +175,13 @@ with sync_playwright() as p:
                   'q_star','img_toggle','numeric_input','pomodoro','stem_expand','ground','exam'] }); }""")
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(1200)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("() => { window.Main.closeModals(); }")
 
     # V2.99：体験用の予想問題90問が同梱されるようになった（起動時に自動で入る）。

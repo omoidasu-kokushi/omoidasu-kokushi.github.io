@@ -21,7 +21,7 @@
 
 ここで固定するのは12個。
 """
-import os, sys, json
+import os, sys, json, time
 from playwright.sync_api import sync_playwright
 
 R = []
@@ -46,7 +46,13 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(900)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(900)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     r = pg.evaluate("""async () => {
       const S = window.Storage;

@@ -27,7 +27,7 @@
 レベル表示は不退転でよいが、必修の枠は戻せなければならない。忘れたら弱いままになる。
 80%を超えたあと75%を割ったら 25% へ自動で戻す（ヒステリシス）。
 """
-import io, json, os, sys, glob as _g
+import io, json, os, sys, glob as _g, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -87,7 +87,13 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1400)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1400)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     # V2.89（2026-09-09）：同梱シードを必修249問へ入れ替えたので、
     # 起動しただけの pool は **100%が必修**になった。それでは

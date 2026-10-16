@@ -25,7 +25,7 @@ min-width:0 を入れずに main / dice / name 側をいじっても**1pxも動�
   ③ min-width:0 が CSS に残っている（消すと再発する）
   ④ 単元名は ellipsis で縮む（行が壊れるのではなく、名前が縮む）
 """
-import json, os, sys
+import json, os, sys, time
 from playwright.sync_api import sync_playwright
 
 R = []
@@ -64,7 +64,13 @@ with sync_playwright() as p:
     }""")
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(1500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("() => { const s=document.getElementById('splash'); if(s) s.classList.add('is-gone'); window.Main.closeModals(); }")
 
     wide = []

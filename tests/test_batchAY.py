@@ -9,7 +9,7 @@
 このバッチは「対象数と枚数の目安が出る」「絞ったときは何問中何問かを
 紙面にも書く」「全部のときは従来どおり順序も件数も変えない」を固定する。
 """
-import io, json, os, sys, glob as _g
+import io, json, os, sys, glob as _g, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -52,7 +52,13 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    pg.wait_for_timeout(1200)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     try:
         pg.click("#welcome-start", timeout=4000)
     except Exception:

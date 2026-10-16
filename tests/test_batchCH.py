@@ -20,7 +20,7 @@
  - sw.js に notificationclick（タップでアプリへ戻る）がある
 ブラウザ側の条件（setAppBadge 無し・通知許可あり・SW の通知API）はモックで再現する。
 """
-import json
+import json, time
 import os
 import sys
 
@@ -57,7 +57,13 @@ with sync_playwright() as pw:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(APP_URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(1500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     try:
         pg.click("#welcome-start", timeout=3000)
     except Exception:

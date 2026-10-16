@@ -8,7 +8,7 @@ V1.70 で見つけた重大バグ：#print-sheet は index.html 上 #modal-layer
 修正は「組み立て時に body 直下へ移す」。ここではその再発と、
 学習レポートの内容（実測値のみ・予測値なし）を固定する。
 """
-import io, json, os, re, sys
+import io, json, os, re, sys, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -65,7 +65,13 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    pg.wait_for_timeout(1500)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1500)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     try:
         pg.click("#welcome-start", timeout=4000)
     except Exception:

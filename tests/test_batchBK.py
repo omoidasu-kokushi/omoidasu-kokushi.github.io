@@ -23,7 +23,7 @@ V1.85 までは範囲指定を **中項目の名前だけ** で行っていた�
 過去問1,200問を取り込むと **139問（12%）** が同名の中項目に属する。
 同梱453問だけではほとんど踏まないので、**過去問を入れた瞬間に効いてくる。**
 """
-import io, json, os, re, sys, glob as _g
+import io, json, os, re, sys, glob as _g, time
 from collections import Counter
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
@@ -84,7 +84,13 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1200)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1200)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     # 同名の中項目を2つ、別の大項目に作って取り込む
     made = pg.evaluate("""async () => {

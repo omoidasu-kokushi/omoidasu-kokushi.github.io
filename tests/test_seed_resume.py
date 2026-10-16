@@ -128,7 +128,13 @@ with sync_playwright() as p:
     ok("全初期化で 0問・印あり", r["n"] == 0 and r["seed_imported"], r)
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=60000)
-    pg.wait_for_timeout(3000)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(3000)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     n3 = pg.evaluate("async () => window.Storage.countQuestions()")
     ok("再読込しても見本は戻らない（V1.81 はそのまま）", n3 == 0, n3)
 

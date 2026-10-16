@@ -4,7 +4,7 @@
 各節の冒頭に画面モック（解答画面には問題文と選択肢が見える）、ほぼ全項目に
 見本UI。模試の節に「提出後の復習」の項。中身の正はTIPSただ1つ。
 """
-import io, os, sys, glob, json
+import io, os, sys, glob, json, time
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
 R = []
@@ -27,13 +27,25 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(800)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(800)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     # ガイドは設定から開く導線＝オンボーディング完了後の世界。welcomeが
     # 再表示されてガイドを隠すのは初回だけの挙動なので、完了状態で試す。
     pg.evaluate("async () => { await window.Storage.setMetaBulk({ onboarding_done: true }); }")
     pg.reload(wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(800)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(800)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     pg.evaluate("() => window.Main.closeModals()")
     pg.wait_for_timeout(300)
     r = pg.evaluate("""async () => {

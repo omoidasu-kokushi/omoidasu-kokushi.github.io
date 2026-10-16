@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """バッチA+B 検証スイート（headless Chromium / http://）"""
-import json, re, io, os, sys, subprocess
+import json, re, io, os, sys, subprocess, time
 from playwright.sync_api import sync_playwright
 
 
@@ -87,7 +87,13 @@ def runtime_checks():
         pg.on("console", lambda m: errs.append("console:" + m.text) if m.type == "error" and not _external(m.text) else None)
         pg.goto(URL, wait_until="load")
         pg.wait_for_function("window.__APP_READY === true", timeout=15000)
-        pg.wait_for_timeout(1800)
+        # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1800)）
+        _t0 = time.time()
+        while time.time() - _t0 < 60:
+            if pg.evaluate("() => window.__INIT_DONE === true"):
+                break
+            pg.wait_for_timeout(200)
+        pg.wait_for_timeout(300)
 
         ok("依存モジュール5本すべてOK", pg.evaluate("""() =>
             !!(window.CONCEPT_TAGS_MASTER||[]).length && !!(window.Storage&&window.Storage.APP_BUILD)

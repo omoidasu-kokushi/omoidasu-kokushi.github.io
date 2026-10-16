@@ -21,7 +21,7 @@
 ・記録しないモード（検索・ノック）では書き置きもしない
 ・localStorage が使えない環境（プライベートモード等）で落ちない
 """
-import io, json, os, re, sys, glob as _g
+import io, json, os, re, sys, glob as _g, time
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -91,7 +91,13 @@ with sync_playwright() as p:
     pg.set_default_timeout(120000)
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg.wait_for_timeout(1400)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg.wait_for_timeout(1400)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
 
     qid = pg.evaluate(TO_REVIEW)
 
@@ -119,7 +125,13 @@ with sync_playwright() as p:
     pg2.set_default_timeout(120000)
     pg2.goto(URL, wait_until="load")
     pg2.wait_for_function("window.__APP_READY === true", timeout=180000)
-    pg2.wait_for_timeout(1800)
+    # 固定の待ちをやめ、同梱2本の取り込み完了（__INIT_DONE）を待つ（2026-10-17・引き継ぎ §5-9。もとは pg2.wait_for_timeout(1800)）
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg2.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg2.wait_for_timeout(200)
+    pg2.wait_for_timeout(300)
     r2 = pg2.evaluate("""async () => {
       const S = window.Storage, M = window.Main;
       const logs = await S.getAllLogs();
