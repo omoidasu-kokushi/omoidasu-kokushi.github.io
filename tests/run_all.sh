@@ -38,6 +38,11 @@ if ! curl -sf "http://127.0.0.1:${PORT}/index.html" >/dev/null 2>&1; then
   sleep 2
 fi
 
+# 落ちたスイートの出力は全文をここへ残す（画面には最後の1行と NG 行しか出さないので、
+# 例外で止まったときの本文が消えていた・2026-10-17 batchAZ）。前回の分は消してから始める。
+FAIL_DIR="$APP_DIR/tests/_fail"
+rm -rf "$FAIL_DIR"
+
 pass=0
 fail=0
 for t in "$APP_DIR"/tests/test_batch*.py "$APP_DIR"/tests/test_regress.py "$APP_DIR"/tests/test_restore_guard.py "$APP_DIR"/tests/test_buy_dialog_overwrite.py "$APP_DIR"/tests/test_tax_slash.py "$APP_DIR"/tests/test_tax_fullwidth.py "$APP_DIR"/tests/test_exp_button_size.py "$APP_DIR"/tests/test_garble_report.py "$APP_DIR"/tests/test_case_series.py "$APP_DIR"/tests/test_knock_count.py "$APP_DIR"/tests/test_session_tally.py "$APP_DIR"/tests/test_verdict_coach.py "$APP_DIR"/tests/test_import_hygiene.py "$APP_DIR"/tests/test_mermaid_vertical.py "$APP_DIR"/tests/test_bessatsu_image.py "$APP_DIR"/tests/test_stem_image.py "$APP_DIR"/tests/test_narrow_320.py "$APP_DIR"/tests/test_tax_space.py "$APP_DIR"/tests/test_interrupt_guard.py "$APP_DIR"/tests/test_search_exam_abort.py "$APP_DIR"/tests/test_pick_badge.py "$APP_DIR"/tests/test_qty_mode.py "$APP_DIR"/tests/test_pomo_resume.py "$APP_DIR"/tests/test_break_restart.py "$APP_DIR"/tests/test_explain_btn.py "$APP_DIR"/tests/test_atom_layout.py "$APP_DIR"/tests/test_atom_echo.py "$APP_DIR"/tests/test_exam_history.py "$APP_DIR"/tests/test_exam_mix_quota.py "$APP_DIR"/tests/test_oneq_fast.py "$APP_DIR"/tests/test_seed_hisshu.py "$APP_DIR"/tests/test_oneq_verdict.py "$APP_DIR"/tests/test_hard_interval.py "$APP_DIR"/tests/test_free_exam_variant.py "$APP_DIR"/tests/test_seed_resume.py "$APP_DIR"/tests/test_free_exam_once.py "$APP_DIR"/tests/test_free_mock_bundle.py "$APP_DIR"/tests/test_free_units_gate.py "$APP_DIR"/tests/test_free_exam_cards.py "$APP_DIR"/tests/test_wording_product.py "$APP_DIR"/tests/test_exam_mark_free.py "$APP_DIR"/tests/test_exam_review_list.py "$APP_DIR"/tests/test_level5_weak_mock.py "$APP_DIR"/tests/test_exam_paper.py "$APP_DIR"/tests/test_exam_resume.py "$APP_DIR"/tests/test_exam_marks.py "$APP_DIR"/tests/test_exam_review_read.py "$APP_DIR"/tests/test_answer_position.py "$APP_DIR"/tests/test_exam_endtime.py "$APP_DIR"/tests/test_exam_review_back.py "$APP_DIR"/tests/test_exam_review_open.py "$APP_DIR"/tests/test_wording_together.py "$APP_DIR"/tests/test_tree_mock_badge.py "$APP_DIR"/tests/test_mock_search_leak.py "$APP_DIR"/tests/test_print_escape.py "$APP_DIR"/tests/test_onboard_abort.py; do
@@ -51,6 +56,10 @@ for t in "$APP_DIR"/tests/test_batch*.py "$APP_DIR"/tests/test_regress.py "$APP_
     fail=$((fail + 1))
     echo "$out" | tail -1
     echo "$out" | grep -E '^\s+NG' | head -8
+    mkdir -p "$FAIL_DIR"
+    log="$FAIL_DIR/$(basename "$t" .py).log"
+    printf '%s\n' "$out" > "$log"
+    echo "  → 全文: tests/_fail/$(basename "$log")"
   fi
 done
 

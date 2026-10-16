@@ -10,7 +10,7 @@
 このバッチは外部依存なしで「行列の形」と「組版」を固定する。
 実際に読めるかの検証は tools/verify_qr.py（cv2＋segnoが要る・変更時のみ手動）。
 """
-import io, json, os, re, sys, glob as _g
+import io, json, os, re, sys, time, glob as _g
 
 APP = os.environ.get("APP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 URL = os.environ.get("APP_URL", "http://127.0.0.1:8900/index.html")
@@ -74,7 +74,16 @@ with sync_playwright() as p:
     pg.on("pageerror", lambda e: errs.append(str(e)))
     pg.goto(URL, wait_until="load")
     pg.wait_for_function("window.__APP_READY === true", timeout=30000)
-    pg.wait_for_timeout(1200)
+    # 2026-10-17：固定1200msだと、機械が重いときに**同梱2本の取り込みがまだ終わっていない**。
+    # 下の async evaluate が getAllAtoms() の atoms[0] を読むので、0件だと a が undefined になり
+    # evaluate の中で例外が出て止まる（run_all で1回落ちた。単独では5回とも緑）。
+    # batchBX と同じく合図（__INIT_DONE）を待つ。
+    _t0 = time.time()
+    while time.time() - _t0 < 60:
+        if pg.evaluate("() => window.__INIT_DONE === true"):
+            break
+        pg.wait_for_timeout(200)
+    pg.wait_for_timeout(300)
     try:
         pg.click("#welcome-start", timeout=4000)
     except Exception:

@@ -1,6 +1,7 @@
 # テスト実行で出る一時ファイル
 tests/shot_*.png
 tests/__pycache__/
+tests/_fail/
 __pycache__/
 
 # 一度きりの改修スクリプト（適用済みなので残さない）
