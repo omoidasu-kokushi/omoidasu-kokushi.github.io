@@ -2041,10 +2041,109 @@
     report.answer_pos_max_pct = Math.round((top / n) * 100);
   }
 
+  /* --- V3.23：黙って通ってしまう欠損を数える（2026-10-20・利用者の実測） -----------
+   *
+   * 配布JSON（過去問1197問）を突き合わせたら、取り込みは全部「成功」なのに5件欠けていた。
+   *   ・第114回 午前問41（回復体位はどれか）：肢が ①〜④ だけで image_url=null。解答不能
+   *   ・第112回午後35・第113回午後21・第115回午前32 が欠番。1,200問のはずが1,197問。誰も引き算していなかった
+   *   ・113_pm21.png があるのに、第113回午後問21 が無い
+   * どれも**止めない**。数えて report に残す（取り込みは通す。黙って入れないのが目的）。
+   *
+   * ① 記号だけの肢：「1〜2文字」では数えない。同梱の見本249問で試すと
+   *    「胃｜肝臓」「5｜10｜30｜50」「赤｜黄」のような正しい問題が11問かかる。
+   *    i 番目の肢が i 番目の記号（① / 1 / a / A / ア）そのもののときだけ数える。
+   *    ① は取り込みで剥がれて空になるので、空も記号として扱う。
+   * ② 欠番：同じ回・同じ午前／午後の中で、最小〜最大のあいだに抜けた番号。
+   *    続けて抜けたところは1か所と数える（missing は問数）。
+   *    一部だけ取り込んだときは抜けて当然なので、ここは事実を数えるだけ。
+   * ③ 画像の孤児：SENTAKUSHI_IMAGES（images/sentakushi/ の中身）と出典を突き合わせる。
+   *    ブラウザからフォルダの中身は読めないので一覧を持つ。sw.js の OPTIONAL_ASSETS と
+   *    同じものを2か所に持つことになるので、test_import_audit.py がフォルダ・sw.js と
+   *    3つ揃っていることを毎回確かめる（片方だけ直さない）。
+   *    取り込みに無い回・午前／午後の画像は数えない（一部だけ入れたときに全部出てしまう）。 */
+  var SENTAKUSHI_IMAGES = [
+    '112_am57.png', '112_pm95.png', '113_am110.png', '113_am46.png',
+    '113_pm21.png', '113_pm37.png', '113_pm54.png', '113_pm66.png',
+    '114_am39.png', '114_am41.png', '115_am16.png', '115_am22.png'
+  ];
+  var LABEL_SERIES = [
+    '①②③④⑤⑥⑦⑧⑨⑩', '123456789', '１２３４５６７８９',
+    'abcdefghij', 'ABCDEFGHIJ', 'ａｂｃｄｅｆｇｈｉｊ', 'ＡＢＣＤＥＦＧＨＩＪ', 'アイウエオカキクケコ'
+  ];
+  function sourceKeyOf(source) {
+    var m = /第\s*(\d+)\s*回\s*(午前|午後)\s*問?\s*(\d+)/.exec(String(source == null ? '' : source));
+    if (!m) { return null; }
+    return { kai: parseInt(m[1], 10), half: (m[2] === '午前' ? 'am' : 'pm'), no: parseInt(m[3], 10) };
+  }
+  function sourceLabel(kai, half, no) {
+    return '第' + kai + '回 ' + (half === 'am' ? '午前' : '午後') + '問' + no;
+  }
+  function atomsAreOnlyLabels(atoms) {
+    if (!atoms || atoms.length < 2) { return false; }
+    return LABEL_SERIES.some(function (series) {
+      return atoms.every(function (a, i) {
+        var t = String((a && a.text) || '').replace(/^[\s(（]+|[\s.．、)）]+$/g, '');
+        return t === '' || t === series.charAt(i);
+      });
+    });
+  }
+  function hasImage(q, atoms) {
+    var rx = /\[\s*IMAGE\s*:/i;
+    if (q.image_url || rx.test(q.stem || '')) { return true; }
+    return (atoms || []).some(function (a) { return rx.test((a && a.text) || ''); });
+  }
+  function auditSourcesInto(payload, report) {
+    report.noimg_symbol = 0; report.noimg_symbol_examples = [];
+    report.source_gaps = 0; report.source_gap_missing = 0; report.source_gap_examples = [];
+    report.image_orphans = 0; report.image_orphan_examples = [];
+
+    var groups = {};
+    payload.forEach(function (item) {
+      if (!item || item.ok === false || !item.question) { return; }
+      var q = item.question;
+      if (atomsAreOnlyLabels(item.atoms) && !hasImage(q, item.atoms)) {
+        report.noimg_symbol++;
+        if (report.noimg_symbol_examples.length < 5) {
+          report.noimg_symbol_examples.push(String(q.source || q.q_id || ''));
+        }
+      }
+      var k = sourceKeyOf(q.source);
+      if (!k) { return; }
+      var gk = k.kai + '_' + k.half;
+      (groups[gk] = groups[gk] || { kai: k.kai, half: k.half, nos: {} }).nos[k.no] = 1;
+    });
+
+    Object.keys(groups).sort().forEach(function (gk) {
+      var g = groups[gk];
+      var nos = Object.keys(g.nos).map(Number).sort(function (a, b) { return a - b; });
+      for (var i = 1; i < nos.length; i++) {
+        if (nos[i] - nos[i - 1] <= 1) { continue; }
+        var from = nos[i - 1] + 1, to = nos[i] - 1;
+        report.source_gaps++;
+        report.source_gap_missing += (to - from + 1);
+        if (report.source_gap_examples.length < 5) {
+          report.source_gap_examples.push(sourceLabel(g.kai, g.half, from) + (to > from ? '〜' + to : ''));
+        }
+      }
+    });
+
+    SENTAKUSHI_IMAGES.forEach(function (f) {
+      var m = /^(\d+)_(am|pm)(\d+)\.png$/.exec(f);
+      if (!m) { return; }
+      var g = groups[parseInt(m[1], 10) + '_' + m[2]];
+      if (!g || g.nos[parseInt(m[3], 10)]) { return; }
+      report.image_orphans++;
+      if (report.image_orphan_examples.length < 5) {
+        report.image_orphan_examples.push(f + '（' + sourceLabel(parseInt(m[1], 10), m[2], parseInt(m[3], 10)) + '）');
+      }
+    });
+  }
+
   /* パースが通った分だけを 200件ずつのトランザクションで書き込む。
      1件ごとに既存レコードを読んでから put するため、
      再インポートでも学習進捗と★は失われない（追加ではなく更新）。 */
   function persistImportPayload(payload, report, ctx, options) {
+    auditSourcesInto(payload, report);      /* V3.23：記号だけの肢・欠番・画像の孤児を数える（並べ替える前の順で見る） */
     reorderMockAtoms(payload, report);      /* V3.14：予想問題の肢を並べ替える（書き込む前に） */
     countAnswerPositions(payload, report);  /* V3.14：並べ替えたあとの偏りを数えて見せる */
     var CHUNK = 200;
